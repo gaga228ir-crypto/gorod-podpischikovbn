@@ -233,7 +233,7 @@ document.getElementById('f').addEventListener('submit', e => {
   e.preventDefault(); const q = norm(document.getElementById('q').value); if (!q) return;
   const h = houses.find(x => x.key === q) || houses.find(x => x.key.includes(q));
   if (h) { msg.textContent = ''; focus(h); document.getElementById('q').blur(); }
-  else { msg.textContent = 'Такого дома пока нет — подпишись, и он появится в следующем обновлении'; showFree(); }
+  else { msg.textContent = 'Такого дома пока нет. Город обновляется каждый день примерно в 12:00 по МСК — загляни после обновления'; showFree(); }
 });
 // открытие по ссылке вида site/#ник
 if (location.hash.length > 1) { const k = norm(decodeURIComponent(location.hash.slice(1))); const h = houses.find(x => x.key === k); if (h) setTimeout(() => focus(h), 600); }
