@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Город подписчиков</title>
+<meta name="description" content="Ночной город, где у каждого подписчика свой дом с ником.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;800&family=Inter:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#070b24;--panel:rgba(12,8,36,.82);--gold:#ffd23f;--pink:#ff3d7f;--cyan:#5ef2ff;--text:#fff;--muted:#bdb6ea}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:Inter,system-ui,sans-serif;overflow:hidden;touch-action:none}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:grab}
+canvas.drag{cursor:grabbing}
+.top{position:fixed;left:0;right:0;top:0;padding:14px 16px 12px;background:linear-gradient(var(--panel),rgba(12,8,36,0));display:flex;flex-direction:column;gap:10px;z-index:2}
+.title{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.title h1{margin:0;font:800 18px/1.1 Unbounded,sans-serif;letter-spacing:.02em}
+.count{font:500 12px Unbounded,sans-serif;color:var(--muted);white-space:nowrap}
+.count b{color:var(--gold);font-weight:800;font-size:15px}
+form{display:flex;gap:8px;max-width:520px}
+input{flex:1;min-width:0;border:0;border-radius:999px;padding:12px 16px;font:600 16px Inter,sans-serif;background:#fff;color:#1a1238;outline:none}
+input:focus{box-shadow:0 0 0 3px var(--pink)}
+button,.btn{border:0;border-radius:999px;padding:12px 18px;font:800 13px Unbounded,sans-serif;cursor:pointer;background:var(--pink);color:#fff;text-decoration:none;white-space:nowrap}
+button:active,.btn:active{transform:scale(.96)}
+.msg{font:600 13px Inter,sans-serif;color:var(--gold);min-height:1em}
+.card{position:fixed;left:50%;bottom:18px;transform:translate(-50%,140%);transition:transform .35s cubic-bezier(.2,1.4,.4,1);background:var(--panel);backdrop-filter:blur(8px);border:1px solid rgba(160,150,255,.35);border-radius:22px;padding:16px 18px;width:min(92vw,420px);z-index:3;display:flex;align-items:center;gap:14px}
+.card.show{transform:translate(-50%,0)}
+.card .nick{font:800 18px Unbounded,sans-serif;color:var(--gold);word-break:break-all}
+.card .sub{font:500 13px Inter,sans-serif;color:var(--muted);margin-top:4px}
+.card .grow{flex:1;min-width:0}
+.cta{position:fixed;right:16px;bottom:18px;z-index:2}
+.card.show ~ .cta{display:none}
+.hint{position:fixed;left:16px;bottom:24px;font:500 12px Inter,sans-serif;color:var(--muted);z-index:2;opacity:.8}
+@media (max-width:520px){.hint{display:none}}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="top">
+  <div class="title"><h1>ГОРОД ПОДПИСЧИКОВ</h1><div class="count">домов: <b id="cnt">0</b></div></div>
+  <form id="f" autocomplete="off"><input id="q" placeholder="Найди свой дом: @ник" aria-label="Ник"><button>НАЙТИ</button></form>
+  <div class="msg" id="msg"></div>
+</div>
+<div class="card" id="card"><div class="grow"><div class="nick" id="cnick"></div><div class="sub" id="csub"></div></div><button id="cclose" aria-label="Закрыть">✕</button></div>
+<a class="btn cta" id="cta" target="_blank" rel="noopener">+ ХОЧУ СВОЙ ДОМ</a>
+<div class="hint">Тяни — двигать город · колесо — приблизить</div>
+
+<script>
+/* ===================== НАСТРОЙКИ =====================
+   Добавляй ники подписчиков сюда — по одному в кавычках через запятую.
+   Порядок = порядок заселения: первые живут в центре. */
+const SUBSCRIBERS = [
+  '@твой_ник',
+];
+const TIKTOK_URL = 'https://www.tiktok.com/@eben51041'; // ссылка на твой TikTok
+/* ===================================================== */
+
+const cv = document.getElementById('c'), g = cv.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+function resize() { DPR = Math.min(2, devicePixelRatio || 1); W = innerWidth; H = innerHeight; cv.width = W * DPR; cv.height = H * DPR; g.setTransform(DPR, 0, 0, DPR, 0, 0); }
+addEventListener('resize', resize); resize();
+
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+function hash(s) { let h = 2166136261; for (const c of s) { h ^= c.codePointAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }
+function rnd(seed) { return () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const norm = s => s.trim().replace(/^@+/, '').toLowerCase();
+
+// ---------- планировка: кварталы 2×2, дороги каждая 3-я линия ----------
+const isRoad = (x, y) => (((x % 3) + 3) % 3 === 0) || (((y % 3) + 3) % 3 === 0);
+const cells = [];
+for (let x = -45; x <= 45; x++) for (let y = -45; y <= 45; y++) if (!isRoad(x, y)) cells.push([x, y]);
+cells.sort((a, b) => (Math.hypot(a[0] - 1.5, a[1] - 1.5) - Math.hypot(b[0] - 1.5, b[1] - 1.5)) || (a[0] - b[0]) || (a[1] - b[1]));
+
+const WALLS = ['#f28b82', '#fbc95a', '#a7d36f', '#7cc8ff', '#c9a0e8', '#ffab91', '#86d4c8', '#fff08a', '#f7a8d0', '#9fb4ff'];
+const ROOFS = ['#c2414b', '#3d5a99', '#6b3fa0', '#2f7a6b', '#b8562f', '#374070'];
+const list = [...new Set(SUBSCRIBERS.map(s => s.trim()).filter(Boolean).map(s => s.startsWith('@') ? s : '@' + s))];
+const houses = list.map((nick, i) => {
+  const r = rnd(hash(nick)), tall = r() < 0.18;
+  return { nick, key: norm(nick), x: cells[i][0], y: cells[i][1], h: tall ? 2.0 + r() * 0.8 : 1.0 + r() * 0.7, rh: 0.55 + r() * 0.3,
+    wall: WALLS[(r() * WALLS.length) | 0], roof: ROOFS[(r() * ROOFS.length) | 0], lit: Array.from({ length: 8 }, () => r() < 0.75), born: i };
+});
+const FREE = cells[houses.length];                       // следующий свободный участок
+const EMPTY = cells.slice(houses.length + 1, houses.length + 13); // будущие участки
+document.getElementById('cnt').textContent = houses.length;
+const cta = document.getElementById('cta'); cta.href = TIKTOK_URL;
+
+// ---------- камера ----------
+const cam = { x: 1.5, y: 1.5, z: 1, tx: 1.5, ty: 1.5, tz: 1 };
+const TW = 64, TH = 32, HZ = 30;
+function P(wx, wy, wz = 0) { const z = cam.z; return [W / 2 + ((wx - cam.x) - (wy - cam.y)) * TW / 2 * z, H * 0.56 + ((wx - cam.x) + (wy - cam.y)) * TH / 2 * z - wz * HZ * z]; }
+function poly(pts, fill) { g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.closePath(); g.fillStyle = fill; g.fill(); }
+function shade(hex, k) { const n = parseInt(hex.slice(1), 16); return `rgb(${Math.round((n >> 16) * k * 0.8)},${Math.round((n >> 8 & 255) * k * 0.82)},${Math.round((n & 255) * k)})`; }
+
+// ---------- жители на улицах ----------
+const walkers = [];
+{ const r = rnd(7); const span = Math.ceil(Math.sqrt(houses.length + 20)) + 4;
+  for (let i = 0; i < Math.min(80, 8 + houses.length * 2); i++) {
+    const alongX = r() < 0.5, line = Math.round((r() * 2 - 1) * span / 3) * 3 + (r() < .5 ? 0.28 : -0.28);
+    walkers.push({ alongX, line, pos: (r() * 2 - 1) * span, dir: r() < .5 ? 1 : -1, sp: 0.5 + r() * 0.5, span, ph: r() * 6,
+      col: ['#ff6b8a', '#ffd166', '#6ee7b7', '#7cc8ff', '#c084fc', '#ff9f68'][(r() * 6) | 0], nick: houses.length ? houses[(r() * houses.length) | 0].nick : '' });
+  } }
+
+// ---------- звёзды ----------
+const stars = Array.from({ length: 160 }, (_, i) => { const r = rnd(i * 31 + 5); return [r(), r() * 0.6, 0.5 + r() * 1.6, r() * 6]; });
+
+let hi = null, hiT = 0;
+function drawHouse(hs, t) {
+  const { x, y } = hs, i = 0.14, x0 = x + i, y0 = y + i, x1 = x + 1 - i, y1 = y + 1 - i, h = hs.h, ap = h + hs.rh;
+  const grow = clamp((t - hs.appear) / 0.6, 0, 1), s = grow < 1 ? 1 - Math.pow(1 - grow, 3) * Math.cos(grow * 9) : 1;
+  const hh = h * s, aa = hh + hs.rh * s;
+  // тень
+  poly([P(x0, y0), P(x1 + .35, y0 + .2), P(x1 + .35, y1 + .35), P(x0 + .2, y1 + .35)], 'rgba(0,0,15,.35)');
+  // стены (+x и +y видны)
+  poly([P(x1, y0), P(x1, y1), P(x1, y1, hh), P(x1, y0, hh)], shade(hs.wall, 0.62));
+  poly([P(x0, y1), P(x1, y1), P(x1, y1, hh), P(x0, y1, hh)], shade(hs.wall, 0.85));
+  // окна
+  if (cam.z > 0.55) {
+    const floors = Math.max(1, Math.round(h / 0.7));
+    for (let f = 0; f < floors; f++) for (let c = 0; c < 2; c++) {
+      const v0 = (f + 0.3) * hh / floors, v1 = (f + 0.75) * hh / floors, u0 = 0.18 + c * 0.38, u1 = u0 + 0.22, lit = hs.lit[(f * 2 + c) % 8];
+      const col = lit ? '#ffd27a' : '#2a3156';
+      poly([P(x1 + .001, y0 + (y1 - y0) * u0, v0), P(x1 + .001, y0 + (y1 - y0) * u1, v0), P(x1 + .001, y0 + (y1 - y0) * u1, v1), P(x1 + .001, y0 + (y1 - y0) * u0, v1)], col);
+      poly([P(x0 + (x1 - x0) * u0, y1 + .001, v0), P(x0 + (x1 - x0) * u1, y1 + .001, v0), P(x0 + (x1 - x0) * u1, y1 + .001, v1), P(x0 + (x1 - x0) * u0, y1 + .001, v1)], col);
+    }
+  }
+  // крыша-шатёр
+  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, o = 0.08;
+  poly([P(x0 - o, y0 - o, hh), P(x1 + o, y0 - o, hh), P(cx, cy, aa)], shade(hs.roof, 1.0));
+  poly([P(x0 - o, y0 - o, hh), P(x0 - o, y1 + o, hh), P(cx, cy, aa)], shade(hs.roof, 0.95));
+  poly([P(x1 + o, y0 - o, hh), P(x1 + o, y1 + o, hh), P(cx, cy, aa)], shade(hs.roof, 0.7));
+  poly([P(x0 - o, y1 + o, hh), P(x1 + o, y1 + o, hh), P(cx, cy, aa)], shade(hs.roof, 0.85));
+  hs.apex = P(cx, cy, aa);
+}
+function pill(x, y, text, big, gold) {
+  g.font = `${big ? 800 : 600} ${big ? 15 : 12}px ${big ? 'Unbounded' : 'Inter'}, sans-serif`;
+  const w = g.measureText(text).width + (big ? 22 : 14), h = big ? 28 : 22;
+  g.fillStyle = gold ? '#ffd23f' : 'rgba(255,255,255,.92)';
+  g.beginPath(); g.roundRect(x - w / 2, y - h - 6, w, h, h / 2); g.fill();
+  g.beginPath(); g.moveTo(x - 5, y - 7); g.lineTo(x + 5, y - 7); g.lineTo(x, y); g.fill();
+  g.fillStyle = '#1a1238'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, x, y - 6 - h / 2 + 1);
+}
+
+let last = performance.now(), T = 0;
+houses.forEach((h, i) => h.appear = 0.2 + Math.min(i, 60) * 0.04);
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now; T += dt;
+  const k = 1 - Math.pow(0.0015, dt); cam.x += (cam.tx - cam.x) * k; cam.y += (cam.ty - cam.y) * k; cam.z += (cam.tz - cam.z) * k;
+  // небо
+  const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, '#060a22'); gr.addColorStop(.5, '#191545'); gr.addColorStop(1, '#3b2c72');
+  g.fillStyle = gr; g.fillRect(0, 0, W, H);
+  for (const s of stars) { g.globalAlpha = .4 + .4 * Math.sin(T * 2 + s[3]); g.fillStyle = '#fff'; g.fillRect(s[0] * W, s[1] * H, s[2], s[2]); } g.globalAlpha = 1;
+  // земля в видимой области
+  const R = Math.ceil(Math.max(W, H) / (TH * cam.z)) + 2, bx = Math.round(cam.x), by = Math.round(cam.y);
+  for (let x = bx - R; x <= bx + R; x++) for (let y = by - R; y <= by + R; y++) {
+    const c = P(x + .5, y + .5); if (c[0] < -80 || c[0] > W + 80 || c[1] < -60 || c[1] > H + 60) continue;
+    const road = isRoad(x, y);
+    poly([P(x, y), P(x + 1, y), P(x + 1, y + 1), P(x, y + 1)], road ? '#1b1f3a' : '#20423f');
+    if (road && cam.z > .6 && ((x + y) & 1) && ((((x % 3) + 3) % 3 === 0) !== (((y % 3) + 3) % 3 === 0))) {
+      const vx = ((x % 3) + 3) % 3 === 0; g.strokeStyle = 'rgba(217,207,134,.45)'; g.lineWidth = 2 * cam.z; g.beginPath();
+      const a = vx ? P(x + .5, y + .3) : P(x + .3, y + .5), b = vx ? P(x + .5, y + .7) : P(x + .7, y + .5); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke();
+    }
+  }
+  // пустые и свободный участок
+  const outline = (c, col, a) => { g.globalAlpha = a; g.strokeStyle = col; g.lineWidth = 2; g.beginPath(); [P(c[0] + .12, c[1] + .12), P(c[0] + .88, c[1] + .12), P(c[0] + .88, c[1] + .88), P(c[0] + .12, c[1] + .88)].forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.closePath(); g.stroke(); g.globalAlpha = 1; };
+  EMPTY.forEach(c => outline(c, '#5ef2ff', .45));
+  if (FREE) outline(FREE, '#ffd23f', .6 + .4 * Math.sin(T * 5));
+  // объекты по глубине
+  const items = houses.map(h => [h.x + h.y + 1, 0, h]);
+  for (const w of walkers) { let p = w.pos + w.dir * w.sp * T; p = ((p + w.span) % (2 * w.span) + 2 * w.span) % (2 * w.span) - w.span; w.wx = w.alongX ? p : w.line; w.wy = w.alongX ? w.line : p; items.push([w.wx + w.wy, 1, w]); }
+  items.sort((a, b) => a[0] - b[0]);
+  for (const [, type, o] of items) {
+    if (type === 0) { const c = P(o.x + .5, o.y + .5); if (c[0] < -100 || c[0] > W + 100 || c[1] < -150 || c[1] > H + 80) { o.apex = null; continue; } drawHouse(o, T); }
+    else {
+      const b = P(o.wx, o.wy), z = cam.z, bob = Math.abs(Math.sin(T * 6 + o.ph)) * 2 * z;
+      if (b[0] < -20 || b[0] > W + 20 || b[1] < -20 || b[1] > H + 20) continue;
+      g.fillStyle = o.col; g.beginPath(); g.roundRect(b[0] - 3 * z, b[1] - 14 * z - bob, 6 * z, 11 * z, 3 * z); g.fill();
+      g.fillStyle = '#f6d2b5'; g.beginPath(); g.arc(b[0], b[1] - 17 * z - bob, 3 * z, 0, 7); g.fill();
+      o.head = [b[0], b[1] - 21 * z - bob];
+    }
+  }
+  // подписи
+  if (FREE) { const p = P(FREE[0] + .5, FREE[1] + .5, .3); pill(p[0], p[1], 'СВОБОДНО', true, true); }
+  for (const h of houses) {
+    if (!h.apex) continue;
+    const isHi = h === hi;
+    const near = Math.hypot(h.apex[0] - W / 2, h.apex[1] - H * 0.5) < Math.min(W, H) * 0.32;
+    if (isHi) continue;
+    if (houses.length <= 12 || (cam.z > 1.15 && near)) pill(h.apex[0], h.apex[1] - (isHi ? 6 + Math.abs(Math.sin(T * 4)) * 6 : 2), h.nick, isHi, isHi);
+  }
+  if (hi && hi.apex) pill(hi.apex[0], hi.apex[1] - 6 - Math.abs(Math.sin(T * 4)) * 6, hi.nick, true, true);
+  if (cam.z > 1.6) for (const w of walkers) if (w.head && w.nick && Math.hypot(w.head[0] - W / 2, w.head[1] - H * 0.55) < Math.min(W, H) * 0.25) pill(w.head[0], w.head[1], w.nick, false, false);
+  if (hi && hi.apex) { g.strokeStyle = 'rgba(255,210,63,' + (0.6 - ((T - hiT) % 1.2) / 2) + ')'; g.lineWidth = 3; g.beginPath(); g.arc(hi.apex[0], hi.apex[1] + 30 * cam.z, 20 + ((T - hiT) % 1.2) * 50, 0, 7); g.stroke(); }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// ---------- управление ----------
+let drag = null, pinch = null; const ptrs = new Map();
+cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]); drag = { x: e.clientX, y: e.clientY, moved: 0 }; cv.classList.add('drag'); });
+cv.addEventListener('pointermove', e => {
+  if (!ptrs.has(e.pointerId)) return; const prev = ptrs.get(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+  if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; const d = Math.hypot(a[0] - b[0], a[1] - b[1]); if (pinch) { cam.tz = clamp(cam.tz * d / pinch, .35, 3); cam.z = cam.tz; } pinch = d; return; }
+  const dx = e.clientX - prev[0], dy = e.clientY - prev[1]; if (drag) drag.moved += Math.abs(dx) + Math.abs(dy);
+  const z = cam.z, ax = dx / (TW / 2 * z), ay = dy / (TH / 2 * z);
+  cam.tx -= (ax + ay) / 2; cam.ty -= (ay - ax) / 2; cam.x = cam.tx; cam.y = cam.ty;
+});
+const up = e => { ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch = null; cv.classList.remove('drag');
+  if (drag && drag.moved < 8) pick(e.clientX, e.clientY); drag = null; };
+cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+cv.addEventListener('wheel', e => { e.preventDefault(); cam.tz = clamp(cam.tz * Math.exp(-e.deltaY * 0.0015), .35, 3); }, { passive: false });
+
+const card = document.getElementById('card'), msg = document.getElementById('msg');
+function pick(x, y) {
+  let best = null, bd = 40;
+  for (const h of houses) if (h.apex) { const d = Math.hypot(h.apex[0] - x, h.apex[1] + 20 * cam.z - y); if (d < bd) { bd = d; best = h; } }
+  if (best) focus(best, false); else if (FREE) { const p = P(FREE[0] + .5, FREE[1] + .5); if (Math.hypot(p[0] - x, p[1] - y) < 40) showFree(); }
+}
+function focus(h, fly = true) {
+  hi = h; hiT = T; if (fly) { cam.tx = h.x + .5; cam.ty = h.y + .5; cam.tz = 1.8; }
+  document.getElementById('cnick').textContent = h.nick;
+  document.getElementById('csub').textContent = `Дом №${h.born + 1} · ${h.born === 0 ? 'первый житель города' : 'житель с ' + (h.born + 1) + '-й подписки'}`;
+  card.classList.add('show'); history.replaceState(null, '', '#' + encodeURIComponent(h.key));
+}
+function showFree() {
+  hi = null; cam.tx = FREE[0] + .5; cam.ty = FREE[1] + .5; cam.tz = 1.8;
+  document.getElementById('cnick').textContent = 'Участок свободен';
+  document.getElementById('csub').innerHTML = `Подпишись в TikTok — и здесь вырастет дом с твоим ником. <a href="${TIKTOK_URL}" target="_blank" rel="noopener" style="color:#ffd23f">Подписаться →</a>`;
+  card.classList.add('show');
+}
+document.getElementById('cclose').onclick = () => { card.classList.remove('show'); hi = null; history.replaceState(null, '', location.pathname); };
+document.getElementById('f').addEventListener('submit', e => {
+  e.preventDefault(); const q = norm(document.getElementById('q').value); if (!q) return;
+  const h = houses.find(x => x.key === q) || houses.find(x => x.key.includes(q));
+  if (h) { msg.textContent = ''; focus(h); document.getElementById('q').blur(); }
+  else { msg.textContent = 'Такого дома пока нет — подпишись, и он появится в следующем обновлении'; showFree(); }
+});
+// открытие по ссылке вида site/#ник
+if (location.hash.length > 1) { const k = norm(decodeURIComponent(location.hash.slice(1))); const h = houses.find(x => x.key === k); if (h) setTimeout(() => focus(h), 600); }
+</script>
+</body>
+</html>
