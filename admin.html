@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Админка — Город подписчиков</title>
+<style>
+:root{--bg:#0b0826;--card:#160f3d;--line:rgba(160,150,255,.25);--gold:#ffd23f;--pink:#ff3d7f;--green:#3ddc84;--muted:#bdb6ea}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:#fff;font:500 14px/1.4 Inter,system-ui,sans-serif;padding:16px;max-width:900px;margin:0 auto}
+h1{font-size:20px;margin:6px 0 14px}
+input,textarea,select{width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:#0f0a2e;color:#fff;font:inherit}
+textarea{height:110px;font:12px/1.4 ui-monospace,monospace}
+button{border:0;border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer;background:var(--pink);color:#fff}
+button.ok{background:var(--green);color:#062}
+button.ghost{background:rgba(255,255,255,.1)}
+.tabs{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.tabs button.on{outline:2px solid var(--gold)}
+.row{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:10px;display:grid;grid-template-columns:1fr auto;gap:8px 12px;align-items:center}
+.nick a{color:var(--gold);font-weight:800;font-size:16px;text-decoration:none}
+.code{font:800 18px ui-monospace,monospace;color:var(--gold);background:rgba(255,210,63,.1);padding:4px 10px;border-radius:8px;white-space:nowrap}
+.wish{grid-column:1/-1;color:var(--muted)}
+.acts{grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap}
+.meta{color:var(--muted);font-size:12px}
+.rec{grid-column:1/-1;display:grid;grid-template-columns:1fr 150px;gap:8px}
+canvas{width:150px;height:150px;border-radius:10px;background:#20423f}
+.box{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;display:grid;gap:10px;max-width:380px}
+.err{color:#ff8fae;min-height:1em}
+.bar{display:flex;gap:8px;align-items:center;margin-bottom:12px}
+.bar input{flex:1}
+</style>
+</head>
+<body>
+<h1>🏙 Админка города</h1>
+<div id="app"></div>
+<script src="houses.js"></script>
+<script>
+// Те же значения, что в index.html
+const SUPABASE_URL = '';
+const SUPABASE_ANON_KEY = '';
+
+const app = document.getElementById('app');
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+let token = sessionStorage.getItem('adm_token') || '', tab = 'pending', filter = '';
+const api = (path, opt = {}) => fetch(SUPABASE_URL + '/rest/v1/' + path, { ...opt, headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + token, 'Content-Type': 'application/json', ...(opt.headers || {}) } });
+
+function loginView(msg = '') {
+  app.innerHTML = `<div class="box"><b>Вход</b>
+    <input id="em" type="email" placeholder="email" autocomplete="username">
+    <input id="pw" type="password" placeholder="пароль" autocomplete="current-password">
+    <div class="err">${esc(msg)}</div><button id="go">Войти</button></div>`;
+  document.getElementById('go').onclick = async () => {
+    const r = await fetch(SUPABASE_URL + '/auth/v1/token?grant_type=password', { method: 'POST', headers: { apikey: SUPABASE_ANON_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ email: document.getElementById('em').value, password: document.getElementById('pw').value }) });
+    const j = await r.json();
+    if (!j.access_token) return loginView('Неверная почта или пароль');
+    token = j.access_token; sessionStorage.setItem('adm_token', token); load();
+  };
+}
+
+async function load() {
+  if (!SUPABASE_URL) { app.innerHTML = '<p>Впиши SUPABASE_URL и SUPABASE_ANON_KEY в admin.html.</p>'; return; }
+  if (!token) return loginView();
+  const r = await api(`residents?select=*&status=eq.${tab}&order=created_at.${tab === 'pending' ? 'asc' : 'desc'}`);
+  if (r.status === 401) { sessionStorage.removeItem('adm_token'); token = ''; return loginView('Сессия истекла, войди снова'); }
+  let rows = await r.json();
+  if (!Array.isArray(rows)) { app.innerHTML = '<p class="err">Ошибка: ' + esc(JSON.stringify(rows)) + '</p>'; return; }
+  if (filter) rows = rows.filter(x => x.nick.includes(filter) || x.code.includes(filter));
+  app.innerHTML = `
+    <div class="tabs">
+      <button class="ghost ${tab === 'pending' ? 'on' : ''}" data-t="pending">Заявки</button>
+      <button class="ghost ${tab === 'approved' ? 'on' : ''}" data-t="approved">Жители</button>
+      <button class="ghost ${tab === 'rejected' ? 'on' : ''}" data-t="rejected">Отклонённые</button>
+      <button class="ghost" id="out">Выйти</button>
+    </div>
+    <div class="bar"><input id="flt" placeholder="Поиск по нику или коду" value="${esc(filter)}"><span class="meta">${rows.length} шт.</span></div>
+    ${tab === 'pending' ? '<p class="meta">Открой комменты под последним роликом и ищи код (Ctrl+F). Код есть и человек подписан → «Одобрить».</p>' : ''}
+    <div id="list">${rows.map(rowHtml).join('') || '<p class="meta">Пусто</p>'}</div>`;
+  app.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { tab = b.dataset.t; load(); });
+  document.getElementById('out').onclick = () => { sessionStorage.removeItem('adm_token'); token = ''; loginView(); };
+  const flt = document.getElementById('flt'); flt.oninput = () => { filter = flt.value.trim().toLowerCase().replace(/^@|^дом-/i, ''); clearTimeout(flt._t); flt._t = setTimeout(load, 300); };
+  rows.forEach(x => {
+    const el = document.getElementById('r' + x.id);
+    el.querySelectorAll('[data-a]').forEach(b => b.onclick = () => act(x, b.dataset.a, el));
+    const ta = el.querySelector('textarea'); if (ta) { const cv = el.querySelector('canvas'); const upd = () => preview(cv, x.nick, ta.value); ta.oninput = upd; upd(); }
+  });
+}
+function rowHtml(x) {
+  const date = new Date(x.created_at).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  return `<div class="row" id="r${x.id}">
+    <div class="nick"><a href="https://www.tiktok.com/@${esc(x.nick)}" target="_blank" rel="noopener">@${esc(x.nick)}</a> <span class="meta">${date}</span></div>
+    <div class="code">ДОМ-${esc(x.code)}</div>
+    <div class="wish">${x.wish ? '💬 ' + esc(x.wish) : '<span class="meta">без пожеланий</span>'}</div>
+    ${x.status === 'approved' ? `<div class="rec"><textarea placeholder='Рецепт дома (JSON). Пусто — обычный дом.'>${esc(x.recipe ? JSON.stringify(x.recipe, null, 1) : '')}</textarea><canvas width="300" height="300"></canvas></div>` : ''}
+    <div class="acts">
+      ${x.status === 'pending' ? '<button class="ok" data-a="approve">✓ Одобрить</button><button data-a="reject">✕ Отклонить</button>' : ''}
+      ${x.status === 'approved' ? '<button class="ok" data-a="recipe">Сохранить рецепт</button><button class="ghost" data-a="unrecipe">Сделать обычным</button><button data-a="reject">Выселить</button>' : ''}
+      ${x.status === 'rejected' ? '<button class="ghost" data-a="restore">Вернуть в заявки</button>' : ''}
+    </div></div>`;
+}
+async function act(x, a, el) {
+  let body;
+  if (a === 'approve') body = { status: 'approved', approved_at: new Date().toISOString() };
+  if (a === 'reject') { if (x.status === 'approved' && !confirm('Выселить @' + x.nick + '?')) return; body = { status: 'rejected' }; }
+  if (a === 'restore') body = { status: 'pending', approved_at: null };
+  if (a === 'unrecipe') body = { recipe: null };
+  if (a === 'recipe') {
+    const v = el.querySelector('textarea').value.trim();
+    if (!v) body = { recipe: null };
+    else { try { const rec = CityHouse.normRecipe(JSON.parse(v)); if (!rec) throw 0; body = { recipe: rec }; } catch (e) { alert('Рецепт — неправильный JSON'); return; } }
+  }
+  const r = await api('residents?id=eq.' + x.id, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(body) });
+  if (!r.ok) { const t = await r.text(); alert(t.includes('residents_one_approved') ? 'У @' + x.nick + ' уже есть одобренный дом' : 'Ошибка: ' + t); return; }
+  load();
+}
+function preview(cv, nick, text) {
+  const g = cv.getContext('2d'); let rec = null; try { rec = text.trim() ? JSON.parse(text) : null; } catch (e) {}
+  cv._cur = CityHouse.build('@' + nick, rec, [0, 0], 0); cv._cur.appear = -1;
+  if (cv._loop) return; cv._loop = true;
+  const P = (wx, wy, wz = 0) => [150 + ((wx - 0.5) - (wy - 0.5)) * 64 * 1.6, 200 + ((wx - 0.5) + (wy - 0.5)) * 32 * 1.6 - wz * 30 * 1.6];
+  const loop = () => {
+    if (!cv.isConnected) return;
+    g.fillStyle = '#191545'; g.fillRect(0, 0, 300, 300);
+    g.fillStyle = '#20423f'; g.beginPath(); [P(0, 0), P(1, 0), P(1, 1), P(0, 1)].forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.fill();
+    CityHouse.draw(g, P, cv._cur, performance.now() / 1000, 1.6); requestAnimationFrame(loop);
+  };
+  loop();
+}
+load();
+</script>
+</body>
+</html>
