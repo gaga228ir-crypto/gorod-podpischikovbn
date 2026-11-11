@@ -83,7 +83,7 @@ async def generate(text: str, url: str, model: str) -> dict:
     async with httpx.AsyncClient(timeout=900) as c:
         for attempt in range(4):
             body = {"model": model, "messages": msgs, "stream": False, "keep_alive": "30m",
-                    "options": {"temperature": 0.7 + 0.1 * attempt, "num_ctx": 8192, "num_predict": 3000}}
+                    "options": {"temperature": 0.7 + 0.1 * attempt}}
             if attempt % 2 == 0:
                 body["format"] = "json"   # чётные попытки — строгий JSON, нечётные — свободный текст, JSON вытаскиваем сами
             for wait in range(12):  # 503 = модель ещё грузится/качается — ждём до ~4 минут
@@ -93,9 +93,10 @@ async def generate(text: str, url: str, model: str) -> dict:
                     raise RuntimeError(f"Ollama не отвечает ({e.__class__.__name__}) — запущена ли она?")
                 if r.status_code != 503:
                     break
+                log_raw(f"HTTP 503\n{r.text[:1000]}")
                 await asyncio.sleep(20)
             else:
-                raise RuntimeError("Ollama всё ещё загружает модель (503) — попробуй через пару минут")
+                raise RuntimeError(f"Ollama отвечает 503: {r.text[:150]}")
             rj = {}
             try:
                 rj = r.json()
