@@ -82,6 +82,26 @@ def built_card(nick: str, number: int, special: bool) -> bytes:
     return _out(im)
 
 
+def klad_card(nick: str) -> bytes:
+    im = _bg("bg_night.jpg", 0.55, 3)
+    d = ImageDraw.Draw(im)
+    glow = Image.new("L", im.size, 0)
+    ImageDraw.Draw(glow).ellipse([440, 120, 840, 520], fill=200)
+    im = Image.composite(Image.new("RGB", im.size, (255, 190, 60)), im, glow.filter(ImageFilter.GaussianBlur(90)).point(lambda v: int(v * 0.55)))
+    d = ImageDraw.Draw(im)
+    # сундук
+    d.rounded_rectangle([500, 250, 780, 420], radius=18, fill=(138, 79, 36))
+    d.pieslice([500, 160, 780, 340], 180, 360, fill=(160, 92, 42))
+    for x in (560, 700):
+        d.rectangle([x, 175, x + 22, 420], fill=GOLD)
+    d.rounded_rectangle([622, 290, 658, 340], radius=6, fill=GOLD)
+    d.text((640, 500), "КЛАД ДНЯ НАЙДЕН", font=font("Unbounded", 64, 800), fill=GOLD, anchor="mm")
+    f = _fit(d, "@" + nick, "Unbounded", 800, 1000, 44)
+    d.text((640, 585), "@" + nick, font=f, fill=WHITE, anchor="mm")
+    d.text((640, 650), "Приз: особый дом бесплатно", font=font("Inter", 32, 600), fill=MUTED, anchor="mm")
+    return _out(im)
+
+
 def election_card(title: str) -> bytes:
     im = _bg("bg_night.jpg", 0.6, 3)
     d = ImageDraw.Draw(im)

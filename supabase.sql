@@ -68,3 +68,16 @@ create table if not exists public.payments (
 );
 alter table public.payments enable row level security;
 revoke all on public.payments from anon, authenticated;
+
+-- ===== Клад дня: кто нашёл (видит только бот через service_role) =====
+create table if not exists public.klad (
+  id         bigint generated always as identity primary key,
+  tg_id      bigint not null,
+  nick       text not null,
+  day        date not null,
+  used       boolean not null default false,
+  created_at timestamptz not null default now(),
+  unique (tg_id, day)
+);
+alter table public.klad enable row level security;
+revoke all on public.klad from anon, authenticated;

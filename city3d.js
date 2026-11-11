@@ -43,6 +43,8 @@ const WALL_T = canvasTex(128, 128, (g, s) => { g.fillStyle = '#fff'; g.fillRect(
 const EMIS_T = canvasTex(128, 128, (g, s) => { g.fillStyle = '#000'; g.fillRect(0, 0, s, s); winRects(g, s, '#fff', '#0b0b14'); });
 [WALL_T, EMIS_T].forEach(t => { t.wrapS = t.wrapT = THREE.RepeatWrapping; });
 const GLOW_T = canvasTex(64, 64, (g) => { const r = g.createRadialGradient(32, 32, 0, 32, 32, 32); r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(.25, 'rgba(255,255,255,.55)'); r.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = r; g.fillRect(0, 0, 64, 64); });
+const BOARD_T = canvasTex(128, 64, (g) => { g.clearRect(0, 0, 128, 64); g.strokeStyle = '#fff'; g.lineWidth = 6; g.strokeRect(5, 5, 118, 54); g.fillStyle = 'rgba(255,255,255,.9)'; g.fillRect(16, 16, 58, 10); g.fillRect(16, 34, 40, 8); g.beginPath(); g.arc(98, 32, 13, 0, 7); g.fill(); });
+const ZEBRA_T = canvasTex(64, 16, (g) => { g.clearRect(0, 0, 64, 16); g.fillStyle = 'rgba(235,235,255,.8)'; for (let i = 0; i < 6; i++) g.fillRect(3 + i * 10.4, 0, 6, 16); });
 const SHADOW_T = canvasTex(64, 64, (g) => { const r = g.createRadialGradient(32, 32, 8, 32, 32, 32); r.addColorStop(0, 'rgba(0,0,0,.6)'); r.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = r; g.fillRect(0, 0, 64, 64); });
 
 function bodyGeo(floors, w = FOOT, d = FOOT) {
@@ -127,6 +129,20 @@ function makeCarMesh(col) {
   const t = new THREE.Mesh(new THREE.BoxGeometry(.22, .08, .18), flat('#3b4a7a', '#223', .3)); t.position.set(-.02, .17, 0); c.add(t); return c;
 }
 
+// ---------- клад дня ----------
+function makeChest() {
+  const G = new THREE.Group(), wood = flat('#8a4f24', '#3a1606', .35), gold = new THREE.MeshStandardMaterial({ color: '#ffd23f', metalness: .7, roughness: .3, emissive: '#ffb000', emissiveIntensity: .7 });
+  const b = new THREE.Mesh(new THREE.BoxGeometry(.22, .12, .15), wood); b.position.y = .06; G.add(b);
+  const lid = new THREE.Mesh(new THREE.CylinderGeometry(.075, .075, .22, 12, 1, false, 0, Math.PI), wood); lid.rotation.z = Math.PI / 2; lid.position.y = .12; G.add(lid);
+  for (const x of [-.075, .075]) { const band = new THREE.Mesh(new THREE.BoxGeometry(.025, .2, .158), gold); band.position.set(x, .1, 0); G.add(band); }
+  const lock = new THREE.Mesh(new THREE.BoxGeometry(.04, .05, .02), gold); lock.position.set(0, .11, .08); G.add(lock);
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW_T, color: '#ffc93c', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })); glow.scale.set(.9, .9, 1); glow.position.y = .14; G.add(glow); G.userData.glow = glow;
+  const sp = []; for (let i = 0; i < 14; i++) { const a = i / 14 * Math.PI * 2; sp.push(Math.cos(a) * .18, .1 + (i % 4) * .07, Math.sin(a) * .18); }
+  const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3));
+  const spark = new THREE.Points(sg, new THREE.PointsMaterial({ color: '#fff3b0', size: .12, map: GLOW_T, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })); G.add(spark); G.userData.spark = spark;
+  G.scale.setScalar(1.15); return G;
+}
+
 // ---------- здания-рубежи ----------
 function makeLandmark(type, locked, title) {
   const G = new THREE.Group();
@@ -198,6 +214,8 @@ export class City3D {
     const sp = [], r = rnd(9); for (let i = 0; i < 900; i++) { const a = r() * Math.PI * 2, e = .15 + r() * 1.2, R = 300; sp.push(Math.cos(a) * Math.cos(e) * R, Math.sin(e) * R * .6 + 20, Math.sin(a) * Math.cos(e) * R); }
     const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3));
     S.add(new THREE.Points(sg, new THREE.PointsMaterial({ color: '#ffffff', size: 1.4, sizeAttenuation: false, fog: false })));
+    const moon = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW_T, color: '#fff3c8', fog: false, depthWrite: false, blending: THREE.AdditiveBlending })); moon.scale.set(70, 70, 1); moon.position.set(-150, 140, -200); S.add(moon);
+    const disk = new THREE.Mesh(new THREE.CircleGeometry(9, 32), new THREE.MeshBasicMaterial({ color: '#fff6dc', fog: false })); disk.position.copy(moon.position); disk.lookAt(0, 0, 0); S.add(disk);
   }
   // list: [{nick, key, label, recipe, n}] в порядке заселения
   setCity(list, milestones = [], hallInfo = null) {
@@ -217,7 +235,7 @@ export class City3D {
     bl.forEach(([bx, by], i) => { const [cx, cz] = blockCenter([bx, by]); M.makeTranslation(cx, .02, cz); side.setMatrixAt(i, M); M.makeTranslation(cx, .03, cz); grass.setMatrixAt(i, M); });
     add(side); add(grass);
     // разметка
-    const dashes = []; for (let k = -span; k <= span; k++) for (let t = -span * 3; t <= span * 3; t += 1) { if (Math.abs(t % 3) === 0) continue; dashes.push([k * 3, t + .5, 0], [t + .5, k * 3, 1]); }
+    const dashes = []; for (let k = -span; k <= span; k++) for (let t = -span * 3; t <= span * 3; t += 1) { if (Math.abs(t % 3) === 0) continue; dashes.push([k * 3 + .5, t + .5, 0], [t + .5, k * 3 + .5, 1]); }
     const dm = new THREE.InstancedMesh(new THREE.BoxGeometry(.04, .01, .3), new THREE.MeshStandardMaterial({ color: '#d9cf86', emissive: '#7a6f20', emissiveIntensity: .6 }), dashes.length);
     dashes.forEach(([a, b, rot], i) => { if (!rot) { M.makeRotationY(0); M.setPosition(a, .012, b); } else { M.makeRotationY(Math.PI / 2); M.setPosition(a, .012, b); } dm.setMatrixAt(i, M); });
     add(dm);
@@ -235,18 +253,47 @@ export class City3D {
       im.userData.list = arr; this.pickables.push(im); add(im);
     }
     add(roofM);
+    // двери, трубы, неоновые билборды на крышах высоток
+    const doorM = new THREE.InstancedMesh(new THREE.BoxGeometry(.13, .19, .02), flat('#3a2418', '#ffb347', .55), regular.length);
+    const chim = [], boards = [];
+    regular.forEach((h, i) => { const s = Math.sin(h.rot), c = Math.cos(h.rot); M.makeRotationY(h.rot); M.setPosition(h.x + s * .365, .155, h.z + c * .365); doorM.setMatrixAt(i, M);
+      const rr = rnd(hash(h.key) ^ 0x9e37); if (rr() < .4) chim.push([h.x + (rr() < .5 ? .17 : -.17), h.floors * FH + .26, h.z + (rr() < .5 ? .17 : -.17)]);
+      if (h.floors >= 3 && rr() < .45) boards.push([h, rr()]); });
+    add(doorM);
+    const chimM = new THREE.InstancedMesh(new THREE.BoxGeometry(.08, .2, .08), flat('#6b5a6e'), Math.max(1, chim.length)); chimM.count = chim.length;
+    chim.forEach(([x, y, z], i) => { M.makeTranslation(x, y, z); chimM.setMatrixAt(i, M); }); add(chimM);
+    const NEON = ['#ff3d7f', '#5ef2ff', '#ffd23f', '#a6ff8f', '#c084fc', '#ff9f43'];
+    const bM = new THREE.InstancedMesh(new THREE.PlaneGeometry(.56, .28), new THREE.MeshBasicMaterial({ map: BOARD_T, transparent: true, side: THREE.DoubleSide, depthWrite: false }), Math.max(1, boards.length)); bM.count = boards.length;
+    const legM = new THREE.InstancedMesh(new THREE.BoxGeometry(.02, .22, .02), flat('#4a4f78'), Math.max(1, boards.length * 2)); legM.count = boards.length * 2;
+    boards.forEach(([h, v], i) => { const rot = h.rot + Math.PI / 4 * (v < .5 ? 1 : -1), y = .06 + h.floors * FH + .5; M.makeRotationY(rot); M.setPosition(h.x, y, h.z); bM.setMatrixAt(i, M); bM.setColorAt(i, C.set(NEON[(v * 97 | 0) % NEON.length]).multiplyScalar(1.6));
+      const ox = Math.cos(rot) * .2, oz = -Math.sin(rot) * .2; M.makeTranslation(h.x + ox, y - .2, h.z + oz); legM.setMatrixAt(i * 2, M); M.makeTranslation(h.x - ox, y - .2, h.z - oz); legM.setMatrixAt(i * 2 + 1, M); });
+    add(bM); add(legM);
     // тени под домами
     const sh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1.15, 1.15), new THREE.MeshBasicMaterial({ map: SHADOW_T, transparent: true, depthWrite: false }), this.houses.length);
     this.houses.forEach((h, i) => { M.makeRotationX(-Math.PI / 2); M.setPosition(h.x + .08, .07, h.z + .08); sh.setMatrixAt(i, M); }); add(sh);
     // особые дома
     this.specialG = [];
     for (const h of special) { const g = makeHouse(h.recipe, h.key); g.position.set(h.x, .06, h.z); g.userData.house = h; h.top = g.userData.top + .06; add(g); this.specialG.push(g); }
-    // фонари на перекрёстках
-    const lamps = []; for (let x = -span; x <= span; x++) for (let z = -span; z <= span; z++) lamps.push([x * 3 + .28, z * 3 + .28]);
+    // улицы: фонари по углам кварталов, деревья и скамейки, зебры
+    const lamps = [], strees = [], benches = [], zebra = new Set();
+    bl.forEach(([bx, by]) => { const [cx, cz] = blockCenter([bx, by]), rb = rnd(hash(bx + ':' + by));
+      for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) { lamps.push([cx + sx * 1.08, cz + sz * 1.08]);
+        const ix = cx + sx * 1.5, iz = cz + sz * 1.5; zebra.add(ix + ',' + iz); }
+      for (const [ex, ez, rot] of [[0, 1.02, 0], [0, -1.02, 0], [1.02, 0, 1], [-1.02, 0, 1]]) { const v = rb(); if (v < .5) strees.push([cx + ex, cz + ez, .8 + rb() * .4]); else if (v < .75) benches.push([cx + ex * 1.06, cz + ez * 1.06, rot]); } });
     const poleM = new THREE.InstancedMesh(new THREE.CylinderGeometry(.015, .02, .7, 6), flat('#4a4f78'), lamps.length);
     const gp = []; lamps.forEach(([x, z], i) => { M.makeTranslation(x, .35, z); poleM.setMatrixAt(i, M); gp.push(x, .72, z); }); add(poleM);
     const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(gp, 3));
-    add(new THREE.Points(lg, new THREE.PointsMaterial({ color: '#ffcf7a', size: .9, map: GLOW_T, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })));
+    add(new THREE.Points(lg, new THREE.PointsMaterial({ color: '#ffcf7a', size: .55, map: GLOW_T, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })));
+    const crown = new THREE.SphereGeometry(.13, 8, 6); crown.translate(0, .3, 0); const trunk = new THREE.CylinderGeometry(.018, .025, .22, 5); trunk.translate(0, .11, 0);
+    const TC = ['#2fbf71', '#27a862', '#3fd38a', '#e86fae', '#f2a54a'];
+    const stCrown = new THREE.InstancedMesh(crown, flat('#ffffff', '#062', .12), Math.max(1, strees.length)), stTrunk = new THREE.InstancedMesh(trunk, flat('#5a3d2b'), Math.max(1, strees.length)); stCrown.count = stTrunk.count = strees.length;
+    strees.forEach(([x, z, k], i) => { M.makeScale(k, k, k); M.setPosition(x, .04, z); stCrown.setMatrixAt(i, M); stTrunk.setMatrixAt(i, M); stCrown.setColorAt(i, C.set(TC[(i * 7) % 10 < 7 ? i % 3 : 3 + (i % 2)])); });
+    add(stCrown); add(stTrunk);
+    const bg = new THREE.BoxGeometry(.24, .03, .08); bg.translate(0, .07, 0); const bb = new THREE.BoxGeometry(.24, .07, .015); bb.translate(0, .11, -.035); const bLeg = new THREE.BoxGeometry(.2, .055, .06); bLeg.translate(0, .03, 0);
+    for (const g of [bg, bb, bLeg]) { const im = new THREE.InstancedMesh(g, flat(g === bLeg ? '#2b2f4f' : '#b0703c'), Math.max(1, benches.length)); im.count = benches.length;
+      benches.forEach(([x, z, rot], i) => { const out = rot ? Math.sign(x - Math.round((x - 2) / 3) * 3 - 2) : Math.sign(z - Math.round((z - 2) / 3) * 3 - 2); M.makeRotationY(rot ? (out > 0 ? -Math.PI / 2 : Math.PI / 2) : (out > 0 ? Math.PI : 0)); M.setPosition(x, .03, z); im.setMatrixAt(i, M); }); add(im); }
+    const zl = [...zebra].map(t => t.split(',').map(Number)), zM = new THREE.InstancedMesh(new THREE.PlaneGeometry(.62, .16), new THREE.MeshBasicMaterial({ map: ZEBRA_T, transparent: true, depthWrite: false }), zl.length * 4);
+    zl.forEach(([x, z], i) => { [[0, -.6, 0], [0, .6, 0], [-.6, 0, 1], [.6, 0, 1]].forEach(([ox, oz, r90], j) => { M.makeRotationFromEuler(new THREE.Euler(-Math.PI / 2, 0, r90 ? Math.PI / 2 : 0)); M.setPosition(x + ox, .014, z + oz); zM.setMatrixAt(i * 4 + j, M); }); }); add(zM);
     // лес за городом
     const trees = []; for (let i = N; i < Math.min(CELLS.length, N + 2600); i++) if (r() < .55) trees.push([CELLS[i][0] + .2 + r() * .6, CELLS[i][1] + .2 + r() * .6, .8 + r() * .6]);
     const tg = new THREE.ConeGeometry(.22, .6, 7); tg.translate(0, .45, 0);
@@ -260,7 +307,7 @@ export class City3D {
     this.cars = []; const CC = ['#ff4d6d', '#4dabf7', '#ffd43b', '#f8f9fa', '#63e6be', '#9775fa', '#ff922b'];
     const carN = Math.min(90, 14 + N / 30 | 0);
     const carBody = new THREE.InstancedMesh(new THREE.BoxGeometry(.4, .1, .2), flat('#ffffff'), carN), carTop = new THREE.InstancedMesh(new THREE.BoxGeometry(.22, .08, .18), flat('#3b4a7a', '#223', .3), carN);
-    for (let i = 0; i < carN; i++) { const alongX = r() < .5, dir = r() < .5 ? 1 : -1; this.cars.push({ alongX, dir, line: Math.round((r() * 2 - 1) * span) * 3 + (dir > 0 ? .2 : -.2), pos: (r() * 2 - 1) * span * 3, sp: 1.3 + r() * 1.4 }); carBody.setColorAt(i, C.set(CC[(r() * CC.length) | 0])); }
+    for (let i = 0; i < carN; i++) { const alongX = r() < .5, dir = r() < .5 ? 1 : -1; this.cars.push({ alongX, dir, line: Math.round((r() * 2 - 1) * span) * 3 + .5 + (dir > 0 ? .17 : -.17), pos: (r() * 2 - 1) * span * 3, sp: 1.3 + r() * 1.4 }); carBody.setColorAt(i, C.set(CC[(r() * CC.length) | 0])); }
     this.carBody = add(carBody); this.carTop = add(carTop);
     this.headG = new THREE.BufferGeometry(); this.headG.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(carN * 6), 3));
     const hc = new Float32Array(carN * 6); for (let i = 0; i < carN; i++) hc.set([1, .92, .6, 1, .2, .25], i * 6);
@@ -270,10 +317,21 @@ export class City3D {
     const pb = new THREE.CapsuleGeometry(.035, .1, 3, 6); pb.translate(0, .1, 0); const ph = new THREE.SphereGeometry(.04, 8, 6); ph.translate(0, .22, 0);
     const SH = ['#ff6b8a', '#ffd166', '#6ee7b7', '#7cc8ff', '#c084fc', '#ff9f68', '#f1f3f5', '#20c997'], SK = ['#f6d2b5', '#eac0a0', '#d9a47c', '#b07a52', '#8a5a3b'];
     const pBody = new THREE.InstancedMesh(pb, flat('#ffffff'), pplN), pHead = new THREE.InstancedMesh(ph, flat('#ffffff'), pplN);
-    for (let i = 0; i < pplN; i++) { const alongX = r() < .5; this.ppl.push({ alongX, dir: r() < .5 ? 1 : -1, line: Math.round((r() * 2 - 1) * span) * 3 + (r() < .5 ? .42 : -.42), pos: (r() * 2 - 1) * span * 3, sp: .25 + r() * .25, ph: r() * 6, nick: this.houses.length ? this.houses[(r() * this.houses.length) | 0].label : '' }); pBody.setColorAt(i, C.set(SH[(r() * SH.length) | 0])); pHead.setColorAt(i, C.set(SK[(r() * SK.length) | 0])); }
+    for (let i = 0; i < pplN; i++) { const alongX = r() < .5; this.ppl.push({ alongX, dir: r() < .5 ? 1 : -1, line: Math.round((r() * 2 - 1) * span) * 3 + .5 + (r() < .5 ? .43 : -.43), pos: (r() * 2 - 1) * span * 3, sp: .25 + r() * .25, ph: r() * 6, nick: this.houses.length ? this.houses[(r() * this.houses.length) | 0].label : '' }); pBody.setColorAt(i, C.set(SH[(r() * SH.length) | 0])); pHead.setColorAt(i, C.set(SK[(r() * SK.length) | 0])); }
     this.pBody = add(pBody); this.pHead = add(pHead);
     this.N = N;
+    if (this.treSeed != null) this.setTreasure(this.treSeed);
   }
+  // клад: прячем у обычного дома между домами квартала; seed — от даты
+  setTreasure(seed) {
+    this.treSeed = seed; if (!this.houses.length) return;
+    if (!this.chest) { this.chest = makeChest(); this.scene.add(this.chest); }
+    let i = seed % this.houses.length; for (let k = 0; k < this.houses.length && this.houses[i].recipe; k++) i = (i + 1) % this.houses.length;
+    const h = this.houses[i], sx = (seed >>> 8) & 1 ? 1 : -1, sz = (seed >>> 9) & 1 ? 1 : -1;
+    this.treasure = { x: h.x + sx * .45, z: h.z + sz * .45, near: h };
+    this.chest.position.set(this.treasure.x, .07, this.treasure.z); this.chest.rotation.y = (seed % 628) / 100;
+  }
+  treasureDist() { return this.treasure ? Math.hypot(this.ctl.x - this.treasure.x, this.ctl.z - this.treasure.z) : Infinity; }
   focus(h, fly = true) { this.hi = h; this.hiT = this.T; if (h && fly) { this.ctl.tx = h.x; this.ctl.tz = h.z; this.ctl.td = 7; } }
   flyTo(x, z, d = 9) { this.ctl.tx = x; this.ctl.tz = z; this.ctl.td = d; }
   // ---- управление ----
@@ -283,6 +341,8 @@ export class City3D {
   clamp() { const c = this.ctl, L = (this.span || 20) * 3 + 6; c.tx = Math.max(-L, Math.min(L, c.tx)); c.tz = Math.max(-L, Math.min(L, c.tz)); }
   pick(x, y) {
     this.ray.setFromCamera(new THREE.Vector2(x / this.W * 2 - 1, -(y / this.H) * 2 + 1), this.cam);
+    if (this.chest && this.ray.intersectObject(this.chest, true).length) return { chest: true };
+    if (this.chest && this.treasure && this.ctl.d < 14) { const p = this.project(this.treasure.x, .15, this.treasure.z); if (p && Math.hypot(p[0] - x, p[1] - y) < 26) return { chest: true }; }
     const hits = this.ray.intersectObjects([...this.pickables, ...this.specialG], true);
     for (const hit of hits) {
       if (hit.object.isInstancedMesh && hit.object.userData.list) return hit.object.userData.list[hit.instanceId];
@@ -312,6 +372,8 @@ export class City3D {
     this.pBody.instanceMatrix.needsUpdate = this.pHead.instanceMatrix.needsUpdate = true;
     // анимации
     this.scene.traverse(o => { if (o.userData.blink) o.visible = Math.sin(T * 4) > 0; if (o.userData.spin) o.rotation.y = T * .2; if (o.userData.twinkle) o.material.size = .08 + Math.sin(T * 5) * .02; if (o.userData.pet) o.position.y = Math.abs(Math.sin(T * 6)) * .03; });
+    if (this.chest) { const ch = this.chest, near = Math.max(0, 1 - this.treasureDist() / 7) * (c.d < 18 ? 1 : 0);
+      ch.position.y = .07 + Math.abs(Math.sin(T * 2.2)) * .04; ch.userData.glow.material.opacity = near * (.55 + Math.sin(T * 3) * .25); ch.userData.spark.visible = near > .05; ch.userData.spark.rotation.y = T * 1.5; }
     if (this.bloom) this.composer.render(); else this.renderer.render(this.scene, this.cam);
     this.drawLabels();
     // авто-качество

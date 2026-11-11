@@ -5,7 +5,7 @@
   Админ (/admin): одна панель — заявки, продажи, статистика.
 Настройки — в файле .env (см. .env.example).
 """
-import asyncio, json, logging, os, random, re, time
+import asyncio, datetime as dt, json, logging, os, random, re, time
 from pathlib import Path
 
 import httpx
@@ -42,6 +42,8 @@ POCHTA_URL = E("POCHTA_URL", "")
 CHANNEL_URL = E("CHANNEL_URL", "")
 TIKTOK_URL = E("TIKTOK_URL", "https://www.tiktok.com/@eben51041")
 PRICE = int(E("CUSTOM_PRICE", "10"))
+KLAD_SALT = E("KLAD_SALT", "gorod-klad-v1")
+KLAD_LIMIT = int(E("KLAD_LIMIT", "20"))
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("gorod")
@@ -85,6 +87,26 @@ def decode_recipe(code: str) -> dict | None:
         return {"shape": SHAPES[s], "floors": f, "wall": WALL_C[w], "roof": ROOF_C[r], "emblem": EMBLEMS[e], "lights": LIGHTS[l]}
     except (ValueError, IndexError):
         return None
+
+
+# ---------- клад дня (та же формула, что на сайте) ----------
+def fnv(s: str) -> int:
+    h = 2166136261
+    for ch in s:
+        h ^= ord(ch)
+        h = (h * 16777619) & 0xFFFFFFFF
+    return h
+
+
+def msk_day() -> str:
+    return (dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=3)).strftime("%Y-%m-%d")
+
+
+def klad_code(day: str) -> str:
+    return str(1000 + fnv(f"{KLAD_SALT}:code:{day}") % 9000)
+
+
+KLAD_RE = re.compile(r"(?i)^\s*(?:клад|klad)[\s\-]*(\d{4})\s*$")
 
 
 # ---------- данные ----------
@@ -134,6 +156,19 @@ class DB:
         rows = await self.q("GET", "payments?select=stars")
         return sum(r["stars"] for r in rows or []), len(rows or [])
 
+    async def klad_today(self, day):
+        return await self.count(f"klad?day=eq.{day}")
+
+    async def klad_add(self, tg_id, nick, day):
+        await self.q("POST", "klad", {"tg_id": tg_id, "nick": nick, "day": day}, "return=minimal")
+
+    async def klad_gift(self, tg_id):
+        rows = await self.q("GET", f"klad?tg_id=eq.{tg_id}&used=eq.false&select=id&order=id.asc&limit=1")
+        return rows[0]["id"] if rows else None
+
+    async def klad_use(self, kid):
+        await self.q("PATCH", f"klad?id=eq.{kid}", {"used": True}, "return=minimal")
+
     async def add_payment(self, tg_id, nick, stars, charge_id, recipe):
         await self.q("POST", "payments", {"tg_id": tg_id, "nick": nick, "stars": stars, "charge_id": charge_id, "recipe": recipe}, "return=minimal")
 
@@ -167,12 +202,16 @@ async def election():
 
 
 # ---------- клавиатуры ----------
-def city_url(nick=""):
-    return SITE_URL + (f"?me={nick}" if nick else "") + f"{'&' if nick else '?'}v={int(time.time()) // 3600}"
+def city_url(nick="", gift=False):
+    q = [f"me={nick}"] if nick else []
+    if gift:
+        q.append("gift=1")
+    q.append(f"v={int(time.time()) // 3600}")
+    return SITE_URL + "?" + "&".join(q)
 
 
-def city_keyboard(nick=""):
-    return ReplyKeyboardMarkup(resize_keyboard=True, keyboard=[[KeyboardButton(text="🏙 Открыть город", web_app=WebAppInfo(url=city_url(nick)))]])
+def city_keyboard(nick="", gift=False):
+    return ReplyKeyboardMarkup(resize_keyboard=True, keyboard=[[KeyboardButton(text="🏙 Открыть город", web_app=WebAppInfo(url=city_url(nick, gift)))]])
 
 
 def main_menu():
@@ -200,6 +239,10 @@ r = Router()
 @r.message(CommandStart())
 async def start(m: Message, state: FSMContext):
     await state.clear()
+    arg = (m.text or "").split(maxsplit=1)[1:] or [""]
+    if arg[0].startswith("klad") and arg[0][4:].isdigit():
+        await claim_klad(m, m.from_user.id, arg[0][4:])
+        return
     s = await subscribers()
     me = await db.linked(m.from_user.id)
     await m.answer_photo(photo(cards.welcome(len(s["list"]))), reply_markup=main_menu(), caption=(
@@ -300,6 +343,38 @@ async def elect(c: CallbackQuery):
                                  reply_markup=InlineKeyboardMarkup(inline_keyboard=kb) if kb else None)
 
 
+# ---------- клад дня ----------
+async def claim_klad(m: Message, uid: int, code: str):
+    day = msk_day()
+    if code != klad_code(day):
+        await m.answer("Этот код не подходит 🤔 Клад меняется каждый день в 00:00 МСК — ищи сегодняшний сундук в городе.", reply_markup=main_menu())
+        return
+    me = await db.linked(uid)
+    if not me:
+        await m.answer(f"Код верный! 💎 Но сначала привяжи свой ник — «🏠 Мой дом». Потом снова отправь <code>КЛАД-{code}</code> (сегодня до 23:59 МСК).", reply_markup=main_menu())
+        return
+    if await db.klad_gift(uid):
+        await m.answer("У тебя уже есть неиспользованный приз 💎 Открой город → «🎨 Мой дом» → «Конструктор» — там бесплатно.", reply_markup=city_keyboard(me["nick"], gift=True))
+        return
+    if await db.klad_today(day) >= KLAD_LIMIT:
+        await m.answer("Сегодня все призы уже разобрали 😔 Завтра будет новый клад — приходи пораньше!")
+        return
+    try:
+        await db.klad_add(uid, me["nick"], day)
+    except RuntimeError:
+        await m.answer("Ты уже забрал сегодняшний клад 😉 Завтра — новый.")
+        return
+    await m.answer_photo(photo(cards.klad_card(me["nick"])), caption=(
+        "<b>Клад твой!</b> 💎\n\nПриз — <b>особый дом из конструктора бесплатно</b>.\n"
+        "Нажми <b>«🏙 Открыть город»</b> внизу → <b>«🎨 Мой дом»</b> → собери дом и нажми «Забрать бесплатно»."),
+        reply_markup=city_keyboard(me["nick"], gift=True))
+
+
+@r.message(F.text.regexp(KLAD_RE))
+async def klad_text(m: Message):
+    await claim_klad(m, m.from_user.id, KLAD_RE.match(m.text).group(1))
+
+
 # ---------- мини-приложение: выбор дома ----------
 @r.message(F.web_app_data)
 async def web_app(m: Message, bot: Bot):
@@ -310,6 +385,9 @@ async def web_app(m: Message, bot: Bot):
     try:
         data = json.loads(m.web_app_data.data)
     except ValueError:
+        return
+    if data.get("t") == "klad":
+        await claim_klad(m, m.from_user.id, str(data.get("c", "")))
         return
     if data.get("t") == "preset":
         i = int(data.get("i", -1))
@@ -323,6 +401,13 @@ async def web_app(m: Message, bot: Bot):
         code = encode_recipe(data.get("r") or {})
         if not code:
             await m.answer("Что-то не так с конструктором, попробуй ещё раз.")
+            return
+        gift = await db.klad_gift(m.from_user.id)
+        if gift:  # приз за клад — без оплаты
+            await db.patch(me["id"], {"recipe": decode_recipe(code)})
+            await db.klad_use(gift)
+            await m.answer_photo(photo(cards.built_card(me["nick"], await house_no(me["nick"]), True)),
+                                 caption="Готово! 💎 Особый дом за клад уже стоит в городе.", reply_markup=city_keyboard(me["nick"]))
             return
         await bot.send_invoice(m.chat.id, title="Особый дом", description=f"Твой дом @{me['nick']} в городе станет таким, как ты собрал в конструкторе.",
                                payload=f"c|{me['id']}|{code}", currency="XTR", prices=[LabeledPrice(label="Особый дом", amount=PRICE)])
