@@ -53,31 +53,64 @@ def clean(parts):
     return out
 
 
+def extract_json(text):
+    """JSON из ответа модели: целиком, из ```блока``` или от первой { до последней }."""
+    if not text:
+        return None
+    text = re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.M).strip()
+    for cand in (text, text[text.find("{"):text.rfind("}") + 1] if "{" in text else ""):
+        try:
+            return json.loads(cand)
+        except ValueError:
+            pass
+    return None
+
+
+def log_raw(text):
+    try:
+        with open("ai_last.txt", "w", encoding="utf-8") as f:
+            f.write(text)
+    except OSError:
+        pass
+
+
 async def generate(text: str, url: str, model: str) -> dict:
     """→ рецепт {'shape':'custom','name','lights','parts'}; RuntimeError, если Ollama недоступна или ответ плохой."""
     msgs = [{"role": "system", "content": SYSTEM},
             {"role": "user", "content": EXAMPLE_USER}, {"role": "assistant", "content": json.dumps(EXAMPLE, ensure_ascii=False)},
             {"role": "user", "content": text}]
     last = "пустой ответ"
-    async with httpx.AsyncClient(timeout=600) as c:
-        for _ in range(3):
+    async with httpx.AsyncClient(timeout=900) as c:
+        for attempt in range(4):
+            body = {"model": model, "messages": msgs, "stream": False, "keep_alive": "30m",
+                    "options": {"temperature": 0.7 + 0.1 * attempt, "num_ctx": 8192, "num_predict": 3000}}
+            if attempt % 2 == 0:
+                body["format"] = "json"   # чётные попытки — строгий JSON, нечётные — свободный текст, JSON вытаскиваем сами
             try:
-                r = await c.post(url.rstrip("/") + "/api/chat", json={"model": model, "messages": msgs, "format": "json", "stream": False,
-                                                                      "options": {"temperature": 0.8, "num_ctx": 4096}})
+                r = await c.post(url.rstrip("/") + "/api/chat", json=body)
             except httpx.HTTPError as e:
                 raise RuntimeError(f"Ollama не отвечает ({e.__class__.__name__}) — запущена ли она?")
-            if r.status_code == 404:
-                raise RuntimeError(f"в Ollama нет модели {model} — она скачивается при запуске бота")
             try:
-                j = json.loads(r.json()["message"]["content"])
-                parts = clean(j.get("parts"))
-            except (ValueError, KeyError, TypeError) as e:
-                last = f"неверный JSON ({e})"
+                rj = r.json()
+            except ValueError:
+                rj = {}
+            if rj.get("error"):
+                if "not found" in rj["error"]:
+                    raise RuntimeError(f"в Ollama нет модели {model} — она ещё скачивается (окно «Ollama: скачиваю модель»)")
+                last = "Ollama: " + rj["error"][:150]
                 continue
+            text = ((rj.get("message") or {}).get("content") or "").strip()
+            log_raw(text)
+            j = extract_json(text)
+            if j is None:
+                last = "ответ без JSON: " + (text[:80] or "пусто")
+                continue
+            parts = clean(j.get("parts") if isinstance(j, dict) else j)
             if len(parts) >= 3:
-                lights = j.get("lights") if j.get("lights") in ("warm", "cool", "pink", "green") else "warm"
-                return {"shape": "custom", "name": str(j.get("name") or "Дом по описанию")[:40], "lights": lights, "parts": parts}
-            last = "слишком мало деталей"
+                lights = j.get("lights") if isinstance(j, dict) and j.get("lights") in ("warm", "cool", "pink", "green") else "warm"
+                name = str(j.get("name") or "Дом по описанию")[:40] if isinstance(j, dict) else "Дом по описанию"
+                return {"shape": "custom", "name": name, "lights": lights, "parts": parts}
+            last = f"слишком мало деталей ({len(parts)})"
     raise RuntimeError("нейросеть не собрала дом: " + last)
 
 
