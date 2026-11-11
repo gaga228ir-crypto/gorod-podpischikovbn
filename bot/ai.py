@@ -80,7 +80,7 @@ async def generate(text: str, url: str, model: str) -> dict:
             {"role": "user", "content": EXAMPLE_USER}, {"role": "assistant", "content": json.dumps(EXAMPLE, ensure_ascii=False)},
             {"role": "user", "content": text}]
     last = "пустой ответ"
-    async with httpx.AsyncClient(timeout=900) as c:
+    async with httpx.AsyncClient(timeout=900, trust_env=False) as c:
         for attempt in range(4):
             body = {"model": model, "messages": msgs, "stream": False, "keep_alive": "30m",
                     "options": {"temperature": 0.7 + 0.1 * attempt}}
