@@ -1,6 +1,8 @@
 -- Город подписчиков: база для заявок на дома.
 -- Вставь целиком в Supabase → SQL Editor → Run.
--- ПЕРЕД запуском замени ТВОЙ_EMAIL (2 места внизу) на почту, под которой войдёшь в админку.
+
+-- ⬇⬇⬇ ЕДИНСТВЕННОЕ, ЧТО НУЖНО ПОМЕНЯТЬ: впиши свою почту вместо ТВОЙ_EMAIL (кавычки оставь) ⬇⬇⬇
+create or replace function public.admin_email() returns text language sql immutable as $$ select 'ТВОЙ_EMAIL'::text $$;
 
 create table if not exists public.residents (
   id          bigint generated always as identity primary key,
@@ -48,8 +50,8 @@ drop policy if exists anon_apply on public.residents; -- заявки прини
 grant select, insert, update, delete on public.residents to authenticated;
 drop policy if exists admin_all on public.residents;
 create policy admin_all on public.residents for all to authenticated
-  using ((auth.jwt() ->> 'email') = 'ТВОЙ_EMAIL')
-  with check ((auth.jwt() ->> 'email') = 'ТВОЙ_EMAIL');
+  using ((auth.jwt() ->> 'email') = public.admin_email())
+  with check ((auth.jwt() ->> 'email') = public.admin_email());
 
 -- ===== Для ТГ-бота (запусти и этот блок; повторный запуск безопасен) =====
 alter table public.residents add column if not exists tg_id bigint;
