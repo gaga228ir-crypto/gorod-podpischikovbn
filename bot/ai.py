@@ -90,17 +90,32 @@ async def generate(text: str, url: str, model: str) -> dict:
                 r = await c.post(url.rstrip("/") + "/api/chat", json=body)
             except httpx.HTTPError as e:
                 raise RuntimeError(f"Ollama не отвечает ({e.__class__.__name__}) — запущена ли она?")
+            rj = {}
             try:
                 rj = r.json()
-            except ValueError:
-                rj = {}
+            except ValueError:  # пришёл поток строк (NDJSON) — склеиваем ответ сами
+                chunks = []
+                for line in r.text.splitlines():
+                    try:
+                        o = json.loads(line)
+                    except ValueError:
+                        continue
+                    if o.get("error"):
+                        rj = {"error": o["error"]}
+                        break
+                    chunks.append((o.get("message") or {}).get("content") or "")
+                else:
+                    rj = {"message": {"content": "".join(chunks)}}
+            log_raw(f"HTTP {r.status_code}\n{r.text[:3000]}")
             if rj.get("error"):
                 if "not found" in rj["error"]:
                     raise RuntimeError(f"в Ollama нет модели {model} — она ещё скачивается (окно «Ollama: скачиваю модель»)")
                 last = "Ollama: " + rj["error"][:150]
                 continue
             text = ((rj.get("message") or {}).get("content") or "").strip()
-            log_raw(text)
+            if not text:
+                last = f"пустой ответ (HTTP {r.status_code}: {r.text[:120]!r})"
+                continue
             j = extract_json(text)
             if j is None:
                 last = "ответ без JSON: " + (text[:80] or "пусто")
