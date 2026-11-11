@@ -248,7 +248,10 @@ async def sync_subscribers_once():
     if merged != current:
         await gh_put("subscribers.json", json.dumps(merged, ensure_ascii=False, separators=(",", ":")),
                      f"Подписчики: +{new}" + (f", отписались {gone}" if gone else "") + (f", вернулись {back}" if back else ""), sha)
-    _subs["t"] = 0  # перечитать список
+    # сразу обновляем список в боте (сайт-зеркало догонит через минуту)
+    lst = [norm_nick(x.lstrip("~")) for x in merged]
+    g = {norm_nick(x.lstrip("~")) for x in merged if x.startswith("~")}
+    _subs.update(t=time.time(), list=lst, set=set(lst) - g, gone=g)
     return len(fresh_list), new, gone, back
 
 
@@ -735,6 +738,13 @@ async def main():
     bot = Bot(BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
     dp = Dispatcher()
     dp.include_router(r)
+
+    @dp.errors()
+    async def quiet_errors(event):  # старые нажатия кнопок, пока бот был выключен, и «сообщение не изменилось» — не ошибки
+        if "query is too old" in str(event.exception) or "message is not modified" in str(event.exception):
+            return True
+        log.error("ошибка: %s", event.exception)
+        return True
     await bot.set_my_commands([BotCommand(command="start", description="Главное меню"), BotCommand(command="home", description="Мой дом")])
     await bot.set_chat_menu_button(menu_button=MenuButtonWebApp(text="Город", web_app=WebAppInfo(url=SITE_URL)))
     log.info("Бот запущен · база: %s", "Supabase" if isinstance(db, DB) else "локальный файл gorod.db")
