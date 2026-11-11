@@ -1,6 +1,13 @@
 @echo off
 chcp 65001 >nul
-cd /d "%~dp0"
+rem Работаем из копии во временной папке: так обновление может спокойно заменить этот файл.
+if /i not "%~1"=="--run" (
+  copy /y "%~f0" "%TEMP%\gorod_bot_run.bat" >nul
+  call "%TEMP%\gorod_bot_run.bat" --run "%~dp0"
+  exit /b
+)
+set "BOT=%~2"
+cd /d "%BOT%"
 title Бот «Город подписчиков»
 
 rem --- ищем настоящий Python (не заглушку из Microsoft Store) ---
@@ -18,13 +25,6 @@ if not defined PY (
   pause & exit /b
 )
 
-if not exist .venv\Scripts\python.exe (
-  echo Первый запуск: ставлю библиотеки, это 1-2 минуты...
-  "%PY%" -m venv .venv 2>nul || %PY% -m venv .venv || (pause & exit /b)
-  .venv\Scripts\python -m pip install -q --upgrade pip
-  .venv\Scripts\python -m pip install -q -r requirements.txt || (pause & exit /b)
-)
-
 if not exist .env (
   copy .env.example .env >nul
   echo.
@@ -33,10 +33,26 @@ if not exist .env (
   pause & exit /b
 )
 
-echo.
-echo Бот запущен. Не закрывай это окно. Остановить — Ctrl+C.
+rem --- автозапуск вместе с Windows ---
+set "STARTUP=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\gorod_bot.bat"
+> "%STARTUP%" echo @start "Gorod bot" /min "%BOT%start_windows.bat"
+echo Автозапуск с Windows: включён (файл gorod_bot.bat в Автозагрузке).
+
 :loop
+echo.
+echo Проверяю обновления бота на GitHub...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $z = Join-Path $env:TEMP 'gorod.zip'; Invoke-WebRequest -UseBasicParsing 'https://github.com/gaga228ir-crypto/gorod-podpischikovbn/archive/refs/heads/main.zip' -OutFile $z; $d = Join-Path $env:TEMP 'gorod_upd'; if (Test-Path $d) { Remove-Item $d -Recurse -Force }; Expand-Archive $z $d -Force; Copy-Item (Join-Path $d 'gorod-podpischikovbn-main\bot\*') -Destination '%BOT%' -Recurse -Force; Write-Host 'Bot updated from GitHub.' } catch { Write-Host 'Update skipped, starting current version.' }"
+
+if not exist .venv\Scripts\python.exe (
+  echo Первый запуск: ставлю библиотеки, это 1-2 минуты...
+  "%PY%" -m venv .venv 2>nul || %PY% -m venv .venv || (pause & exit /b)
+  .venv\Scripts\python -m pip install -q --upgrade pip
+)
+.venv\Scripts\python -m pip install -q -r requirements.txt
+
+echo.
+echo Бот запущен. Не закрывай это окно (его можно свернуть). Остановить — закрой окно.
 .venv\Scripts\python bot.py
-echo Бот упал или остановлен, перезапуск через 5 секунд... (закрой окно, чтобы выйти)
+echo Бот перезапускается через 5 секунд (обновление или сбой)...
 timeout /t 5 >nul
 goto loop
