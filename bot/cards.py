@@ -68,7 +68,7 @@ def code_card(nick: str, code: str) -> bytes:
     d.text((640, 312), f"ДОМ-{code}", font=font("Unbounded", 110, 800), fill=GOLD, anchor="mm")
     f = _fit(d, "@" + nick, "Unbounded", 800, 1000, 56)
     d.text((640, 500), "@" + nick, font=f, fill=WHITE, anchor="mm")
-    d.text((640, 590), "Напиши код в комментариях «Почты города»", font=font("Inter", 34, 600), fill=MUTED, anchor="mm")
+    d.text((640, 590), "Добавь код в описание профиля TikTok", font=font("Inter", 34, 600), fill=MUTED, anchor="mm")
     return _out(im)
 
 

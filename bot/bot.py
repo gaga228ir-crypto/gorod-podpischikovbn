@@ -19,6 +19,7 @@ from aiogram.types import (BufferedInputFile, CallbackQuery, InlineKeyboardButto
                            PreCheckoutQuery, ReplyKeyboardMarkup, WebAppInfo, BotCommand)
 
 import cards
+import tiktok
 from localdb import LocalDB
 
 # ---------- настройки ----------
@@ -51,6 +52,9 @@ PRICE = int(E("CUSTOM_PRICE", "10"))
 KLAD_SALT = E("KLAD_SALT", "gorod-klad-v1")
 KLAD_LIMIT = int(E("KLAD_LIMIT", "20"))
 GITHUB_TOKEN = E("GITHUB_TOKEN", "")
+TIKTOK_SESSIONID = E("TIKTOK_SESSIONID", "")
+SUBS_EVERY_MIN = int(E("SUBS_EVERY_MIN", "120"))
+RESTART_HOURS = float(E("RESTART_HOURS", "12"))
 GITHUB_REPO = E("GITHUB_REPO", "gaga228ir-crypto/gorod-podpischikovbn")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -190,33 +194,78 @@ class DB:
 db = DB() if SB_URL and SB_KEY else LocalDB(Path(__file__).parent / "gorod.db")
 
 
-# ---------- выгрузка особых домов в recipes.json на GitHub → сайт видит их без VPN ----------
+# ---------- файлы на GitHub (сайт берёт их оттуда, открывается без VPN) ----------
+GH_H = lambda: {"Authorization": f"Bearer {GITHUB_TOKEN}", "Accept": "application/vnd.github+json"}
+
+
+async def gh_get(path):
+    async with httpx.AsyncClient(timeout=30) as c:
+        r = await c.get(f"https://api.github.com/repos/{GITHUB_REPO}/contents/{path}", headers=GH_H(), params={"ref": "main"})
+    if r.status_code != 200:
+        return None, None
+    j = r.json()
+    return base64.b64decode(j["content"]).decode(), j["sha"]
+
+
+async def gh_put(path, text, message, sha=None):
+    async with httpx.AsyncClient(timeout=30) as c:
+        r = await c.put(f"https://api.github.com/repos/{GITHUB_REPO}/contents/{path}", headers=GH_H(), json={
+            "message": message, "branch": "main", "content": base64.b64encode(text.encode()).decode(), **({"sha": sha} if sha else {})})
+    r.raise_for_status()
+
+
 async def export_loop():
+    """Особые дома → recipes.json."""
     if not GITHUB_TOKEN:
         log.info("GITHUB_TOKEN не задан — особые дома на сайт не выгружаются")
         return
     last = None
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/recipes.json"
-    h = {"Authorization": f"Bearer {GITHUB_TOKEN}", "Accept": "application/vnd.github+json"}
     while True:
         try:
             rows = await db.special()
             body = json.dumps(rows, ensure_ascii=False, separators=(",", ":"))
             digest = hashlib.sha1(body.encode()).hexdigest()
             if digest != last:
-                async with httpx.AsyncClient(timeout=30) as c:
-                    cur = await c.get(url, headers=h, params={"ref": "main"})
-                    sha = cur.json().get("sha") if cur.status_code == 200 else None
-                    old = base64.b64decode(cur.json()["content"]).decode() if sha else None
-                    if old != body:
-                        r = await c.put(url, headers=h, json={"message": f"Особые дома: {len(rows)}", "branch": "main",
-                                                              "content": base64.b64encode(body.encode()).decode(), **({"sha": sha} if sha else {})})
-                        r.raise_for_status()
-                        log.info("recipes.json обновлён: %s домов", len(rows))
+                old, sha = await gh_get("recipes.json")
+                if old != body:
+                    await gh_put("recipes.json", body, f"Особые дома: {len(rows)}", sha)
+                    log.info("recipes.json обновлён: %s домов", len(rows))
                 last = digest
         except Exception as e:
             log.warning("export: %s", e)
         await asyncio.sleep(120)
+
+
+SYNC = {"at": None, "msg": "ещё не запускалось" if TIKTOK_SESSIONID else "выключено (нет TIKTOK_SESSIONID)"}
+
+
+async def sync_subscribers_once():
+    owner = TIKTOK_URL.rstrip("/").split("@")[-1]
+    fresh_list = await tiktok.followers(owner, TIKTOK_SESSIONID, log)
+    text, sha = await gh_get("subscribers.json")
+    current = [str(x) for x in json.loads(text or "[]")]
+    merged, new, gone, back = tiktok.merge(current, fresh_list)
+    if merged != current:
+        await gh_put("subscribers.json", json.dumps(merged, ensure_ascii=False, separators=(",", ":")),
+                     f"Подписчики: +{new}" + (f", отписались {gone}" if gone else "") + (f", вернулись {back}" if back else ""), sha)
+    _subs["t"] = 0  # перечитать список
+    return len(fresh_list), new, gone, back
+
+
+async def sync_loop(bot):
+    if not (TIKTOK_SESSIONID and GITHUB_TOKEN):
+        return
+    await asyncio.sleep(30)
+    while True:
+        try:
+            total, new, gone, back = await sync_subscribers_once()
+            SYNC.update(at=time.strftime("%d.%m %H:%M"), msg=f"✅ {total} подписчиков · +{new} новых · {gone} отписались")
+        except Exception as e:
+            SYNC.update(at=time.strftime("%d.%m %H:%M"), msg=f"❌ {e}")
+            log.warning("sync: %s", e)
+        await asyncio.sleep(SUBS_EVERY_MIN * 60)
+
+
 _subs = {"t": 0, "list": [], "set": set(), "gone": set()}
 
 
@@ -353,12 +402,53 @@ async def got_nick(m: Message, state: FSMContext):
         await m.answer("На этот ник уже есть заявки — дождись проверки 🙏" if "too_many_pending" in str(e) else "Не получилось, попробуй позже.")
         return
     await state.clear()
-    kb = [[IB(text="✅ Я написал код", callback_data=f"claim:{row['id']}")]]
-    if POCHTA_URL:
-        kb.insert(0, [IB(text="📮 Открыть «Почту города»", url=POCHTA_URL)])
-    await m.answer_photo(photo(cards.code_card(nick, row["code"])), reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), caption=(
-        f"Последний шаг: со своего аккаунта <b>@{nick}</b> напиши в комментариях «Почты города»:\n\n<code>ДОМ-{row['code']}</code>\n\n"
-        "Так мы поймём, что ник твой, и никто не сможет менять твой дом. Потом нажми «✅ Я написал код»."))
+    await m.answer_photo(photo(cards.code_card(nick, row["code"])), reply_markup=code_kb(row), caption=code_text(nick, row["code"]))
+
+
+def code_kb(row):
+    kb = [[IB(text="✅ Проверить код", callback_data=f"check:{row['id']}")],
+          [IB(text="🎵 Открыть мой TikTok", url=f"https://www.tiktok.com/@{row['nick']}")],
+          [IB(text="🙋 Не получается — проверьте вручную", callback_data=f"claim:{row['id']}")]]
+    return InlineKeyboardMarkup(inline_keyboard=kb)
+
+
+def code_text(nick, code):
+    return (f"Последний шаг — докажи, что <b>@{nick}</b> твой:\n\n"
+            f"1. В TikTok: Профиль → <b>Изменить профиль</b> → <b>О себе</b>\n"
+            f"2. Добавь туда код <code>ДОМ-{code}</code> и сохрани\n"
+            f"3. Нажми <b>«✅ Проверить код»</b> — бот проверит сам за пару секунд\n\n"
+            "После проверки код из описания можно удалить.")
+
+
+@r.callback_query(F.data.startswith("check:"))
+async def check_code(c: CallbackQuery, bot: Bot):
+    row = await db.get(int(c.data.split(":")[1]))
+    if not row or row["tg_id"] != c.from_user.id or row["status"] != "pending":
+        await c.answer("Заявка не найдена или уже обработана", show_alert=True)
+        return
+    await c.answer("Проверяю…")
+    try:
+        p = await tiktok.profile(row["nick"])
+    except Exception as e:
+        log.warning("profile %s: %s", row["nick"], e)
+        p = None
+    if p is None:
+        await c.message.answer("Не получилось открыть твой профиль TikTok 😕 Попробуй через минуту или нажми «🙋 Не получается — проверьте вручную».")
+        return
+    if not tiktok.bio_has_code(p["signature"], row["code"]):
+        await c.message.answer(f"В описании профиля нет кода <code>ДОМ-{row['code']}</code> 🤔\nПроверь, что сохранил, и подожди 1–2 минуты — TikTok обновляет не сразу. Потом нажми «✅ Проверить код» ещё раз.")
+        return
+    s = await subscribers()
+    if row["nick"] not in s["set"]:
+        await c.message.answer(f"Код нашёл ✅, но <b>@{row['nick']}</b> пока не среди подписчиков 🤔 Подпишись — после ближайшего обновления города нажми «✅ Проверить код» снова.",
+                               reply_markup=InlineKeyboardMarkup(inline_keyboard=[[IB(text="🎵 Подписаться", url=TIKTOK_URL)]]))
+        return
+    if await approve_row(bot, row):
+        for a in ADMIN_IDS:
+            try:
+                await bot.send_message(a, f"🤖 Автопроверка: <b>@{row['nick']}</b> подтвердил ник кодом в профиле — дом выдан.")
+            except Exception:
+                pass
 
 
 @r.callback_query(F.data.startswith("claim:"))
@@ -504,13 +594,15 @@ def is_admin(uid):
 
 
 def application_text(row):
-    return (f"📥 <b>Заявка</b>\n\nНик: <b>@{row['nick']}</b>\nКод: <code>ДОМ-{row['code']}</code>\n"
+    return (f"📥 <b>Заявка (ручная проверка)</b>\n\nНик: <b>@{row['nick']}</b>\nКод: <code>ДОМ-{row['code']}</code>\n"
             f"Telegram id: <code>{row['tg_id']}</code>\n\n"
-            f"Проверь, что <a href='https://www.tiktok.com/@{row['nick']}'>@{row['nick']}</a> написал этот код в комментах «Почты города».")
+            f"Проверь, что у <a href='https://www.tiktok.com/@{row['nick']}'>@{row['nick']}</a> этот код в описании профиля или в комментариях «Почты города».")
 
 
 def application_kb(row, standalone=False):
-    kb = [[IB(text="✅ Одобрить", callback_data=f"ap:{row['id']}:{int(standalone)}"), IB(text="❌ Отклонить", callback_data=f"rj:{row['id']}:{int(standalone)}")]]
+    kb = [[IB(text="✅ Одобрить", callback_data=f"ap:{row['id']}:{int(standalone)}")],
+          [IB(text="❌ Не подписан", callback_data=f"rjsub:{row['id']}:{int(standalone)}"), IB(text="❌ Нет кода", callback_data=f"rjcode:{row['id']}:{int(standalone)}")],
+          [IB(text="🎵 Профиль TikTok", url=f"https://www.tiktok.com/@{row['nick']}")]]
     if POCHTA_URL:
         kb.append([IB(text="📮 Почта города", url=POCHTA_URL)])
     if not standalone:
@@ -524,9 +616,13 @@ async def panel_media():
     s = await subscribers()
     stars, sales = await db.stars_total()
     cap = (f"🏛 <b>Панель мэрии</b>\n\nЗаявок ждут: <b>{pend}</b>\nПривязано / особых домов: <b>{special}</b>\n"
-           f"Жителей в городе: <b>{len(s['list'])}</b>\nПродаж: <b>{sales}</b> · заработано <b>{stars} ⭐</b>")
-    kb = InlineKeyboardMarkup(inline_keyboard=[[IB(text=f"📥 Заявки ({pend})", callback_data="adm:apps")],
-                                               [IB(text="🔄 Обновить", callback_data="adm:home")]])
+           f"Жителей в городе: <b>{len(s['set'])}</b> · отписались: <b>{len(s['gone'])}</b>\nПродаж: <b>{sales}</b> · заработано <b>{stars} ⭐</b>\n\n"
+           f"🔄 Подписчики из TikTok: {SYNC['msg']}" + (f" ({SYNC['at']})" if SYNC['at'] else ""))
+    rows = [[IB(text=f"📥 Заявки ({pend})", callback_data="adm:apps")]]
+    if TIKTOK_SESSIONID and GITHUB_TOKEN:
+        rows.append([IB(text="👥 Обновить подписчиков сейчас", callback_data="adm:sync")])
+    rows.append([IB(text="🔄 Обновить панель", callback_data="adm:home")])
+    kb = InlineKeyboardMarkup(inline_keyboard=rows)
     return cards.admin_card(pend, special, len(s["list"])), cap, kb
 
 
@@ -547,6 +643,15 @@ async def admin_nav(c: CallbackQuery):
     if c.data == "adm:home":
         img, cap, kb = await panel_media()
         await c.message.edit_media(InputMediaPhoto(media=photo(img), caption=cap), reply_markup=kb)
+    elif c.data == "adm:sync":
+        await c.message.edit_caption(caption="👥 Собираю подписчиков из TikTok… это 1–3 минуты")
+        try:
+            total, new, gone, back = await sync_subscribers_once()
+            SYNC.update(at=time.strftime("%d.%m %H:%M"), msg=f"✅ {total} подписчиков · +{new} новых · {gone} отписались")
+        except Exception as e:
+            SYNC.update(at=time.strftime("%d.%m %H:%M"), msg=f"❌ {e}")
+        img, cap, kb = await panel_media()
+        await c.message.edit_media(InputMediaPhoto(media=photo(img), caption=cap), reply_markup=kb)
     elif c.data == "adm:apps":
         rows = await db.pending()
         if not rows:
@@ -558,7 +663,21 @@ async def admin_nav(c: CallbackQuery):
                                    reply_markup=application_kb(row))
 
 
-@r.callback_query(F.data.startswith("ap:") | F.data.startswith("rj:"))
+async def approve_row(bot, row) -> bool:
+    try:
+        await db.patch(row["id"], {"status": "approved", "approved_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+    except RuntimeError:
+        return False
+    try:
+        await bot.send_photo(row["tg_id"], photo(cards.built_card(row["nick"], await house_no(row["nick"]), False)), caption=(
+            f"Готово! Ник <b>@{row['nick']}</b> подтверждён 🎉\n\nТеперь открой город кнопкой «🏙 Открыть город» → «🎨 Мой дом» и выбери, каким будет твой дом. Код из описания профиля можно удалить."),
+            reply_markup=city_keyboard(row["nick"]))
+    except Exception as e:
+        log.warning("notify user: %s", e)
+    return True
+
+
+@r.callback_query(F.data.startswith("ap:") | F.data.startswith("rj"))
 async def decide(c: CallbackQuery, bot: Bot):
     if not is_admin(c.from_user.id):
         await c.answer()
@@ -568,31 +687,45 @@ async def decide(c: CallbackQuery, bot: Bot):
     if not row or row["status"] != "pending":
         await c.answer("Уже обработана", show_alert=True)
     elif act == "ap":
-        try:
-            await db.patch(row["id"], {"status": "approved", "approved_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
-        except RuntimeError:
+        if not await approve_row(bot, row):
             await c.answer("У этого ника уже есть владелец", show_alert=True)
             return
         await c.answer("Одобрено")
-        try:
-            await bot.send_photo(row["tg_id"], photo(cards.built_card(row["nick"], await house_no(row["nick"]), False)), caption=(
-                f"Готово! Ник <b>@{row['nick']}</b> подтверждён 🎉\n\nТеперь открой город кнопкой «🏙 Открыть город» → «🎨 Мой дом» и выбери, каким будет твой дом."),
-                reply_markup=city_keyboard(row["nick"]))
-        except Exception as e:
-            log.warning("notify user: %s", e)
     else:
         await db.patch(row["id"], {"status": "rejected"})
         await c.answer("Отклонено")
+        reason = act[2:] if len(act) > 2 else "code"
+        text = (f"Заявка на <b>@{row['nick']}</b> отклонена: ты не подписан на TikTok 😕\nПодпишись — после обновления города (около 17:00 МСК) нажми «🏠 Мой дом» снова."
+                if reason == "sub" else
+                f"Заявка на <b>@{row['nick']}</b> отклонена: не нашли код ДОМ-{row['code']} 😕 Нажми «🏠 Мой дом» и попробуй ещё раз.")
         try:
-            await bot.send_message(row["tg_id"], f"Не нашли код ДОМ-{row['code']} в комментариях 😕 Нажми «🏠 Мой дом» и попробуй ещё раз.")
+            await bot.send_message(row["tg_id"], text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[IB(text="🎵 Подписаться", url=TIKTOK_URL)], [IB(text="🏠 Мой дом", callback_data="home")]]))
         except Exception:
             pass
     if standalone == "1":
         await c.message.edit_reply_markup(reply_markup=None)
+        act = "ap" if act == "ap" else "rj"
         await c.message.edit_text(c.message.html_text + ("\n\n✅ Одобрено" if act == "ap" else "\n\n❌ Отклонено"))
     else:
         c.data = "adm:apps"
         await admin_nav(c)
+
+
+@r.message(Command("update"))
+async def update_cmd(m: Message):
+    if not is_admin(m.from_user.id):
+        return
+    await m.answer("♻️ Перезапускаюсь и скачиваю свежую версию бота… вернусь через 1–2 минуты.")
+    await asyncio.sleep(1)
+    os._exit(0)
+
+
+async def restart_later():
+    """Раз в RESTART_HOURS бот выходит — start_windows.bat скачивает обновление и запускает снова."""
+    if RESTART_HOURS > 0:
+        await asyncio.sleep(RESTART_HOURS * 3600)
+        log.info("плановый перезапуск для обновления")
+        os._exit(0)
 
 
 async def main():
@@ -606,6 +739,8 @@ async def main():
     await bot.set_chat_menu_button(menu_button=MenuButtonWebApp(text="Город", web_app=WebAppInfo(url=SITE_URL)))
     log.info("Бот запущен · база: %s", "Supabase" if isinstance(db, DB) else "локальный файл gorod.db")
     asyncio.create_task(export_loop())
+    asyncio.create_task(sync_loop(bot))
+    asyncio.create_task(restart_later())
     await dp.start_polling(bot)
 
 

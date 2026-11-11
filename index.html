@@ -172,7 +172,7 @@ async function loadSpecial(byKey) {
   if (n) buildCity();
 }
 function renderProgress() {
-  const N = houses.length, next = milestones.find(m => N < m.at), el = $('prog');
+  const N = houses.filter(h => !h.gone).length, next = milestones.find(m => N < m.at), el = $('prog');
   if (!next) { el.hidden = true; return; }
   const prev = [...milestones].reverse().find(m => N >= m.at), from = prev ? prev.at : 0, p = Math.max(2, Math.min(100, (N - from) / (next.at - from) * 100));
   el.innerHTML = `🏗 До «<b>${esc(next.name)}</b>»<span class="bar"><i style="width:${p}%"></i></span><b>${N.toLocaleString('ru')}/${next.at.toLocaleString('ru')}</b>`;
