@@ -19,5 +19,6 @@ jobs:
           SC_TOKEN: ${{ secrets.SC_TOKEN }}
         run: |
           if [ -z "$SC_REPO" ] || [ -z "$SC_TOKEN" ]; then echo "Секреты SourceCraft ещё не добавлены — пропускаю"; exit 0; fi
-          URL="https://${SC_USER}:${SC_TOKEN}@${SC_REPO#https://}"
+          HOST=$(echo "$SC_REPO" | sed -E 's#^(https?://|ssh://)?([^@/]*@)?##; s#^git\.sourcecraft\.dev:#git.sourcecraft.dev/#')
+          URL="https://${SC_USER}:${SC_TOKEN}@${HOST}"
           git push --force "$URL" HEAD:main
