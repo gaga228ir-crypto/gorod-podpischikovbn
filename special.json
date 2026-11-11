@@ -1,0 +1,8 @@
+[
+ {"nick":"buoflood.com","wish":"дом в виде Биг Бэна","recipe":{"shape":"clocktower","floors":5,"wall":"#c9a36a","roof":"#3d4a6b","emblem":"clock","lights":"warm"}},
+ {"nick":"peteeer888","wish":"дом в виде чёрного котёнка","recipe":{"shape":"house","floors":2,"wall":"#34324a","roof":"#1d1b2e","emblem":"heart","lights":"green","decor":["pet"]}},
+ {"nick":"nikspyu4","wish":"деревянный из берёзы, двухэтажный с балконом","recipe":{"shape":"house","floors":2,"wall":"#ece6d4","roof":"#6b4a2e","emblem":"leaf","lights":"warm","decor":["tree"]}},
+ {"nick":"katushkaas1","wish":"новогодние игрушки и ёлочка рядом","recipe":{"shape":"house","floors":2,"wall":"#f28b82","roof":"#2f7a6b","emblem":"star","lights":"warm","decor":["garland","tree"]}},
+ {"nick":"klop6769","wish":"дом в виде пончика","recipe":{"shape":"dome","floors":2,"wall":"#f7a8d0","roof":"#8a4f24","emblem":"heart","lights":"pink"}},
+ {"nick":"tony_stark30005","wish":"небольшой дом с болидом McLaren","recipe":{"shape":"house","floors":1,"wall":"#ff8a1a","roof":"#374070","emblem":"lightning","lights":"cool","decor":["car"]}}
+]

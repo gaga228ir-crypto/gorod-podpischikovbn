@@ -167,7 +167,7 @@ function buildCity() {
 async function loadSpecial(byKey) {
   // 1) recipes.json рядом с сайтом — его выкладывает бот, открывается без VPN; 2) Supabase, если указан
   const apply = rows => { let n = 0; for (const r of rows || []) { const ex = byKey.get(norm(r.nick)), nr = r.recipe && CityHouse.normRecipe(r.recipe); if (ex && nr) { ex.recipe = { ...r.recipe, ...nr }; n++; } } return n; };
-  let n = apply(await getJSON('recipes.json'));
+  let n = apply(await getJSON('special.json')) + apply(await getJSON('recipes.json')); // special.json — дома по пожеланиям из комментов
   if (SUPABASE_URL) { try { n += apply(await (await api('residents?select=nick,recipe&status=eq.approved&recipe=not.is.null')).json()); } catch (e) {} }
   if (n) buildCity();
 }
