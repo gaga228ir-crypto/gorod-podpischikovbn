@@ -231,7 +231,7 @@ const kladFound = () => { try { return localStorage.getItem('klad') === KLAD.day
 let kladChip = null;
 function renderKlad() {
   kladChip = document.createElement('button'); kladChip.className = 'chip klad'; $('chips').appendChild(kladChip);
-  kladChip.onclick = () => { if (kladFound()) return openKlad(); sheet.innerHTML = `<h2>💎 Клад дня</h2><p>Каждый день в городе прячется сундук. Найди его между домами — подсказка вверху: <b>холодно → тепло → горячо</b>. Подойди поближе (приблизь камеру) и нажми на сундук.</p><p>Приз — <b>особый дом из конструктора бесплатно</b>. Новый клад — каждый день в 00:00 МСК.</p><button class="ghost" id="mclose">ИСКАТЬ</button>`; modal.classList.add('show'); closeBtn(); };
+  kladChip.onclick = () => { if (kladFound()) return openKlad(); sheet.innerHTML = `<h2>💎 Клад дня</h2><p>Каждый день в городе прячется сундук. Найди его между домами — подсказка вверху: <b>холодно → тепло → горячо</b>. Подойди поближе (приблизь камеру) и нажми на сундук.</p><p>Приз — <b>дом по описанию бесплатно</b>: нейросеть построит любую твою идею в 3D. Новый клад — каждый день в 00:00 МСК.</p><button class="ghost" id="mclose">ИСКАТЬ</button>`; modal.classList.add('show'); closeBtn(); };
   setInterval(updKlad, 250); updKlad();
 }
 function updKlad() {
@@ -245,7 +245,7 @@ function openKlad() {
   updKlad();
   const deep = BOT_URL ? BOT_URL.replace(/\/$/, '') + '?start=klad' + KLAD.code : '';
   sheet.innerHTML = `<h2>💎 Ты нашёл клад!</h2><p>Твой код на сегодня:</p><div class="code">КЛАД-${KLAD.code}</div>
-    <p>Приз — <b>особый дом из конструктора бесплатно</b>. Код действует до конца дня (по МСК), призов на день ограниченно — кто первый.</p>
+    <p>Приз — <b>дом по описанию бесплатно</b> (нейросеть построит твою идею в 3D). Код действует до конца дня (по МСК), призов на день ограниченно — кто первый.</p>
     <div class="err" id="kerr"></div>
     <div class="btns"><button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button>${TG ? '<button id="kgo" type="button">ЗАБРАТЬ ПРИЗ</button>' : deep ? `<a class="btn" href="${esc(deep)}">ЗАБРАТЬ В БОТЕ</a>` : ''}</div>
     ${!TG && !deep ? '<p>Напиши этот код боту города в Telegram.</p>' : ''}`;
@@ -287,7 +287,7 @@ $('cta').onclick = () => {
   sheet.innerHTML = `<h2>Получить дом</h2><p>1 подписка = 1 дом с твоим ником. Подпишись на <a style="color:var(--gold)" href="${TIKTOK_URL}" target="_blank" rel="noopener">${TIKTOK_NICK}</a> — новые жители заселяются ${CHECK_TIME}.</p><div class="btns"><a class="btn" href="${TIKTOK_URL}" target="_blank" rel="noopener">ПОДПИСАТЬСЯ</a><button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button></div>`;
   modal.classList.add('show'); closeBtn();
 };
-let studio = { tab: GIFT ? 'pro' : 'free', preset: 0, r: { ...CityHouse.PRESETS[0].r } }, preview = null;
+let studio = { tab: GIFT ? 'ai' : 'free', preset: 0, r: { ...CityHouse.PRESETS[0].r } }, preview = null;
 function openStudio() {
   if (!ME) { sheet.innerHTML = `<h2>Мой дом</h2><p>Сначала привяжи свой ник TikTok в боте — кнопка «🏠 Мой дом».</p><button class="ghost" id="mclose">ЗАКРЫТЬ</button>`; modal.classList.add('show'); closeBtn(); return; }
   const mine = city.byKey.get(ME); if (mine && mine.recipe) studio.r = { ...mine.recipe };
@@ -298,7 +298,7 @@ function renderStudio() {
   const S = studio, R = S.r, opts = (key, list, fmt) => list.map(v => `<button class="opt ${R[key] === v ? 'on' : ''}" data-k="${key}" data-v="${v}">${fmt(v)}</button>`).join('');
   const sw = (key, list) => list.map(v => `<button class="opt sw ${R[key] === v ? 'on' : ''}" data-k="${key}" data-v="${v}" style="background:${v}"></button>`).join('');
   const dec = new Set(R.decor || []);
-  const go = S.tab === 'free' ? 'ВЫБРАТЬ' : S.tab === 'ai' ? `ПОСТРОИТЬ · ${AI_PRICE} ⭐` : (GIFT ? 'ЗАБРАТЬ БЕСПЛАТНО 💎' : CUSTOM_PRICE ? 'ОПЛАТИТЬ ' + CUSTOM_PRICE + ' ⭐' : 'СОХРАНИТЬ');
+  const go = S.tab === 'free' ? 'ВЫБРАТЬ' : S.tab === 'ai' ? (GIFT ? 'ПОСТРОИТЬ БЕСПЛАТНО 🎁' : `ПОСТРОИТЬ · ${AI_PRICE} ⭐`) : (CUSTOM_PRICE ? 'ОПЛАТИТЬ ' + CUSTOM_PRICE + ' ⭐' : 'СОХРАНИТЬ');
   sheet.innerHTML = `<div class="studio"><h2>Мой дом · @${esc(ME)}</h2>
     ${S.tab === 'ai' ? '' : '<canvas id="prev" style="width:200px;height:200px"></canvas>'}
     <div class="tabs"><button data-tab="free" class="${S.tab === 'free' ? 'on' : ''}">5 ГОТОВЫХ</button><button data-tab="pro" class="${S.tab === 'pro' ? 'on' : ''}">КОНСТРУКТОР</button><button data-tab="ai" class="${S.tab === 'ai' ? 'on' : ''}">✨ ПО ОПИСАНИЮ</button></div>

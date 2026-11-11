@@ -127,3 +127,9 @@ class LocalDB:
 
     async def ai_list(self, status):
         return [self._row(r) for r in self.c.execute("select * from ai_orders where status=? order by id", (status,))]
+
+    async def ai_gift(self, tg_id):
+        return self._row(self.c.execute("select * from ai_orders where tg_id=? and status='gift' order by id limit 1", (tg_id,)).fetchone())
+
+    async def payments_recent(self):
+        return [dict(r) for r in self.c.execute("select nick, stars from payments order by id desc limit 5")]

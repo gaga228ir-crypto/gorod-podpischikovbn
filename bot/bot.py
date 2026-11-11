@@ -221,6 +221,13 @@ class DB:
     async def ai_list(self, status):
         return await self.q("GET", f"ai_orders?status=eq.{status}&select=*&order=id.asc") or []
 
+    async def payments_recent(self):
+        return await self.q("GET", "payments?select=nick,stars&order=id.desc&limit=5") or []
+
+    async def ai_gift(self, tg_id):
+        rows = await self.q("GET", f"ai_orders?tg_id=eq.{tg_id}&status=eq.gift&select=*&limit=1")
+        return rows[0] if rows else None
+
     async def special(self):
         return await self.q("GET", "residents?status=eq.approved&recipe=not.is.null&select=nick,recipe&order=nick.asc") or []
 
@@ -539,8 +546,8 @@ async def claim_klad(m: Message, uid: int, code: str):
         await m.answer("Код верный, но ты отписался от TikTok 🏚 Подпишись снова — и клад будет твоим (код действует до конца дня).",
                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[IB(text="🎵 Подписаться", url=TIKTOK_URL)]]))
         return
-    if await db.klad_gift(uid):
-        await m.answer("У тебя уже есть неиспользованный приз 💎 Открой город → «🎨 Мой дом» → «Конструктор» — там бесплатно.", reply_markup=city_keyboard(me["nick"], gift=True))
+    if await db.ai_gift(uid):
+        await m.answer("У тебя уже есть неиспользованный приз 💎 Открой город → «🎨 Мой дом» → «✨ По описанию» — там бесплатно.", reply_markup=city_keyboard(me["nick"], gift=True))
         return
     if await db.klad_today(day) >= KLAD_LIMIT:
         await m.answer("Сегодня все призы уже разобрали 😔 Завтра будет новый клад — приходи пораньше!")
@@ -550,10 +557,45 @@ async def claim_klad(m: Message, uid: int, code: str):
     except RuntimeError:
         await m.answer("Ты уже забрал сегодняшний клад 😉 Завтра — новый.")
         return
+    k = await db.klad_gift(uid)
+    if k:
+        await db.klad_use(k)
+    await add_ai_gift(uid, me["nick"])
     await m.answer_photo(photo(cards.klad_card(me["nick"])), caption=(
-        "<b>Клад твой!</b> 💎\n\nПриз — <b>особый дом из конструктора бесплатно</b>.\n"
-        "Нажми <b>«🏙 Открыть город»</b> внизу → <b>«🎨 Мой дом»</b> → собери дом и нажми «Забрать бесплатно»."),
+        "<b>Клад твой!</b> 💎\n\nПриз — <b>дом по описанию бесплатно</b>: опиши любую идею, и нейросеть построит её в 3D ✨\n"
+        "Нажми <b>«🏙 Открыть город»</b> внизу → <b>«🎨 Мой дом»</b> → <b>«✨ По описанию»</b>."),
         reply_markup=city_keyboard(me["nick"], gift=True))
+
+
+async def add_ai_gift(uid, nick):
+    oid = await db.ai_create(uid, nick, "")
+    await db.ai_patch(oid, {"status": "gift"})
+    return oid
+
+
+@r.message(Command("giftai"))
+async def giftai_cmd(m: Message, bot: Bot):
+    """/giftai ник — подарить бесплатный дом по описанию."""
+    if not is_admin(m.from_user.id):
+        return
+    nick = norm_nick((m.text or "").split(maxsplit=1)[1] if len((m.text or "").split()) > 1 else "")
+    rows = await db.by_nick(nick) if nick else []
+    if not rows:
+        last = await db.payments_recent()
+        buyers = "\n".join(f"• @{p['nick']} — {p['stars']} ⭐" for p in last) or "пока никого"
+        await m.answer("Напиши так: <code>/giftai ник</code> (ник должен быть подтверждён в боте).\n\nПоследние покупки:\n" + buyers)
+        return
+    me = rows[0]
+    if await db.ai_gift(me["tg_id"]):
+        await m.answer(f"У @{nick} уже есть неиспользованный подарок.")
+        return
+    await add_ai_gift(me["tg_id"], nick)
+    await m.answer(f"🎁 @{nick} получил бесплатный дом по описанию.")
+    try:
+        await bot.send_message(me["tg_id"], "🎁 <b>Подарок от мэрии!</b>\nТебе — бесплатный <b>дом по описанию</b>: опиши любую идею, и нейросеть построит её в 3D ✨\n\n"
+                               "Открой город кнопкой «🏙 Открыть город» → «🎨 Мой дом» → «✨ По описанию».", reply_markup=city_keyboard(nick, gift=True))
+    except Exception as e:
+        await m.answer(f"Не смог написать ему: {e}")
 
 
 @r.message(F.text.regexp(KLAD_RE))
@@ -598,11 +640,8 @@ async def web_app(m: Message, bot: Bot):
             rec.pop("decor")
             code = encode_recipe(rec)
             note = "\n\n🎁 Декор (гирлянда, ёлка, машина, питомец) — бонус для подписчиков канала. Подпишись и сохрани дом ещё раз — декор появится."
-        gift = await db.klad_gift(m.from_user.id)
-        if PRICE == 0 or gift:
+        if PRICE == 0:
             await db.patch(me["id"], {"recipe": rec})
-            if gift and PRICE:
-                await db.klad_use(gift)
             kb = [[IB(text="📢 Канал города", url=CHANNEL_URL)]] if note and CHANNEL_URL else None
             await m.answer_photo(photo(cards.built_card(me["nick"], await house_no(me["nick"]), True)),
                                  caption="Готово! 🏠 Твой дом уже в городе — обнови страницу, чтобы увидеть." + note,
@@ -614,6 +653,12 @@ async def web_app(m: Message, bot: Bot):
         text = re.sub(r"\s+", " ", str(data.get("d") or "")).strip()[:300]
         if len(text) < 5:
             await m.answer("Опиши дом подробнее — хотя бы пару слов 🙂")
+            return
+        g = await db.ai_gift(m.from_user.id)
+        if g:
+            await db.ai_patch(g["id"], {"text": text, "status": "paid"})
+            await m.answer("🎁 Подарок активирован! Нейросеть уже строит твой дом ✨ Это займёт несколько минут, потом его посмотрит мэрия — и пришлю результат сюда.")
+            asyncio.create_task(build_ai(bot, g["id"]))
             return
         oid = await db.ai_create(m.from_user.id, me["nick"], text)
         await bot.send_invoice(m.chat.id, title="Дом по описанию ✨", description=f"Нейросеть построит дом @{me['nick']} по твоему описанию: «{text[:120]}». Перед тем как поставить, его проверит мэрия.",
@@ -724,6 +769,15 @@ async def ai_decide(c: CallbackQuery, bot: Bot):
         await db.ai_patch(o["id"], {"status": "paid"})
         await note("🔄 Пересобираю…")
         asyncio.create_task(build_ai(bot, o["id"]))
+    elif act == "ai_no" and not o.get("charge_id"):  # был подарок — возвращаем подарок
+        await db.ai_patch(o["id"], {"status": "gift"})
+        await c.answer("Подарок возвращён")
+        await note("❌ Не подошло — подарок вернули, можно описать заново")
+        try:
+            await bot.send_message(o["tg_id"], "Этот вариант не получился 😕 Подарок остаётся у тебя — опиши дом иначе: «🎨 Мой дом» → «✨ По описанию».")
+        except Exception:
+            pass
+        return
     elif act == "ai_no":
         try:
             await bot.refund_star_payment(o["tg_id"], o["charge_id"])
