@@ -148,7 +148,7 @@ async function loadCity() {
   const [base, ms, el] = await Promise.all([getJSON('subscribers.json'), getJSON('milestones.json'), getJSON('election.json')]);
   loadStep(60, 'Строим дома…');
   const src = Array.isArray(base) && base.length ? base : FALLBACK, byKey = new Map();
-  for (const n of src) { const k = norm(n); if (k && !byKey.has(k)) { const it = { nick: '@' + k, key: k, recipe: null }; byKey.set(k, it); baseList.push(it); } }
+  for (const n of src) { const gone = String(n).startsWith('~'), k = norm(String(n).replace(/^~/, '')); if (k && !byKey.has(k)) { const it = { nick: '@' + k, key: k, recipe: null, gone }; byKey.set(k, it); baseList.push(it); } }
   baseList.forEach((it, i) => it.label = HIDE.test(it.key) && !/^user\d+$/.test(it.key) ? 'Житель №' + (i + 1) : it.nick);
   if (Array.isArray(ms) && ms.length) milestones = ms;
   election = el; hallInfo = election && election.winner ? { open: true, title: 'Ратуша · мэр @' + norm(election.winner) } : null;
@@ -161,12 +161,12 @@ async function loadCity() {
 function buildCity() {
   const keep = city.hi && city.hi.key;
   city.treSeed = KLAD.seed; city.setCity(baseList, milestones, hallInfo);
-  houses = city.houses; $('cnt').textContent = houses.length.toLocaleString('ru');
+  houses = city.houses; $('cnt').textContent = houses.filter(h => !h.gone).length.toLocaleString('ru');
   if (keep && city.byKey.get(keep)) city.focus(city.byKey.get(keep), false);
 }
 async function loadSpecial(byKey) {
   // 1) recipes.json рядом с сайтом — его выкладывает бот, открывается без VPN; 2) Supabase, если указан
-  const apply = rows => { let n = 0; for (const r of rows || []) { const ex = byKey.get(norm(r.nick)), nr = r.recipe && CityHouse.normRecipe(r.recipe); if (ex && nr) { ex.recipe = { ...r.recipe, ...nr }; n++; } } return n; };
+  const apply = rows => { let n = 0; for (const r of rows || []) { const ex = byKey.get(norm(r.nick)), nr = r.recipe && CityHouse.normRecipe(r.recipe); if (ex && nr && !ex.gone) { ex.recipe = { ...r.recipe, ...nr }; n++; } } return n; };
   let n = apply(await getJSON('special.json')) + apply(await getJSON('recipes.json')); // special.json — дома по пожеланиям из комментов
   if (SUPABASE_URL) { try { n += apply(await (await api('residents?select=nick,recipe&status=eq.approved&recipe=not.is.null')).json()); } catch (e) {} }
   if (n) buildCity();
@@ -205,7 +205,7 @@ function pick(x, y) { const h = city.pick(x, y); if (h && h.chest) return openKl
 function focus(h, fly = true) {
   city.focus(h, fly);
   $('cnick').textContent = h.label;
-  $('csub').textContent = `Дом №${h.n.toLocaleString('ru')}${h.recipe ? ' · особый дом' : ''}${h.recipe && h.recipe.biz && BIZ[h.recipe.biz] ? ' · ' + BIZ[h.recipe.biz][0].toLowerCase() : ''}`;
+  $('csub').textContent = h.gone ? `Дом №${h.n.toLocaleString('ru')} · заброшен: житель отписался 😢 Подпишись снова — свет вернётся` : `Дом №${h.n.toLocaleString('ru')}${h.recipe ? ' · особый дом' : ''}${h.recipe && h.recipe.biz && BIZ[h.recipe.biz] ? ' · ' + BIZ[h.recipe.biz][0].toLowerCase() : ''}`;
   $('cedit').style.display = (TG && h.key === ME) ? '' : 'none';
   card.classList.add('show'); history.replaceState(null, '', location.search + '#' + encodeURIComponent(h.key));
 }

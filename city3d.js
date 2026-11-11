@@ -240,15 +240,16 @@ export class City3D {
     dashes.forEach(([a, b, rot], i) => { if (!rot) { M.makeRotationY(0); M.setPosition(a, .012, b); } else { M.makeRotationY(Math.PI / 2); M.setPosition(a, .012, b); } dm.setMatrixAt(i, M); });
     add(dm);
     // обычные дома: инстансы по этажности
-    const regular = this.houses.filter(h => !h.recipe), special = this.houses.filter(h => h.recipe);
+    const regular = this.houses.filter(h => !h.recipe || h.gone), special = this.houses.filter(h => h.recipe && !h.gone);
     this.grow = []; const reg = (mesh, list) => { const base = list.map((_, i) => { const m = new THREE.Matrix4(); mesh.getMatrixAt(i, m); return m; }); this.grow.push({ mesh, list, base }); };
     this.pickables = [];
     const groups = new Map();
-    for (const h of regular) { const rr = rnd(hash(h.key)); h.floors = rr() < .18 ? 3 + Math.floor(rr() * 2) : 1 + Math.floor(rr() * 2); h.wall = WALLS[(rr() * WALLS.length) | 0]; h.roof = ROOFS[(rr() * ROOFS.length) | 0]; h.rot = (rr() * 4 | 0) * Math.PI / 2; h.top = h.floors * FH + .34; if (!groups.has(h.floors)) groups.set(h.floors, []); groups.get(h.floors).push(h); }
+    for (const h of regular) { const rr = rnd(hash(h.key)); h.floors = rr() < .18 ? 3 + Math.floor(rr() * 2) : 1 + Math.floor(rr() * 2); h.wall = WALLS[(rr() * WALLS.length) | 0]; h.roof = ROOFS[(rr() * ROOFS.length) | 0]; h.rot = (rr() * 4 | 0) * Math.PI / 2; h.top = h.floors * FH + .34; if (h.gone) { h.wall = '#5b5a66'; h.roof = '#2b2a33'; } const gk = h.floors + (h.gone ? 'g' : ''); if (!groups.has(gk)) groups.set(gk, []); groups.get(gk).push(h); }
     const C = new THREE.Color(), roofM = new THREE.InstancedMesh(roofGeo(), flat('#ffffff'), regular.length);
     let ri = 0;
-    for (const [f, arr] of groups) {
-      const im = new THREE.InstancedMesh(bodyGeo(f), bodyMat('warm'), arr.length);
+    const deadMat = new THREE.MeshStandardMaterial({ color: '#ffffff', map: WALL_T, roughness: .95 });
+    for (const [gk, arr] of groups) {
+      const f = parseInt(gk), im = new THREE.InstancedMesh(bodyGeo(f), String(gk).endsWith('g') ? deadMat : bodyMat('warm'), arr.length);
       arr.forEach((h, i) => { M.makeRotationY(h.rot); M.setPosition(h.x, .06, h.z); im.setMatrixAt(i, M); im.setColorAt(i, C.set(h.wall));
         M.makeRotationY(0); M.setPosition(h.x, .06 + f * FH, h.z); roofM.setMatrixAt(ri, M); roofM.setColorAt(ri, C.set(h.roof)); ri++; });
       im.userData.list = arr; this.pickables.push(im); add(im); reg(im, arr);
@@ -261,6 +262,16 @@ export class City3D {
       const rr = rnd(hash(h.key) ^ 0x9e37); if (rr() < .4) chim.push([h.x + (rr() < .5 ? .17 : -.17), h.floors * FH + .26, h.z + (rr() < .5 ? .17 : -.17), h]);
       if (h.floors >= 3 && rr() < .45) boards.push([h, rr()]); });
     add(doorM); reg(doorM, regular);
+    const gone = regular.filter(h => h.gone);
+    if (gone.length) {
+      const signT = canvasTex(128, 64, (g) => { g.fillStyle = '#f2e6c9'; g.fillRect(0, 0, 128, 64); g.strokeStyle = '#7a4b2a'; g.lineWidth = 6; g.strokeRect(3, 3, 122, 58); g.fillStyle = '#b3261e'; g.font = '800 19px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('ПРОДАЁТСЯ', 64, 33); });
+      const sM = new THREE.InstancedMesh(new THREE.PlaneGeometry(.34, .17), new THREE.MeshBasicMaterial({ map: signT, side: THREE.DoubleSide }), gone.length), pM = new THREE.InstancedMesh(new THREE.BoxGeometry(.02, .3, .02), flat('#6b4a2e'), gone.length);
+      const bM2 = new THREE.InstancedMesh(new THREE.BoxGeometry(.5, .05, .02), flat('#8a6a48'), gone.length * 2);
+      gone.forEach((h, i) => { const s = Math.sin(h.rot), c = Math.cos(h.rot), x = h.x + s * .46, z = h.z + c * .46;
+        M.makeRotationY(h.rot); M.setPosition(x, .3, z); sM.setMatrixAt(i, M); M.makeTranslation(x, .15, z); pM.setMatrixAt(i, M);
+        for (const [k, y] of [[0, .14], [1, .2]]) { M.makeRotationY(h.rot); M.multiply(new THREE.Matrix4().makeRotationZ(k ? -.5 : .5)); M.setPosition(h.x + s * .375, .06 + y, h.z + c * .375); bM2.setMatrixAt(i * 2 + k, M); } });
+      add(sM); add(pM); add(bM2); reg(sM, gone); reg(pM, gone); reg(bM2, gone.flatMap(h => [h, h]));
+    }
     const chimM = new THREE.InstancedMesh(new THREE.BoxGeometry(.08, .2, .08), flat('#6b5a6e'), Math.max(1, chim.length)); chimM.count = chim.length;
     chim.forEach(([x, y, z], i) => { M.makeTranslation(x, y, z); chimM.setMatrixAt(i, M); }); add(chimM); reg(chimM, chim.map(c => c[3]));
     const NEON = ['#ff3d7f', '#5ef2ff', '#ffd23f', '#a6ff8f', '#c084fc', '#ff9f43'];

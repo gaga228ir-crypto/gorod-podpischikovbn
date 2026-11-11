@@ -33,7 +33,7 @@ code{background:rgba(255,255,255,.08);padding:1px 6px;border-radius:6px}
 </div>
 
 <div class="card" id="res" hidden>
-  <div class="stats"><div><b id="sOld">0</b>было</div><div><b id="sNew">0</b>новых</div><div><b id="sAll">0</b>станет</div></div>
+  <div class="stats"><div><b id="sOld">0</b>было жителей</div><div><b id="sNew">0</b>новых</div><div><b id="sAll">0</b>станет жителей</div></div>
   <p id="note"></p>
   <ol>
     <li>Нажми <b>«Скачать subscribers.json»</b></li>
@@ -69,18 +69,25 @@ function extract(text) {
 }
 
 let merged = null;
+// В subscribers.json порядок = номера домов, поэтому никого не удаляем: отписавшиеся помечаются «~ник» (дом заброшен)
 async function handle(file) {
   $('err').textContent = ''; $('res').hidden = true;
   const incoming = extract(await file.text()).filter(valid);
   if (!incoming.length) { $('err').textContent = 'В файле не нашлось ников. Это точно список подписчиков?'; return; }
   let current = [];
-  try { const r = await fetch('subscribers.json?v=' + Date.now()); if (r.ok) current = (await r.json()).map(norm).filter(valid); } catch (e) {}
-  const have = new Set(current), fresh = [];
-  for (const n of incoming) if (!have.has(n)) { have.add(n); fresh.push(n); }
-  merged = current.concat(fresh);
-  const gone = current.filter(n => !incoming.includes(n)).length;
-  $('sOld').textContent = current.length; $('sNew').textContent = fresh.length; $('sAll').textContent = merged.length;
-  $('note').textContent = fresh.length ? `Первые новые: ${fresh.slice(0, 5).map(n => '@' + n).join(', ')}${fresh.length > 5 ? '…' : ''}` + (gone ? ` · ${gone} отписались, но их дома остаются` : '') : 'Новых жителей нет — город уже актуален.';
+  try { const r = await fetch('subscribers.json?v=' + Date.now()); if (r.ok) current = (await r.json()).map(x => String(x)); } catch (e) {}
+  const nk = e => norm(e.replace(/^~/, '')), inc = new Set(incoming), have = new Set(current.map(nk));
+  const active = current.filter(e => !e.startsWith('~')).length;
+  const full = incoming.length >= active * 0.8; // полный список — можно отмечать отписавшихся
+  let gone = 0, back = 0;
+  const kept = current.map(e => { const n = nk(e), was = e.startsWith('~');
+    if (inc.has(n)) { if (was) back++; return n; }
+    if (full) { if (!was) gone++; return '~' + n; } return e; });
+  const fresh = []; for (const n of incoming) if (!have.has(n)) { have.add(n); fresh.push(n); }
+  merged = kept.concat(fresh);
+  $('sOld').textContent = active; $('sNew').textContent = fresh.length; $('sAll').textContent = merged.filter(e => !e.startsWith('~')).length;
+  $('note').textContent = (fresh.length ? `Новые: ${fresh.slice(0, 5).map(n => '@' + n).join(', ')}${fresh.length > 5 ? '…' : ''}. ` : 'Новых жителей нет. ')
+    + (full ? `Отписались: ${gone} (их дома станут заброшенными)${back ? `, вернулись: ${back}` : ''}.` : 'Файл неполный — отписавшихся не отмечаю (нужен полный список из сборщика).');
   $('res').hidden = false;
 }
 $('file').onchange = e => e.target.files[0] && handle(e.target.files[0]);

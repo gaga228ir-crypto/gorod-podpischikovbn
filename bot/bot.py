@@ -217,15 +217,18 @@ async def export_loop():
         except Exception as e:
             log.warning("export: %s", e)
         await asyncio.sleep(120)
-_subs = {"t": 0, "list": [], "set": set()}
+_subs = {"t": 0, "list": [], "set": set(), "gone": set()}
 
 
 async def subscribers():
     if time.time() - _subs["t"] > 600:
         try:
             async with httpx.AsyncClient(timeout=20) as c:
-                lst = [norm_nick(x) for x in (await c.get(SUBS_URL, params={"v": int(time.time())})).json()]
-            _subs.update(t=time.time(), list=lst, set=set(lst))
+                raw = [str(x) for x in (await c.get(SUBS_URL, params={"v": int(time.time())})).json()]
+            # «~ник» — отписался: номер дома сохраняется, но дом заброшен и ник не считается жителем
+            lst = [norm_nick(x.lstrip("~")) for x in raw]
+            gone = {norm_nick(x.lstrip("~")) for x in raw if x.startswith("~")}
+            _subs.update(t=time.time(), list=lst, set=set(lst) - gone, gone=gone)
         except Exception as e:  # сеть упала — работаем со старым списком
             log.warning("subscribers: %s", e)
     return _subs
@@ -328,6 +331,11 @@ async def got_nick(m: Message, state: FSMContext):
         await m.answer("Ник TikTok — это латиница, цифры, «_» и точка. Попробуй ещё раз:")
         return
     s = await subscribers()
+    if nick in s["gone"]:
+        await state.clear()
+        await m.answer(f"<b>@{nick}</b> отписался от TikTok — его дом сейчас заброшен 🏚\n\nПодпишись снова, и после ближайшего обновления (около 17:00 МСК) свет в доме вернётся. Потом нажми «🏠 Мой дом».",
+                       reply_markup=InlineKeyboardMarkup(inline_keyboard=[[IB(text="🎵 Подписаться", url=TIKTOK_URL)], [IB(text="🏠 Мой дом", callback_data="home")]]))
+        return
     if nick not in s["set"]:
         await state.clear()
         await m.answer(f"Не нашёл <b>@{nick}</b> среди жителей 🤔\n\nПодпишись на TikTok — новые жители заселяются каждый день около 17:00 МСК. Потом нажми «🏠 Мой дом» снова.",
@@ -396,6 +404,10 @@ async def claim_klad(m: Message, uid: int, code: str):
     if not me:
         await m.answer(f"Код верный! 💎 Но сначала привяжи свой ник — «🏠 Мой дом». Потом снова отправь <code>КЛАД-{code}</code> (сегодня до 23:59 МСК).", reply_markup=main_menu())
         return
+    if me["nick"] in (await subscribers())["gone"]:
+        await m.answer("Код верный, но ты отписался от TikTok 🏚 Подпишись снова — и клад будет твоим (код действует до конца дня).",
+                       reply_markup=InlineKeyboardMarkup(inline_keyboard=[[IB(text="🎵 Подписаться", url=TIKTOK_URL)]]))
+        return
     if await db.klad_gift(uid):
         await m.answer("У тебя уже есть неиспользованный приз 💎 Открой город → «🎨 Мой дом» → «Конструктор» — там бесплатно.", reply_markup=city_keyboard(me["nick"], gift=True))
         return
@@ -424,6 +436,10 @@ async def web_app(m: Message, bot: Bot):
     me = await db.linked(m.from_user.id)
     if not me:
         await m.answer("Сначала привяжи ник: «🏠 Мой дом».", reply_markup=main_menu())
+        return
+    if me["nick"] in (await subscribers())["gone"]:
+        await m.answer("Ты отписался от TikTok — дом заброшен 🏚 Подпишись снова, и после обновления города сможешь его менять.",
+                       reply_markup=InlineKeyboardMarkup(inline_keyboard=[[IB(text="🎵 Подписаться", url=TIKTOK_URL)]]))
         return
     try:
         data = json.loads(m.web_app_data.data)
