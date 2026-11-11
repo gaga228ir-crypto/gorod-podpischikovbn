@@ -112,7 +112,9 @@ KLAD_RE = re.compile(r"(?i)^\s*(?:клад|klad)[\s\-]*(\d{4})\s*$")
 # ---------- данные ----------
 class DB:
     def __init__(self):
-        self.h = {"apikey": SB_KEY, "Authorization": f"Bearer {SB_KEY}", "Content-Type": "application/json"}
+        self.h = {"apikey": SB_KEY, "Content-Type": "application/json"}
+        if not SB_KEY.startswith("sb_"):  # старые JWT-ключи — ещё и в Authorization
+            self.h["Authorization"] = f"Bearer {SB_KEY}"
         self.c = httpx.AsyncClient(timeout=20)
 
     async def q(self, method, path, body=None, prefer=None):

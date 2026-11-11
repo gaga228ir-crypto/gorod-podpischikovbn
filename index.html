@@ -104,7 +104,7 @@ const TIKTOK_NICK = '@eben51041';
 const BOT_URL = ''; // например 'https://t.me/gorod_podpischikov_bot'
 const CUSTOM_PRICE = 10;
 const SUPABASE_URL = '';
-const SUPABASE_ANON_KEY = '';
+const SUPABASE_ANON_KEY = 'sb_publishable_gj1pBQtVG9rFw3zbvu_2NA_e4I0TLiD';
 const FALLBACK = ['@твой_ник'];
 const KLAD_SALT = 'gorod-klad-v1'; // такой же KLAD_SALT в bot/.env
 const CHECK_TIME = 'каждый день около 17:00 по МСК';
@@ -117,7 +117,7 @@ const HIDE = /1488|14\.88|14_88|88\.14|nazi|hitler|adolf|fuck|fak|sperma|sex|por
 const $ = id => document.getElementById(id);
 const norm = s => String(s || '').trim().replace(/^@+/, '').toLowerCase();
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const api = (path) => fetch(SUPABASE_URL + '/rest/v1/' + path, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } });
+const api = (path) => fetch(SUPABASE_URL + '/rest/v1/' + path, { headers: SUPABASE_ANON_KEY.startsWith('sb_') ? { apikey: SUPABASE_ANON_KEY } : { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } });
 const getJSON = async (f) => { try { const r = await fetch(f + '?v=' + Date.now()); return r.ok ? await r.json() : null; } catch (e) { return null; } };
 
 let city;
