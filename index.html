@@ -33,6 +33,14 @@ button.ghost{background:rgba(255,255,255,.12)}
 .card .grow{flex:1;min-width:0}
 .cta{position:fixed;right:16px;bottom:18px;z-index:2}
 .card.show ~ .cta{display:none}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{border:0;border-radius:999px;padding:7px 12px;font:800 11px Unbounded,sans-serif;cursor:pointer;background:var(--gold);color:#1a1238;animation:pulse 2s infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 6px rgba(255,210,63,.25)}}
+.share{background:var(--gold);color:#1a1238;padding:9px 12px;font-size:11px}
+.cand{display:flex;gap:10px;align-items:flex-start;background:rgba(255,255,255,.06);border-radius:14px;padding:10px 12px}
+.cand b{font:800 18px Unbounded,sans-serif;color:var(--gold);min-width:26px}
+.cand .n{font:800 14px Unbounded,sans-serif}
+.cand .p{color:var(--muted);font-size:14px}
 .hint{position:fixed;left:16px;bottom:24px;font:500 12px Inter,sans-serif;color:var(--muted);z-index:2;opacity:.8}
 @media (max-width:520px){.hint{display:none}}
 .modal{position:fixed;inset:0;background:rgba(5,3,20,.6);backdrop-filter:blur(4px);z-index:5;display:none;align-items:flex-end;justify-content:center}
@@ -55,9 +63,10 @@ button.ghost{background:rgba(255,255,255,.12)}
 <div class="top">
   <div class="title"><h1>ГОРОД ПОДПИСЧИКОВ</h1><div class="count">домов: <b id="cnt">0</b></div></div>
   <form class="row" id="f" autocomplete="off"><input id="q" placeholder="Найди свой дом: @ник" aria-label="Ник"><button>НАЙТИ</button></form>
+  <div class="chips" id="chips"></div>
   <div class="msg" id="msg"></div>
 </div>
-<div class="card" id="card"><div class="grow"><div class="nick" id="cnick"></div><div class="sub" id="csub"></div></div><button id="cclose" aria-label="Закрыть">✕</button></div>
+<div class="card" id="card"><div class="grow"><div class="nick" id="cnick"></div><div class="sub" id="csub"></div></div><button class="share" id="cshare">ПОДЕЛИТЬСЯ</button><button id="cclose" aria-label="Закрыть">✕</button></div>
 <button class="btn cta" id="cta">🏠 ПОЛУЧИТЬ ДОМ</button>
 <div class="hint">Тяни — двигать город · колесо — приблизить</div>
 
@@ -74,7 +83,7 @@ const SUPABASE_ANON_KEY = '';
 const FALLBACK = ['@твой_ник'];
 const CHECK_TIME = 'каждый день около 17:00 по МСК';
 // Ники, которые не показываем над домами (дом остаётся, подпись — «Житель №…»)
-const HIDE = /1488|14\.88|14_88|88\.14|nazi|hitler|adolf|fuck|fak|sperma|sex|porno|dildo|penis|pisun|pisduk|pizd|puzd|pidor|pidar|pedik|gay|gei_|dolboeb|ebani|ebanu|zaeba|naeb|hui|huy|xyi|xye|xyu|zalup|drochi|dro4|mazafuk|bitch|dick|negr|sukibl|blyat|blyad|govno|govna|dildo|kokain|kanabis|narko|nekushay/;
+const HIDE = /1488|14\.88|14_88|88\.14|nazi|hitler|adolf|fuck|fak|sperma|sex|porno|dildo|penis|pisun|pisduk|pizd|puzd|pidor|pidar|pedik|gay|gei_|dolboeb|ebani|ebanu|zaeba|naeb|hui|huy|xyi|xye|xyu|zalup|drochi|dro4|mazafuk|bitch|dick|fag|negr|sukibl|blyat|blyad|govno|govna|dildo|kokain|kanabis|narko|nekushay/;
 /* ===================================================== */
 
 const cv = document.getElementById('c'), g = cv.getContext('2d');
@@ -97,12 +106,20 @@ let houses = [], FREE = null, EMPTY = [], walkers = [];
 function buildCity(list) { // list: [{nick, recipe}]
   houses = list.map((r, i) => { const h = CityHouse.build(r.nick, r.recipe, cells[i], i); h.key = norm(r.nick); h.label = HIDE.test(h.key) && !/^user\d+$/.test(h.key) ? 'Житель №' + (i + 1) : r.nick; h.appear = T + 0.2 + Math.min(i, 60) * 0.04; return h; });
   FREE = cells[houses.length]; EMPTY = cells.slice(houses.length + 1, houses.length + 13);
+  buildNature(houses.length + 13);
   document.getElementById('cnt').textContent = houses.length;
   walkers = []; const r = rnd(7), span = Math.ceil(Math.sqrt(houses.length + 20)) + 4;
-  for (let i = 0; i < Math.min(90, 8 + houses.length * 2); i++) {
-    const alongX = r() < 0.5, line = Math.round((r() * 2 - 1) * span / 3) * 3 + (r() < .5 ? 0.28 : -0.28);
-    walkers.push({ alongX, line, pos: (r() * 2 - 1) * span, dir: r() < .5 ? 1 : -1, sp: 0.5 + r() * 0.5, span, ph: r() * 6,
-      col: ['#ff6b8a', '#ffd166', '#6ee7b7', '#7cc8ff', '#c084fc', '#ff9f68'][(r() * 6) | 0], nick: houses.length ? houses[(r() * houses.length) | 0].label : '' });
+  const SHIRT = ['#ff6b8a', '#ffd166', '#6ee7b7', '#7cc8ff', '#c084fc', '#ff9f68', '#f1f3f5', '#ff4d4d', '#20c997', '#4c6ef5'];
+  const PANTS = ['#343a60', '#495057', '#1c3d6e', '#5c3d2e', '#2b2b2b', '#6c757d'];
+  const SKIN = ['#f6d2b5', '#eac0a0', '#d9a47c', '#b07a52', '#8a5a3b'];
+  const HAIR = ['#2b1d14', '#4a2f1b', '#8b5a2b', '#e0b14a', '#111111', '#c0392b', '#e8e8e8', '#ff7eb6', '#4dabf7'];
+  const pick = a => a[(r() * a.length) | 0];
+  for (let i = 0; i < Math.min(140, 8 + houses.length * 2); i++) {
+    const alongX = r() < 0.5, line = Math.round((r() * 2 - 1) * span / 3) * 3 + (r() < .5 ? 0.38 : -0.38);
+    const hv = r();
+    walkers.push({ alongX, line, pos: (r() * 2 - 1) * span, dir: r() < .5 ? 1 : -1, sp: 0.45 + r() * 0.45, span, ph: r() * 6,
+      col: pick(SHIRT), pants: pick(PANTS), skin: pick(SKIN), hair: pick(HAIR), style: hv < .3 ? 'cap' : hv < .55 ? 'long' : hv < .62 ? 'beanie' : 'short', capCol: pick(SHIRT), size: 1.35 + r() * .25,
+      nick: houses.length ? houses[(r() * houses.length) | 0].label : '' });
   }
 }
 async function loadCity() {
@@ -128,6 +145,83 @@ const TW = 64, TH = 32, HZ = 30;
 function P(wx, wy, wz = 0) { const z = cam.z; return [W / 2 + ((wx - cam.x) - (wy - cam.y)) * TW / 2 * z, H * 0.56 + ((wx - cam.x) + (wy - cam.y)) * TH / 2 * z - wz * HZ * z]; }
 function poly(pts, fill) { g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.closePath(); g.fillStyle = fill; g.fill(); }
 const stars = Array.from({ length: 160 }, (_, i) => { const r = rnd(i * 31 + 5); return [r(), r() * 0.6, 0.5 + r() * 1.6, r() * 6]; });
+// ---------- день и ночь по Москве (?time=day|night — для проверки) ----------
+const hx = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+const mixc = (a, b, t) => { const A = hx(a), B = hx(b); return `rgb(${A.map((v, i) => Math.round(v + (B[i] - v) * t)).join(',')})`; };
+const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+const FORCE = new URLSearchParams(location.search).get('time');
+function dayAmount() {
+  if (FORCE === 'day') return 1; if (FORCE === 'night') return 0;
+  const d = new Date(), h = (d.getUTCHours() + 3) % 24 + d.getUTCMinutes() / 60;
+  return sstep(7.5, 9, h) * (1 - sstep(16, 17.5, h));
+}
+const glow = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'); const gr = x.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,214,140,.9)'); gr.addColorStop(.4, 'rgba(255,190,110,.35)'); gr.addColorStop(1, 'rgba(255,190,110,0)'); x.fillStyle = gr; x.fillRect(0, 0, 64, 64); return c; })();
+let TREES = [], CARS = [];
+function buildNature(built) {
+  TREES = []; const r = rnd(99);
+  for (let i = built; i < cells.length; i++) { const v = r(); if (v < 0.5) TREES.push({ x: cells[i][0] + .25 + r() * .5, y: cells[i][1] + .25 + r() * .5, s: .7 + r() * .6, k: r() < .3 ? 1 : 0 }); }
+  CARS = []; const span = Math.ceil(Math.sqrt(built + 20)) + 6, cr = rnd(5);
+  const COLS = ['#ff4d6d', '#4dabf7', '#ffd43b', '#f8f9fa', '#63e6be', '#9775fa', '#ff922b'];
+  for (let i = 0; i < Math.min(60, 10 + built / 25); i++) {
+    const alongX = cr() < .5, dir = cr() < .5 ? 1 : -1;
+    CARS.push({ alongX, dir, line: Math.round((cr() * 2 - 1) * span / 3) * 3 + (dir > 0 ? .25 : -.25), pos: (cr() * 2 - 1) * span, sp: 1.2 + cr() * 1.3, span, col: COLS[(cr() * COLS.length) | 0] });
+  }
+}
+function drawPerson(o, b, night) {
+  const s = cam.z * o.size, w = T * o.sp * 9 + o.ph, sw = Math.sin(w), bob = Math.abs(Math.cos(w)) * 1.1 * s;
+  const face = o.alongX ? o.dir : -o.dir; // +1 смотрит вправо, -1 влево
+  const dark = c => night > .5 ? mixc(c, '#1a1640', .25) : c;
+  const x = b[0], y = b[1] - bob, hip = y - 8 * s, sh = y - 15 * s;
+  g.lineCap = 'round';
+  g.fillStyle = 'rgba(0,0,15,.32)'; g.beginPath(); g.ellipse(b[0], b[1], 5 * s, 2 * s, 0, 0, 7); g.fill();
+  // дальняя рука и нога
+  g.strokeStyle = dark(mixc(o.pants, '#000000', .25)); g.lineWidth = 2.6 * s; g.beginPath(); g.moveTo(x, hip); g.lineTo(x - sw * 3 * s, y); g.stroke();
+  g.strokeStyle = dark(mixc(o.col, '#000000', .25)); g.lineWidth = 2.2 * s; g.beginPath(); g.moveTo(x, sh + s); g.lineTo(x + sw * 3 * s, sh + 6 * s); g.stroke();
+  // ближняя нога
+  g.strokeStyle = dark(o.pants); g.lineWidth = 2.6 * s; g.beginPath(); g.moveTo(x, hip); g.lineTo(x + sw * 3 * s, y); g.stroke();
+  g.fillStyle = dark('#222'); g.beginPath(); g.ellipse(x + sw * 3 * s + face * .8 * s, y, 1.8 * s, 1 * s, 0, 0, 7); g.fill();
+  // тело
+  g.fillStyle = dark(o.col); g.beginPath(); g.roundRect(x - 3.6 * s, sh - 1 * s, 7.2 * s, 10 * s, 2.6 * s); g.fill();
+  // ближняя рука
+  g.strokeStyle = dark(o.col); g.lineWidth = 2.2 * s; g.beginPath(); g.moveTo(x, sh + s); g.lineTo(x - sw * 3 * s, sh + 6 * s); g.stroke();
+  g.fillStyle = dark(o.skin); g.beginPath(); g.arc(x - sw * 3 * s, sh + 6.6 * s, 1.2 * s, 0, 7); g.fill();
+  // голова
+  const hx = x + face * .4 * s, hy = sh - 4.2 * s;
+  if (o.style === 'long') { g.fillStyle = dark(o.hair); g.beginPath(); g.roundRect(hx - 4 * s, hy - 3 * s, 8 * s, 8 * s, 3 * s); g.fill(); }
+  g.fillStyle = dark(o.skin); g.beginPath(); g.arc(hx, hy, 3.6 * s, 0, 7); g.fill();
+  g.fillStyle = dark(o.hair);
+  if (o.style === 'cap') {
+    g.fillStyle = dark(o.capCol); g.beginPath(); g.arc(hx, hy - .6 * s, 3.8 * s, Math.PI, 2 * Math.PI); g.fill();
+    g.beginPath(); g.ellipse(hx + face * 3.4 * s, hy - .6 * s, 2.6 * s, .9 * s, 0, 0, 7); g.fill();
+  } else if (o.style === 'beanie') {
+    g.fillStyle = dark(o.capCol); g.beginPath(); g.arc(hx, hy - .4 * s, 3.9 * s, Math.PI * 1.02, Math.PI * 1.98); g.fill(); g.fillRect(hx - 3.9 * s, hy - 1.2 * s, 7.8 * s, 1.4 * s);
+    g.beginPath(); g.arc(hx, hy - 4.6 * s, 1.2 * s, 0, 7); g.fill();
+  } else { g.beginPath(); g.arc(hx, hy - .8 * s, 3.8 * s, Math.PI * 1.05, Math.PI * 1.95); g.fill(); g.fillRect(hx - face * 3.6 * s - (face > 0 ? 0 : 1.2 * s), hy - 1.4 * s, 1.2 * s, 2.4 * s); }
+  if (s > .8) { g.fillStyle = '#1a1238'; g.beginPath(); g.arc(hx + face * 1.8 * s, hy + .2 * s, .55 * s, 0, 7); g.fill(); }
+  o.head = [hx, hy - 5 * s];
+}
+function drawTree(t, night) {
+  const b = P(t.x, t.y), z = cam.z, s = t.s * z;
+  g.fillStyle = 'rgba(0,0,15,.3)'; g.beginPath(); g.ellipse(b[0] + 3 * s, b[1] + 1 * s, 9 * s, 4 * s, 0, 0, 7); g.fill();
+  g.fillStyle = mixc('#6b4a2b', '#3a2a24', night); g.fillRect(b[0] - 1.5 * s, b[1] - 9 * s, 3 * s, 9 * s);
+  if (t.k) { // ёлка
+    g.fillStyle = mixc('#2f9e44', '#14532d', night);
+    for (let j = 0; j < 3; j++) { const y0 = b[1] - 8 * s - j * 7 * s, w = (10 - j * 2.5) * s; g.beginPath(); g.moveTo(b[0] - w, y0); g.lineTo(b[0] + w, y0); g.lineTo(b[0], y0 - 12 * s); g.closePath(); g.fill(); }
+  } else {
+    g.fillStyle = mixc('#51cf66', '#1d5a3a', night); g.beginPath(); g.arc(b[0], b[1] - 16 * s, 9 * s, 0, 7); g.fill();
+    g.fillStyle = mixc('#8ce99a', '#2b7a4b', night); g.beginPath(); g.arc(b[0] - 3 * s, b[1] - 19 * s, 4.5 * s, 0, 7); g.fill();
+  }
+}
+function drawCar(c, night) {
+  const L = .32, Wd = .16, hz = .16, x = c.wx, y = c.wy;
+  const [x0, x1, y0, y1] = c.alongX ? [x - L, x + L, y - Wd, y + Wd] : [x - Wd, x + Wd, y - L, y + L];
+  poly([P(x1, y0), P(x1, y1), P(x1, y1, hz), P(x1, y0, hz)], mixc(c.col, '#202040', .45));
+  poly([P(x0, y1), P(x1, y1), P(x1, y1, hz), P(x0, y1, hz)], mixc(c.col, '#202040', .25));
+  poly([P(x0, y0, hz), P(x1, y0, hz), P(x1, y1, hz), P(x0, y1, hz)], c.col);
+  const ix = c.alongX ? .12 : 0, iy = c.alongX ? 0 : .12;
+  poly([P(x0 + ix + .02, y0 + iy + .02, hz + .1), P(x1 - ix - .02, y0 + iy + .02, hz + .1), P(x1 - ix - .02, y1 - iy - .02, hz + .1), P(x0 + ix + .02, y1 - iy - .02, hz + .1)], mixc('#d0ebff', '#3b4a7a', night));
+  if (night > .3) { const fx = c.alongX ? (c.dir > 0 ? x1 : x0) : x, fy = c.alongX ? y : (c.dir > 0 ? y1 : y0); const p = P(fx, fy, .08); g.globalAlpha = night * .8; g.drawImage(glow, p[0] - 14 * cam.z, p[1] - 14 * cam.z, 28 * cam.z, 28 * cam.z); g.globalAlpha = 1; }
+}
 function pill(x, y, text, big, gold) {
   g.font = `${big ? 800 : 600} ${big ? 15 : 12}px ${big ? 'Unbounded' : 'Inter'}, sans-serif`;
   const w = g.measureText(text).width + (big ? 22 : 14), h = big ? 28 : 22;
@@ -141,33 +235,39 @@ let hi = null, hiT = 0, last = performance.now(), T = 0;
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now; T += dt;
   const k = 1 - Math.pow(0.0015, dt); cam.x += (cam.tx - cam.x) * k; cam.y += (cam.ty - cam.y) * k; cam.z += (cam.tz - cam.z) * k;
-  const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, '#060a22'); gr.addColorStop(.5, '#191545'); gr.addColorStop(1, '#3b2c72');
+  const day = dayAmount(), night = 1 - day; window.CITY_DAY = day;
+  const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, mixc('#060a22', '#4dabf7', day)); gr.addColorStop(.5, mixc('#191545', '#a5d8ff', day)); gr.addColorStop(1, mixc('#3b2c72', '#e7f5ff', day));
   g.fillStyle = gr; g.fillRect(0, 0, W, H);
-  for (const s of stars) { g.globalAlpha = .4 + .4 * Math.sin(T * 2 + s[3]); g.fillStyle = '#fff'; g.fillRect(s[0] * W, s[1] * H, s[2], s[2]); } g.globalAlpha = 1;
+  if (night > .05) { for (const s of stars) { g.globalAlpha = (.4 + .4 * Math.sin(T * 2 + s[3])) * night; g.fillStyle = '#fff'; g.fillRect(s[0] * W, s[1] * H, s[2], s[2]); } g.globalAlpha = 1; }
+  { const sx = W * .82, sy = H * .2; if (day > .5) { g.globalAlpha = .35; g.drawImage(glow, sx - 70, sy - 70, 140, 140); g.globalAlpha = 1; g.fillStyle = '#fff3bf'; g.beginPath(); g.arc(sx, sy, 22, 0, 7); g.fill(); } else { g.fillStyle = '#fff6dc'; g.beginPath(); g.arc(sx, sy, 18, 0, 7); g.fill(); g.fillStyle = mixc('#191545', '#a5d8ff', day); g.beginPath(); g.arc(sx + 8, sy - 5, 15, 0, 7); g.fill(); } }
+  const ROAD = mixc('#1b1f3a', '#8a90a6', day), GRASS = mixc('#20423f', '#74c476', day), DASH = day > .5 ? 'rgba(255,255,255,.75)' : 'rgba(217,207,134,.45)';
   const R = Math.ceil(Math.max(W, H) / (TH * cam.z)) + 2, bx = Math.round(cam.x), by = Math.round(cam.y);
   for (let x = bx - R; x <= bx + R; x++) for (let y = by - R; y <= by + R; y++) {
     const c = P(x + .5, y + .5); if (c[0] < -80 || c[0] > W + 80 || c[1] < -60 || c[1] > H + 60) continue;
     const road = isRoad(x, y);
-    poly([P(x, y), P(x + 1, y), P(x + 1, y + 1), P(x, y + 1)], road ? '#1b1f3a' : '#20423f');
+    poly([P(x, y), P(x + 1, y), P(x + 1, y + 1), P(x, y + 1)], road ? ROAD : GRASS);
     if (road && cam.z > .6 && ((x + y) & 1) && ((((x % 3) + 3) % 3 === 0) !== (((y % 3) + 3) % 3 === 0))) {
-      const vx = ((x % 3) + 3) % 3 === 0; g.strokeStyle = 'rgba(217,207,134,.45)'; g.lineWidth = 2 * cam.z; g.beginPath();
+      const vx = ((x % 3) + 3) % 3 === 0; g.strokeStyle = DASH; g.lineWidth = 2 * cam.z; g.beginPath();
       const a = vx ? P(x + .5, y + .3) : P(x + .3, y + .5), b = vx ? P(x + .5, y + .7) : P(x + .7, y + .5); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke();
     }
   }
+  if (night > .2) { g.globalAlpha = night * .55; for (let x = Math.floor((bx - R) / 3) * 3; x <= bx + R; x += 3) for (let y = Math.floor((by - R) / 3) * 3; y <= by + R; y += 3) { const p = P(x + .5, y + .5); if (p[0] < -60 || p[0] > W + 60 || p[1] < -60 || p[1] > H + 60) continue; const r = 46 * cam.z; g.drawImage(glow, p[0] - r, p[1] - r * .6, r * 2, r * 1.2); } g.globalAlpha = 1; }
   const outline = (c, col, a) => { g.globalAlpha = a; g.strokeStyle = col; g.lineWidth = 2; g.beginPath(); [P(c[0] + .12, c[1] + .12), P(c[0] + .88, c[1] + .12), P(c[0] + .88, c[1] + .88), P(c[0] + .12, c[1] + .88)].forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.closePath(); g.stroke(); g.globalAlpha = 1; };
   EMPTY.forEach(c => outline(c, '#5ef2ff', .45));
   if (FREE) outline(FREE, '#ffd23f', .6 + .4 * Math.sin(T * 5));
   const items = houses.map(h => [h.x + h.y + 1, 0, h]);
   for (const w of walkers) { let p = w.pos + w.dir * w.sp * T; p = ((p + w.span) % (2 * w.span) + 2 * w.span) % (2 * w.span) - w.span; w.wx = w.alongX ? p : w.line; w.wy = w.alongX ? w.line : p; items.push([w.wx + w.wy, 1, w]); }
+  for (const t of TREES) { const p = P(t.x, t.y); if (p[0] < -40 || p[0] > W + 40 || p[1] < -60 || p[1] > H + 40) continue; items.push([t.x + t.y, 2, t]); }
+  for (const c of CARS) { let p = c.pos + c.dir * c.sp * T; p = ((p + c.span) % (2 * c.span) + 2 * c.span) % (2 * c.span) - c.span; c.wx = c.alongX ? p : c.line; c.wy = c.alongX ? c.line : p; items.push([c.wx + c.wy, 3, c]); }
   items.sort((a, b) => a[0] - b[0]);
   for (const [, type, o] of items) {
+    if (type === 2) { drawTree(o, night); continue; }
+    if (type === 3) { const p = P(o.wx, o.wy); if (p[0] > -30 && p[0] < W + 30 && p[1] > -30 && p[1] < H + 30) drawCar(o, night); continue; }
     if (type === 0) { const c = P(o.x + .5, o.y + .5); if (c[0] < -100 || c[0] > W + 100 || c[1] < -180 || c[1] > H + 80) { o.apex = null; continue; } CityHouse.draw(g, P, o, T, cam.z); }
     else {
-      const b = P(o.wx, o.wy), z = cam.z, bob = Math.abs(Math.sin(T * 6 + o.ph)) * 2 * z;
-      if (b[0] < -20 || b[0] > W + 20 || b[1] < -20 || b[1] > H + 20) continue;
-      g.fillStyle = o.col; g.beginPath(); g.roundRect(b[0] - 3 * z, b[1] - 14 * z - bob, 6 * z, 11 * z, 3 * z); g.fill();
-      g.fillStyle = '#f6d2b5'; g.beginPath(); g.arc(b[0], b[1] - 17 * z - bob, 3 * z, 0, 7); g.fill();
-      o.head = [b[0], b[1] - 21 * z - bob];
+      const b = P(o.wx, o.wy);
+      if (b[0] < -30 || b[0] > W + 30 || b[1] < -40 || b[1] > H + 30) continue;
+      drawPerson(o, b, night);
     }
   }
   if (FREE) { const p = P(FREE[0] + .5, FREE[1] + .5, .3); pill(p[0], p[1], 'СВОБОДНО', true, true); }
@@ -212,9 +312,13 @@ function focus(h, fly = true) {
 function showFree() {
   hi = null; if (FREE) { cam.tx = FREE[0] + .5; cam.ty = FREE[1] + .5; cam.tz = 1.8; }
   document.getElementById('cnick').textContent = 'Участок свободен';
-  document.getElementById('csub').textContent = 'Подай заявку — и здесь вырастет дом с твоим ником.';
+  document.getElementById('csub').textContent = 'Подпишись на ' + TIKTOK_NICK + ' — и здесь вырастет дом с твоим ником.';
   card.classList.add('show');
 }
+document.getElementById('cshare').onclick = async e => {
+  const url = location.origin + location.pathname + location.hash, text = hi ? `Мой дом в Городе подписчиков: ${hi.label} 🏠` : 'Город подписчиков 🏙';
+  try { if (navigator.share) { await navigator.share({ title: 'Город подписчиков', text, url }); return; } await navigator.clipboard.writeText(url); e.target.textContent = 'ССЫЛКА СКОПИРОВАНА'; setTimeout(() => e.target.textContent = 'ПОДЕЛИТЬСЯ', 1800); } catch (_) {}
+};
 document.getElementById('cclose').onclick = () => { card.classList.remove('show'); hi = null; history.replaceState(null, '', location.pathname); };
 document.getElementById('f').addEventListener('submit', e => {
   e.preventDefault(); const q = norm(document.getElementById('q').value); if (!q) return;
@@ -268,6 +372,19 @@ async function sendApply() {
 }
 document.getElementById('cta').onclick = openApply;
 
+// ---------- выборы мэра (election.json) ----------
+async function loadElection() {
+  let E = null; try { const r = await fetch('election.json?v=' + Date.now()); if (r.ok) E = await r.json(); } catch (e) {}
+  if (!E || !E.stage) return;
+  const chip = document.createElement('button'); chip.className = 'chip'; chip.textContent = E.chip || '🗳 ВЫБОРЫ МЭРА'; document.getElementById('chips').appendChild(chip);
+  chip.onclick = () => {
+    const cands = (E.candidates || []).map((c, i) => `<div class="cand"><b>${i + 1}</b><div><div class="n">@${esc(norm(c.nick))}</div><div class="p">${esc(c.promise || '')}</div></div></div>`).join('');
+    sheet.innerHTML = `<h2>${esc(E.title || 'Выборы мэра')}</h2><p>${esc(E.text || '')}</p>${cands}${E.until ? `<p>⏳ До: <b>${esc(E.until)}</b></p>` : ''}
+      <div class="btns">${E.link ? `<a class="btn" href="${esc(E.link)}" target="_blank" rel="noopener">${esc(E.button || 'УЧАСТВОВАТЬ')}</a>` : ''}<button class="ghost" id="eclose" type="button">ЗАКРЫТЬ</button></div>`;
+    modal.classList.add('show'); document.getElementById('eclose').onclick = () => modal.classList.remove('show');
+  };
+}
+loadElection();
 loadCity().then(() => {
   if (location.hash.length > 1) { const k = norm(decodeURIComponent(location.hash.slice(1))); const h = houses.find(x => x.key === k); if (h) setTimeout(() => focus(h), 600); }
 });

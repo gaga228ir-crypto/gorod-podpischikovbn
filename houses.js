@@ -113,7 +113,7 @@
       for (let f = 0; f < floors; f++) for (let c = 0; c < cols; c++) {
         const v0 = (f + 0.3) * hh / floors, v1 = (f + 0.75) * hh / floors;
         const u0 = cols === 2 ? 0.18 + c * 0.38 : 0.35, u1 = u0 + (cols === 2 ? 0.22 : 0.3);
-        const col = hs.lit[(f * 2 + c) % 12] ? win : '#2a3156';
+        const day = window.CITY_DAY || 0, col = day > 0.5 ? (hs.lit[(f * 2 + c) % 12] ? '#bfe3ff' : '#8fb6d9') : (hs.lit[(f * 2 + c) % 12] ? win : '#2a3156');
         poly([P(x1 + .001, y0 + (y1 - y0) * u0, v0), P(x1 + .001, y0 + (y1 - y0) * u1, v0), P(x1 + .001, y0 + (y1 - y0) * u1, v1), P(x1 + .001, y0 + (y1 - y0) * u0, v1)], col);
         poly([P(x0 + (x1 - x0) * u0, y1 + .001, v0), P(x0 + (x1 - x0) * u1, y1 + .001, v0), P(x0 + (x1 - x0) * u1, y1 + .001, v1), P(x0 + (x1 - x0) * u0, y1 + .001, v1)], col);
       }
