@@ -755,6 +755,20 @@ async def build_ai(bot, oid):
                 log.warning("ai notify: %s", e)
 
 
+@r.message(Command("ai"))
+async def ai_cmd(m: Message, bot: Bot):
+    """/ai — показать заказы «дом по описанию» с кнопками (если кнопки потерялись)."""
+    if not is_admin(m.from_user.id):
+        return
+    rows = [o for st in ("paid", "review") for o in await db.ai_list(st)]
+    if not rows:
+        await m.answer("Активных заказов «дом по описанию» нет.")
+        return
+    for o in rows:
+        await m.answer(f"✨ <b>Заказ #{o['id']}</b> · @{o['nick']} · {o['status']}\n«{o['text'][:200]}»",
+                       reply_markup=ai_kb(o["id"]))
+
+
 @r.callback_query(F.data.startswith("ai_"))
 async def ai_decide(c: CallbackQuery, bot: Bot):
     if not is_admin(c.from_user.id):
