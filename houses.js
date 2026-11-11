@@ -171,5 +171,13 @@
     hs.apex = P(cx, cy, apexZ);
   }
 
-  window.CityHouse = { build, draw, normRecipe, SHAPES, EMBLEMS, LIGHTS: Object.keys(LIGHTS) };
+  // 5 бесплатных вариантов (бот использует те же номера 0..4)
+  const PRESETS = [
+    { name: 'Уютный домик', r: { shape: 'house', floors: 2, wall: '#ffcf4a', roof: '#d1404f', emblem: 'none', lights: 'warm' } },
+    { name: 'Морской', r: { shape: 'house', floors: 1, wall: '#7cc8ff', roof: '#374070', emblem: 'star', lights: 'cool' } },
+    { name: 'Башенка', r: { shape: 'tower', floors: 3, wall: '#86d4c8', roof: '#2f7a6b', emblem: 'leaf', lights: 'green' } },
+    { name: 'Купол', r: { shape: 'dome', floors: 2, wall: '#f7a8d0', roof: '#6b3fa0', emblem: 'heart', lights: 'pink' } },
+    { name: 'Высотка', r: { shape: 'skyscraper', floors: 3, wall: '#c9a0e8', roof: '#3d5a99', emblem: 'none', lights: 'cool' } },
+  ];
+  window.CityHouse = { build, draw, normRecipe, SHAPES, EMBLEMS, LIGHTS: Object.keys(LIGHTS), PRESETS };
 })();

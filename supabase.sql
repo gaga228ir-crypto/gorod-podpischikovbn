@@ -38,14 +38,11 @@ alter table public.residents enable row level security;
 -- могут лишь ДОБАВИТЬ заявку. Менять и удалять ничего не могут.
 revoke all on public.residents from anon;
 grant select (id, nick, recipe, status, approved_at) on public.residents to anon;
-grant insert (nick, wish, code) on public.residents to anon;
 
 drop policy if exists anon_read on public.residents;
 create policy anon_read on public.residents for select to anon using (status = 'approved');
 
-drop policy if exists anon_apply on public.residents;
-create policy anon_apply on public.residents for insert to anon
-  with check (status = 'pending' and recipe is null and approved_at is null);
+drop policy if exists anon_apply on public.residents; -- заявки принимает только бот
 
 -- Админ (ты, после входа на admin.html): полный доступ.
 grant select, insert, update, delete on public.residents to authenticated;
@@ -53,3 +50,21 @@ drop policy if exists admin_all on public.residents;
 create policy admin_all on public.residents for all to authenticated
   using ((auth.jwt() ->> 'email') = 'ТВОЙ_EMAIL')
   with check ((auth.jwt() ->> 'email') = 'ТВОЙ_EMAIL');
+
+-- ===== Для ТГ-бота (запусти и этот блок; повторный запуск безопасен) =====
+alter table public.residents add column if not exists tg_id bigint;
+alter table public.residents add column if not exists claimed boolean not null default false;
+create index if not exists residents_tg on public.residents (tg_id);
+
+-- Оплаты звёздами за кастомизацию (видит только бот через service_role)
+create table if not exists public.payments (
+  id         bigint generated always as identity primary key,
+  tg_id      bigint not null,
+  nick       text not null,
+  stars      int not null,
+  charge_id  text not null unique,
+  recipe     jsonb not null,
+  created_at timestamptz not null default now()
+);
+alter table public.payments enable row level security;
+revoke all on public.payments from anon, authenticated;

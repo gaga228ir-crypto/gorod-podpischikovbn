@@ -10,8 +10,8 @@
 :root{--bg:#070b24;--panel:rgba(12,8,36,.86);--gold:#ffd23f;--pink:#ff3d7f;--cyan:#5ef2ff;--text:#fff;--muted:#bdb6ea}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:Inter,system-ui,sans-serif;overflow:hidden;touch-action:none}
-canvas{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:grab}
-canvas.drag{cursor:grabbing}
+#c{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:grab}
+#c.drag{cursor:grabbing}
 .top{position:fixed;left:0;right:0;top:0;padding:14px 16px 12px;background:linear-gradient(var(--panel),rgba(12,8,36,0));display:flex;flex-direction:column;gap:10px;z-index:2}
 .title{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .title h1{margin:0;font:800 18px/1.1 Unbounded,sans-serif;letter-spacing:.02em}
@@ -40,6 +40,18 @@ button.ghost{background:rgba(255,255,255,.12)}
 .cand b{font:800 18px Unbounded,sans-serif;color:var(--gold);min-width:26px}
 .cand .n{font:800 14px Unbounded,sans-serif}
 .cand .p{color:var(--muted);font-size:14px}
+.studio{display:flex;flex-direction:column;gap:12px}
+.studio canvas{display:block;margin:0 auto;width:200px;height:200px;border-radius:18px;background:#191545}
+.tabs{display:flex;gap:6px;background:rgba(255,255,255,.06);padding:4px;border-radius:999px}
+.tabs button{flex:1;background:transparent;padding:10px 6px;font-size:11px}
+.tabs button.on{background:var(--pink)}
+.row{display:flex;flex-direction:column;gap:6px}
+.row>span{font:600 12px Inter,sans-serif;color:var(--muted)}
+.opts{display:flex;gap:6px;flex-wrap:wrap}
+.opt{border:2px solid transparent;background:rgba(255,255,255,.08);color:#fff;border-radius:12px;padding:8px 10px;font:600 13px Inter,sans-serif;cursor:pointer}
+.opt.on{border-color:var(--gold)}
+.sw{width:34px;height:34px;padding:0;border-radius:50%}
+.pre{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
 .hint{position:fixed;left:16px;bottom:24px;font:500 12px Inter,sans-serif;color:var(--muted);z-index:2;opacity:.8}
 @media (max-width:520px){.hint{display:none}}
 .modal{position:fixed;inset:0;background:rgba(5,3,20,.6);backdrop-filter:blur(4px);z-index:5;display:none;align-items:flex-end;justify-content:center}
@@ -65,17 +77,20 @@ button.ghost{background:rgba(255,255,255,.12)}
   <div class="chips" id="chips"></div>
   <div class="msg" id="msg"></div>
 </div>
-<div class="card" id="card"><div class="grow"><div class="nick" id="cnick"></div><div class="sub" id="csub"></div></div><button class="share" id="cshare">ПОДЕЛИТЬСЯ</button><button id="cclose" aria-label="Закрыть">✕</button></div>
+<div class="card" id="card"><div class="grow"><div class="nick" id="cnick"></div><div class="sub" id="csub"></div></div><button class="share" id="cedit" style="display:none;background:var(--pink);color:#fff">🎨 ИЗМЕНИТЬ</button><button class="share" id="cshare">ПОДЕЛИТЬСЯ</button><button id="cclose" aria-label="Закрыть">✕</button></div>
 <button class="btn cta" id="cta">🏠 ПОЛУЧИТЬ ДОМ</button>
 <div class="hint">Тяни — двигать город · колесо — приблизить</div>
 
 <div class="modal" id="modal"><div class="sheet" id="sheet"></div></div>
 
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="houses.js"></script>
 <script>
 /* ===================== НАСТРОЙКИ ===================== */
 const TIKTOK_URL = 'https://www.tiktok.com/@eben51041';
 const TIKTOK_NICK = '@eben51041';
+const BOT_URL = ''; // например 'https://t.me/gorod_podpischikov_bot' — кнопка «Получить дом» ведёт сюда
+const CUSTOM_PRICE = 10;
 // Из Supabase → Project Settings → API. Пока пусто — город берёт ники из списка ниже.
 const SUPABASE_URL = '';
 const SUPABASE_ANON_KEY = '';
@@ -306,6 +321,7 @@ function focus(h, fly = true) {
   hi = h; hiT = T; if (fly) { cam.tx = h.x + .5; cam.ty = h.y + .5; cam.tz = 1.8; }
   document.getElementById('cnick').textContent = h.label;
   document.getElementById('csub').textContent = `Дом №${h.born + 1}${h.special ? ' · особый дом' : ''}`;
+  document.getElementById('cedit').style.display = (typeof TG !== 'undefined' && TG && h.key === ME) ? '' : 'none';
   card.classList.add('show'); history.replaceState(null, '', '#' + encodeURIComponent(h.key));
 }
 function showFree() {
@@ -318,6 +334,7 @@ document.getElementById('cshare').onclick = async e => {
   const url = location.origin + location.pathname + location.hash, text = hi ? `Мой дом в Городе подписчиков: ${hi.label} 🏠` : 'Город подписчиков 🏙';
   try { if (navigator.share) { await navigator.share({ title: 'Город подписчиков', text, url }); return; } await navigator.clipboard.writeText(url); e.target.textContent = 'ССЫЛКА СКОПИРОВАНА'; setTimeout(() => e.target.textContent = 'ПОДЕЛИТЬСЯ', 1800); } catch (_) {}
 };
+document.getElementById('cedit').onclick = () => openStudio();
 document.getElementById('cclose').onclick = () => { card.classList.remove('show'); hi = null; history.replaceState(null, '', location.pathname); };
 document.getElementById('f').addEventListener('submit', e => {
   e.preventDefault(); const q = norm(document.getElementById('q').value); if (!q) return;
@@ -369,7 +386,58 @@ async function sendApply() {
     <div class="btns"><button class="ghost" id="acopy" type="button">СКОПИРОВАТЬ</button><a class="btn" href="${TIKTOK_URL}" target="_blank" rel="noopener">В TIKTOK</a></div>`;
   document.getElementById('acopy').onclick = async e => { try { await navigator.clipboard.writeText('ДОМ-' + code); e.target.textContent = 'СКОПИРОВАНО'; } catch (_) {} };
 }
-document.getElementById('cta').onclick = openApply;
+document.getElementById('cta').onclick = () => { if (BOT_URL && !TG) { location.href = BOT_URL; return; } TG ? openStudio() : openApply(); };
+
+// ---------- Telegram мини-приложение: «Мой дом» ----------
+const tg = window.Telegram && window.Telegram.WebApp;
+const TG = !!(tg && tg.platform && tg.platform !== 'unknown');
+const ME = norm(new URLSearchParams(location.search).get('me') || '');
+const WALL_C = ['#ffcf4a', '#f28b82', '#a7d36f', '#7cc8ff', '#c9a0e8', '#f7a8d0', '#86d4c8', '#9aa3b5'];
+const ROOF_C = ['#d1404f', '#3d5a99', '#6b3fa0', '#2f7a6b', '#b8562f', '#374070'];
+const SHAPE_N = { house: 'Домик', tower: 'Башня', castle: 'Замок', skyscraper: 'Небоскрёб', dome: 'Купол', clocktower: 'Часы' };
+const EMB = { none: '✖', sun: '☀️', moon: '🌙', star: '⭐', heart: '❤️', clock: '🕐', crown: '👑', flame: '🔥', leaf: '🍃', lightning: '⚡', diamond: '💎', snake: '🐍' };
+const LIGHT_N = { warm: '🟡', cool: '🔵', pink: '🩷', green: '🟢' };
+let studio = { tab: 'free', preset: 0, r: { ...CityHouse.PRESETS[0].r } };
+function openStudio() {
+  if (!ME) { sheet.innerHTML = `<h2>Мой дом</h2><p>Сначала привяжи свой ник TikTok в боте — команда «🏠 Мой дом».</p><button class="ghost" onclick="modal.classList.remove('show')">ЗАКРЫТЬ</button>`; modal.classList.add('show'); return; }
+  const mine = houses.find(h => h.key === ME); if (mine && mine.special) studio.r = { ...mine.rec };
+  renderStudio(); modal.classList.add('show');
+}
+function renderStudio() {
+  const S = studio, R = S.r, opts = (key, list, fmt) => list.map(v => `<button class="opt ${R[key] === v ? 'on' : ''}" data-k="${key}" data-v="${v}">${fmt(v)}</button>`).join('');
+  const sw = (key, list) => list.map(v => `<button class="opt sw ${R[key] === v ? 'on' : ''}" data-k="${key}" data-v="${v}" style="background:${v}"></button>`).join('');
+  sheet.innerHTML = `<div class="studio"><h2>Мой дом · @${esc(ME)}</h2>
+    <canvas id="prev" width="440" height="440"></canvas>
+    <div class="tabs"><button data-tab="free" class="${S.tab === 'free' ? 'on' : ''}">БЕСПЛАТНО · 5</button><button data-tab="pro" class="${S.tab === 'pro' ? 'on' : ''}">КОНСТРУКТОР · ${CUSTOM_PRICE}⭐</button></div>
+    ${S.tab === 'free' ? `<div class="pre">${CityHouse.PRESETS.map((p, i) => `<button class="opt ${S.preset === i ? 'on' : ''}" data-pre="${i}">${esc(p.name)}</button>`).join('')}</div>` : `
+    <div class="row"><span>Форма</span><div class="opts">${opts('shape', CityHouse.SHAPES, v => SHAPE_N[v])}</div></div>
+    <div class="row"><span>Стены</span><div class="opts">${sw('wall', WALL_C)}</div></div>
+    <div class="row"><span>Крыша</span><div class="opts">${sw('roof', ROOF_C)}</div></div>
+    <div class="row"><span>Этажи</span><div class="opts">${opts('floors', [1, 2, 3, 4, 5, 6], v => v)}</div></div>
+    <div class="row"><span>Знак на фасаде</span><div class="opts">${opts('emblem', CityHouse.EMBLEMS, v => EMB[v])}</div></div>
+    <div class="row"><span>Свет в окнах</span><div class="opts">${opts('lights', CityHouse.LIGHTS, v => LIGHT_N[v])}</div></div>`}
+    <div class="err" id="serr"></div>
+    <div class="btns"><button class="ghost" id="sclose" type="button">ЗАКРЫТЬ</button><button id="sgo" type="button">${S.tab === 'free' ? 'ВЫБРАТЬ' : 'ОПЛАТИТЬ ' + CUSTOM_PRICE + ' ⭐'}</button></div></div>`;
+  sheet.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { S.tab = b.dataset.tab; if (S.tab === 'free') S.r = { ...CityHouse.PRESETS[S.preset].r }; renderStudio(); });
+  sheet.querySelectorAll('[data-pre]').forEach(b => b.onclick = () => { S.preset = +b.dataset.pre; S.r = { ...CityHouse.PRESETS[S.preset].r }; renderStudio(); });
+  sheet.querySelectorAll('[data-k]').forEach(b => b.onclick = () => { const k = b.dataset.k; R[k] = k === 'floors' ? +b.dataset.v : b.dataset.v; renderStudio(); });
+  document.getElementById('sclose').onclick = () => modal.classList.remove('show');
+  document.getElementById('sgo').onclick = () => {
+    const data = S.tab === 'free' ? { t: 'preset', i: S.preset } : { t: 'custom', r: CityHouse.normRecipe(R) };
+    try { tg.sendData(JSON.stringify(data)); } catch (e) { document.getElementById('serr').textContent = 'Открой город кнопкой «🏙 Открыть город» внизу чата с ботом — тогда выбор отправится.'; }
+  };
+  const cv2 = document.getElementById('prev'), g2 = cv2.getContext('2d');
+  const P2 = (x, y, z = 0) => [220 + ((x - .5) - (y - .5)) * 64 * 2.2, 300 + ((x - .5) + (y - .5)) * 32 * 2.2 - z * 30 * 2.2];
+  const hs = CityHouse.build('@' + ME, R, [0, 0], 0); hs.appear = -5;
+  const loop = () => { if (!cv2.isConnected) return; g2.fillStyle = '#191545'; g2.fillRect(0, 0, 440, 440);
+    g2.fillStyle = '#20423f'; g2.beginPath(); [P2(-.2, -.2), P2(1.2, -.2), P2(1.2, 1.2), P2(-.2, 1.2)].forEach((p, i) => i ? g2.lineTo(p[0], p[1]) : g2.moveTo(p[0], p[1])); g2.fill();
+    CityHouse.draw(g2, P2, hs, performance.now() / 1000, 2.2); requestAnimationFrame(loop); };
+  loop();
+}
+if (TG) {
+  try { tg.ready(); tg.expand(); } catch (e) {}
+  document.getElementById('cta').textContent = '🎨 МОЙ ДОМ';
+}
 
 // ---------- выборы мэра (election.json) ----------
 async function loadElection() {
@@ -385,6 +453,7 @@ async function loadElection() {
 }
 loadElection();
 loadCity().then(() => {
+  if (TG && ME) { const h = houses.find(x => x.key === ME); if (h) setTimeout(() => focus(h), 500); }
   if (location.hash.length > 1) { const k = norm(decodeURIComponent(location.hash.slice(1))); const h = houses.find(x => x.key === k); if (h) setTimeout(() => focus(h), 600); }
 });
 </script>

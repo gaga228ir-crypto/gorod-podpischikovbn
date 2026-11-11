@@ -73,7 +73,7 @@ def code_card(nick: str, code: str) -> bytes:
 
 
 def built_card(nick: str, number: int, special: bool) -> bytes:
-    im = _bg("avatar_raw.png" if False else "bg_day.jpg", 0.4, 0)
+    im = _bg("bg_day.jpg", 0.4, 0)
     d = ImageDraw.Draw(im)
     _pill(d, (70, 70), "ДОМ ПОСТРОЕН" if not special else "ОСОБЫЙ ДОМ ПОСТРОЕН", font("Unbounded", 26, 800), GOLD, INK)
     f = _fit(d, "@" + nick, "Unbounded", 800, 1140, 92)
@@ -85,7 +85,6 @@ def built_card(nick: str, number: int, special: bool) -> bytes:
 def election_card(title: str) -> bytes:
     im = _bg("bg_night.jpg", 0.6, 3)
     d = ImageDraw.Draw(im)
-    d.text((640, 260), "🗳", font=font("Inter", 20, 400), fill=WHITE)  # эмодзи шрифт не рисует — оставляем пусто
     d.text((640, 300), "ВЫБОРЫ МЭРА", font=font("Unbounded", 100, 800), fill=GOLD, anchor="mm")
     f = _fit(d, title, "Inter", 600, 1100, 44)
     d.text((640, 420), title, font=f, fill=WHITE, anchor="mm")
