@@ -82,7 +82,7 @@ async def generate(text: str, url: str, model: str) -> dict:
     last = "пустой ответ"
     async with httpx.AsyncClient(timeout=900, trust_env=False) as c:
         for attempt in range(4):
-            body = {"model": model, "messages": msgs, "stream": False, "keep_alive": "30m",
+            body = {"model": model, "messages": msgs, "stream": False, "keep_alive": "2h",
                     "options": {"temperature": 0.7 + 0.1 * attempt}}
             if attempt % 2 == 0:
                 body["format"] = "json"   # чётные попытки — строгий JSON, нечётные — свободный текст, JSON вытаскиваем сами
@@ -149,3 +149,15 @@ async def preview(recipe: dict, site_base: str) -> bytes:
         return await page.locator("#c").screenshot(type="png")
     finally:
         await ctx.close()
+
+
+async def warmup(url: str, model: str, log=None):
+    """Загрузить модель в память сразу при старте бота, чтобы первый заказ не ждал."""
+    try:
+        async with httpx.AsyncClient(timeout=600, trust_env=False) as c:
+            r = await c.post(url.rstrip("/") + "/api/generate", json={"model": model, "prompt": "", "keep_alive": "2h"})
+        if log:
+            log.info("ИИ: модель %s загружена (HTTP %s)", model, r.status_code)
+    except Exception as e:
+        if log:
+            log.warning("ИИ: не удалось загрузить модель %s: %s", model, e)

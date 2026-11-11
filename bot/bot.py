@@ -731,8 +731,10 @@ async def build_ai(bot, oid):
         o = await db.ai_get(oid)
         if not o or o["status"] not in ("paid", "review"):
             return
+        log.info("ИИ: собираю дом #%s (@%s) моделью %s…", oid, o["nick"], OLLAMA_MODEL)
         try:
             rec = await ai.generate(o["text"], OLLAMA_URL, OLLAMA_MODEL)
+            log.info("ИИ: дом #%s собран, деталей: %s — рисую превью", oid, len(rec["parts"]))
             png = await ai.preview(rec, SITE_BASE)
         except Exception as e:
             log.warning("ai %s: %s", oid, e)
@@ -809,8 +811,9 @@ async def ai_decide(c: CallbackQuery, bot: Bot):
 
 
 async def ai_resume(bot):
-    """После перезапуска — достроить оплаченные дома."""
-    await asyncio.sleep(20)
+    """При старте: сразу загрузить модель и достроить оплаченные дома."""
+    await asyncio.sleep(5)
+    await ai.warmup(OLLAMA_URL, OLLAMA_MODEL, log)
     for o in await db.ai_list("paid"):
         asyncio.create_task(build_ai(bot, o["id"]))
 
