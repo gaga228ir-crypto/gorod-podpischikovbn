@@ -74,7 +74,7 @@ def log_raw(text):
         pass
 
 
-async def generate(text: str, url: str, model: str) -> dict:
+async def generate(text: str, url: str, model: str, progress=None) -> dict:
     """→ рецепт {'shape':'custom','name','lights','parts'}; RuntimeError, если Ollama недоступна или ответ плохой."""
     msgs = [{"role": "system", "content": SYSTEM},
             {"role": "user", "content": EXAMPLE_USER}, {"role": "assistant", "content": json.dumps(EXAMPLE, ensure_ascii=False)},
@@ -86,34 +86,41 @@ async def generate(text: str, url: str, model: str) -> dict:
                     "options": {"temperature": 0.7 + 0.1 * attempt}}
             if attempt % 2 == 0:
                 body["format"] = "json"   # чётные попытки — строгий JSON, нечётные — свободный текст, JSON вытаскиваем сами
-            for wait in range(12):  # 503 = модель ещё грузится/качается — ждём до ~4 минут
+            body["stream"] = True
+            r = None
+            text_out, ntok, status, err = [], 0, 0, None
+            for wait in range(12):  # 503 = модель ещё грузится — ждём до ~4 минут
+                text_out, ntok, err = [], 0, None
                 try:
-                    r = await c.post(url.rstrip("/") + "/api/chat", json=body)
+                    async with c.stream("POST", url.rstrip("/") + "/api/chat", json=body) as resp:
+                        status = resp.status_code
+                        if status == 503:
+                            await resp.aread()
+                            log_raw(f"HTTP 503\n{resp.text[:500]}")
+                        else:
+                            async for line in resp.aiter_lines():
+                                try:
+                                    o = json.loads(line)
+                                except ValueError:
+                                    continue
+                                if o.get("error"):
+                                    err = o["error"]
+                                    break
+                                text_out.append((o.get("message") or {}).get("content") or "")
+                                ntok += 1
+                                if progress and ntok % 25 == 0:
+                                    await progress(f"нейросеть пишет… {ntok} шагов")
                 except httpx.HTTPError as e:
                     raise RuntimeError(f"Ollama не отвечает ({e.__class__.__name__}) — запущена ли она?")
-                if r.status_code != 503:
+                if status != 503:
                     break
-                log_raw(f"HTTP 503\n{r.text[:1000]}")
+                if progress:
+                    await progress(f"жду, пока загрузится модель… ({(wait + 1) * 20} с)")
                 await asyncio.sleep(20)
             else:
-                raise RuntimeError(f"Ollama отвечает 503: {r.text[:150]}")
-            rj = {}
-            try:
-                rj = r.json()
-            except ValueError:  # пришёл поток строк (NDJSON) — склеиваем ответ сами
-                chunks = []
-                for line in r.text.splitlines():
-                    try:
-                        o = json.loads(line)
-                    except ValueError:
-                        continue
-                    if o.get("error"):
-                        rj = {"error": o["error"]}
-                        break
-                    chunks.append((o.get("message") or {}).get("content") or "")
-                else:
-                    rj = {"message": {"content": "".join(chunks)}}
-            log_raw(f"HTTP {r.status_code}\n{r.text[:3000]}")
+                raise RuntimeError("Ollama всё время отвечает 503 (занята) — попробуй позже")
+            rj = {"error": err} if err else {"message": {"content": "".join(text_out)}}
+            log_raw(f"HTTP {status}\n" + ("".join(text_out)[:3000] or str(err)))
             if rj.get("error"):
                 if "not found" in rj["error"]:
                     raise RuntimeError(f"в Ollama нет модели {model} — она ещё скачивается (окно «Ollama: скачиваю модель»)")
@@ -121,11 +128,13 @@ async def generate(text: str, url: str, model: str) -> dict:
                 continue
             text = ((rj.get("message") or {}).get("content") or "").strip()
             if not text:
-                last = f"пустой ответ (HTTP {r.status_code}: {r.text[:120]!r})"
+                last = f"пустой ответ (HTTP {status})"
                 continue
             j = extract_json(text)
             if j is None:
                 last = "ответ без JSON: " + (text[:80] or "пусто")
+                if progress:
+                    await progress(f"вариант {attempt + 1} не разобрался, пробую ещё…")
                 continue
             parts = clean(j.get("parts") if isinstance(j, dict) else j)
             if len(parts) >= 3:

@@ -732,12 +732,36 @@ async def build_ai(bot, oid):
         if not o or o["status"] not in ("paid", "review"):
             return
         log.info("ИИ: собираю дом #%s (@%s) моделью %s…", oid, o["nick"], OLLAMA_MODEL)
+        pm, last_edit, t0 = {}, [0.0], time.time()
+        for a in ADMIN_IDS:
+            try:
+                pm[a] = await bot.send_message(a, f"⏳ Дом #{oid} (@{o['nick']}): начинаю сборку…")
+            except Exception:
+                pass
+
+        async def prog(stage):
+            if time.time() - last_edit[0] < 3:
+                return
+            last_edit[0] = time.time()
+            for a, msg in pm.items():
+                try:
+                    await msg.edit_text(f"⏳ Дом #{oid} (@{o['nick']}): {stage} · {int(time.time() - t0)} с")
+                except Exception:
+                    pass
+
         try:
-            rec = await ai.generate(o["text"], OLLAMA_URL, OLLAMA_MODEL)
+            rec = await ai.generate(o["text"], OLLAMA_URL, OLLAMA_MODEL, progress=prog)
             log.info("ИИ: дом #%s собран, деталей: %s — рисую превью", oid, len(rec["parts"]))
+            last_edit[0] = 0
+            await prog(f"собран ({len(rec['parts'])} деталей), рисую превью…")
             png = await ai.preview(rec, SITE_BASE)
         except Exception as e:
             log.warning("ai %s: %s", oid, e)
+            for msg in pm.values():
+                try:
+                    await msg.delete()
+                except Exception:
+                    pass
             for a in ADMIN_IDS:
                 try:
                     await bot.send_message(a, f"⚠️ Дом по описанию #{oid} (@{o['nick']}) не собрался: {e}\nОписание: «{o['text']}»",
@@ -747,6 +771,11 @@ async def build_ai(bot, oid):
                     pass
             return
         await db.ai_patch(oid, {"status": "review", "recipe": rec})
+        for msg in pm.values():
+            try:
+                await msg.delete()
+            except Exception:
+                pass
         for a in ADMIN_IDS:
             try:
                 await bot.send_photo(a, photo(png, "house.png"), reply_markup=ai_kb(oid), caption=(
