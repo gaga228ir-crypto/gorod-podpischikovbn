@@ -385,12 +385,12 @@ async def got_nick(m: Message, state: FSMContext):
     s = await subscribers()
     if nick in s["gone"]:
         await state.clear()
-        await m.answer(f"<b>@{nick}</b> отписался от TikTok — его дом сейчас заброшен 🏚\n\nПодпишись снова, и после ближайшего обновления (около 17:00 МСК) свет в доме вернётся. Потом нажми «🏠 Мой дом».",
+        await m.answer(f"<b>@{nick}</b> отписался от TikTok — его дом сейчас заброшен 🏚\n\nПодпишись снова, и в течение 2 часов свет в доме вернётся. Потом нажми «🏠 Мой дом».",
                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[IB(text="🎵 Подписаться", url=TIKTOK_URL)], [IB(text="🏠 Мой дом", callback_data="home")]]))
         return
     if nick not in s["set"]:
         await state.clear()
-        await m.answer(f"Не нашёл <b>@{nick}</b> среди жителей 🤔\n\nПодпишись на TikTok — новые жители заселяются каждый день около 17:00 МСК. Потом нажми «🏠 Мой дом» снова.",
+        await m.answer(f"Не нашёл <b>@{nick}</b> среди жителей 🤔\n\nПодпишись на TikTok — новые жители заселяются каждые 2 часа. Потом нажми «🏠 Мой дом» снова.",
                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[IB(text="🎵 Подписаться", url=TIKTOK_URL)], [IB(text="🏠 Мой дом", callback_data="home")]]))
         return
     owner = await db.by_nick(nick)
@@ -626,7 +626,7 @@ async def panel_media():
         rows.append([IB(text="👥 Обновить подписчиков сейчас", callback_data="adm:sync")])
     rows.append([IB(text="🔄 Обновить панель", callback_data="adm:home")])
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
-    return cards.admin_card(pend, special, len(s["list"])), cap, kb
+    return cards.admin_card(pend, special, len(s["set"])), cap, kb
 
 
 @r.message(Command("admin"))
@@ -698,7 +698,7 @@ async def decide(c: CallbackQuery, bot: Bot):
         await db.patch(row["id"], {"status": "rejected"})
         await c.answer("Отклонено")
         reason = act[2:] if len(act) > 2 else "code"
-        text = (f"Заявка на <b>@{row['nick']}</b> отклонена: ты не подписан на TikTok 😕\nПодпишись — после обновления города (около 17:00 МСК) нажми «🏠 Мой дом» снова."
+        text = (f"Заявка на <b>@{row['nick']}</b> отклонена: ты не подписан на TikTok 😕\nПодпишись — через 2 часа нажми «🏠 Мой дом» снова."
                 if reason == "sub" else
                 f"Заявка на <b>@{row['nick']}</b> отклонена: не нашли код ДОМ-{row['code']} 😕 Нажми «🏠 Мой дом» и попробуй ещё раз.")
         try:
