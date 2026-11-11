@@ -144,7 +144,7 @@ function makeChest() {
 }
 
 // ---------- здания-рубежи ----------
-function makeLandmark(type, locked, title) {
+export function makeLandmark(type, locked, title) {
   const G = new THREE.Group();
   if (locked) {
     const fm = flat('#ff9f1a', '#ff7a00', .5);
@@ -241,6 +241,7 @@ export class City3D {
     add(dm);
     // обычные дома: инстансы по этажности
     const regular = this.houses.filter(h => !h.recipe), special = this.houses.filter(h => h.recipe);
+    this.grow = []; const reg = (mesh, list) => { const base = list.map((_, i) => { const m = new THREE.Matrix4(); mesh.getMatrixAt(i, m); return m; }); this.grow.push({ mesh, list, base }); };
     this.pickables = [];
     const groups = new Map();
     for (const h of regular) { const rr = rnd(hash(h.key)); h.floors = rr() < .18 ? 3 + Math.floor(rr() * 2) : 1 + Math.floor(rr() * 2); h.wall = WALLS[(rr() * WALLS.length) | 0]; h.roof = ROOFS[(rr() * ROOFS.length) | 0]; h.rot = (rr() * 4 | 0) * Math.PI / 2; h.top = h.floors * FH + .34; if (!groups.has(h.floors)) groups.set(h.floors, []); groups.get(h.floors).push(h); }
@@ -250,27 +251,27 @@ export class City3D {
       const im = new THREE.InstancedMesh(bodyGeo(f), bodyMat('warm'), arr.length);
       arr.forEach((h, i) => { M.makeRotationY(h.rot); M.setPosition(h.x, .06, h.z); im.setMatrixAt(i, M); im.setColorAt(i, C.set(h.wall));
         M.makeRotationY(0); M.setPosition(h.x, .06 + f * FH, h.z); roofM.setMatrixAt(ri, M); roofM.setColorAt(ri, C.set(h.roof)); ri++; });
-      im.userData.list = arr; this.pickables.push(im); add(im);
+      im.userData.list = arr; this.pickables.push(im); add(im); reg(im, arr);
     }
-    add(roofM);
+    add(roofM); reg(roofM, [...groups.values()].flat());
     // двери, трубы, неоновые билборды на крышах высоток
     const doorM = new THREE.InstancedMesh(new THREE.BoxGeometry(.13, .19, .02), flat('#3a2418', '#ffb347', .55), regular.length);
     const chim = [], boards = [];
     regular.forEach((h, i) => { const s = Math.sin(h.rot), c = Math.cos(h.rot); M.makeRotationY(h.rot); M.setPosition(h.x + s * .365, .155, h.z + c * .365); doorM.setMatrixAt(i, M);
-      const rr = rnd(hash(h.key) ^ 0x9e37); if (rr() < .4) chim.push([h.x + (rr() < .5 ? .17 : -.17), h.floors * FH + .26, h.z + (rr() < .5 ? .17 : -.17)]);
+      const rr = rnd(hash(h.key) ^ 0x9e37); if (rr() < .4) chim.push([h.x + (rr() < .5 ? .17 : -.17), h.floors * FH + .26, h.z + (rr() < .5 ? .17 : -.17), h]);
       if (h.floors >= 3 && rr() < .45) boards.push([h, rr()]); });
-    add(doorM);
+    add(doorM); reg(doorM, regular);
     const chimM = new THREE.InstancedMesh(new THREE.BoxGeometry(.08, .2, .08), flat('#6b5a6e'), Math.max(1, chim.length)); chimM.count = chim.length;
-    chim.forEach(([x, y, z], i) => { M.makeTranslation(x, y, z); chimM.setMatrixAt(i, M); }); add(chimM);
+    chim.forEach(([x, y, z], i) => { M.makeTranslation(x, y, z); chimM.setMatrixAt(i, M); }); add(chimM); reg(chimM, chim.map(c => c[3]));
     const NEON = ['#ff3d7f', '#5ef2ff', '#ffd23f', '#a6ff8f', '#c084fc', '#ff9f43'];
     const bM = new THREE.InstancedMesh(new THREE.PlaneGeometry(.56, .28), new THREE.MeshBasicMaterial({ map: BOARD_T, transparent: true, side: THREE.DoubleSide, depthWrite: false }), Math.max(1, boards.length)); bM.count = boards.length;
     const legM = new THREE.InstancedMesh(new THREE.BoxGeometry(.02, .22, .02), flat('#4a4f78'), Math.max(1, boards.length * 2)); legM.count = boards.length * 2;
     boards.forEach(([h, v], i) => { const rot = h.rot + Math.PI / 4 * (v < .5 ? 1 : -1), y = .06 + h.floors * FH + .5; M.makeRotationY(rot); M.setPosition(h.x, y, h.z); bM.setMatrixAt(i, M); bM.setColorAt(i, C.set(NEON[(v * 97 | 0) % NEON.length]).multiplyScalar(1.6));
       const ox = Math.cos(rot) * .2, oz = -Math.sin(rot) * .2; M.makeTranslation(h.x + ox, y - .2, h.z + oz); legM.setMatrixAt(i * 2, M); M.makeTranslation(h.x - ox, y - .2, h.z - oz); legM.setMatrixAt(i * 2 + 1, M); });
-    add(bM); add(legM);
+    add(bM); add(legM); reg(bM, boards.map(b => b[0])); reg(legM, boards.flatMap(b => [b[0], b[0]]));
     // тени под домами
     const sh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1.15, 1.15), new THREE.MeshBasicMaterial({ map: SHADOW_T, transparent: true, depthWrite: false }), this.houses.length);
-    this.houses.forEach((h, i) => { M.makeRotationX(-Math.PI / 2); M.setPosition(h.x + .08, .07, h.z + .08); sh.setMatrixAt(i, M); }); add(sh);
+    this.houses.forEach((h, i) => { M.makeRotationX(-Math.PI / 2); M.setPosition(h.x + .08, .07, h.z + .08); sh.setMatrixAt(i, M); }); add(sh); reg(sh, this.houses);
     // особые дома
     this.specialG = [];
     for (const h of special) { const g = makeHouse(h.recipe, h.key); g.position.set(h.x, .06, h.z); g.userData.house = h; h.top = g.userData.top + .06; add(g); this.specialG.push(g); }
@@ -332,6 +333,14 @@ export class City3D {
     this.chest.position.set(this.treasure.x, .07, this.treasure.z); this.chest.rotation.y = (seed % 628) / 100;
   }
   treasureDist() { return this.treasure ? Math.hypot(this.ctl.x - this.treasure.x, this.ctl.z - this.treasure.z) : Infinity; }
+  // для роликов: показать только дома с номером ≤ n; свежие «вырастают» (pop — сколько домов растут одновременно)
+  setGrowth(n = Infinity, pop = 40) {
+    this.growN = n; const M = new THREE.Matrix4(), S = new THREE.Matrix4(), T1 = new THREE.Matrix4(), T2 = new THREE.Matrix4();
+    const sc = h => { if (h.n > n) return 0; const u = Math.min(1, (n - h.n) / pop); return u >= 1 ? 1 : Math.max(0.001, 1 - Math.pow(1 - u, 3) * Math.cos(u * 6)); };
+    for (const g of this.grow || []) { g.list.forEach((h, i) => { const s = sc(h); if (s === 1) { g.mesh.setMatrixAt(i, g.base[i]); return; }
+      T1.makeTranslation(h.x, 0, h.z); S.makeScale(s || 1e-4, s || 1e-4, s || 1e-4); T2.makeTranslation(-h.x, 0, -h.z); M.multiplyMatrices(T1, S).multiply(T2).multiply(g.base[i]); g.mesh.setMatrixAt(i, M); }); g.mesh.instanceMatrix.needsUpdate = true; }
+    for (const g of this.specialG || []) { const s = sc(g.userData.house); g.visible = s > 0; g.scale.setScalar(Math.max(s, 1e-4)); }
+  }
   focus(h, fly = true) { this.hi = h; this.hiT = this.T; if (h && fly) { this.ctl.tx = h.x; this.ctl.tz = h.z; this.ctl.td = 7; } }
   flyTo(x, z, d = 9) { this.ctl.tx = x; this.ctl.tz = z; this.ctl.td = d; }
   // ---- управление ----
@@ -355,9 +364,9 @@ export class City3D {
     this.T += dt; const T = this.T, c = this.ctl, k = 1 - Math.pow(.002, dt);
     c.x += (c.tx - c.x) * k; c.z += (c.tz - c.z) * k; c.d += (c.td - c.d) * k; c.az += (c.taz - c.az) * k;
     const pol = 1.12 - Math.min(1, c.d / 90) * .42; // угол от вертикали: ближе — ниже камера
-    this.cam.position.set(c.x + Math.sin(c.az) * Math.sin(pol) * c.d, Math.cos(pol) * c.d + .3, c.z + Math.cos(c.az) * Math.sin(pol) * c.d);
-    this.cam.lookAt(c.x, .4, c.z);
-    for (const lm of this.landmarks || []) lm.children.forEach(ch => { if (ch.userData.label) ch.visible = c.d > 6; });
+    if (this.camOverride) { const o = this.camOverride; this.cam.position.set(...o.p); this.cam.lookAt(...o.t); if (o.fov && this.cam.fov !== o.fov) { this.cam.fov = o.fov; this.cam.updateProjectionMatrix(); } }
+    else { this.cam.position.set(c.x + Math.sin(c.az) * Math.sin(pol) * c.d, Math.cos(pol) * c.d + .3, c.z + Math.cos(c.az) * Math.sin(pol) * c.d); this.cam.lookAt(c.x, .4, c.z); }
+    for (const lm of this.landmarks || []) lm.children.forEach(ch => { if (ch.userData.label) ch.visible = c.d > 6 && !this.noLmLabels; });
     if (!this.headG) { this.renderer.render(this.scene, this.cam); return; }
     // машины
     const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), S1 = new THREE.Vector3(1, 1, 1), P = new THREE.Vector3(), hp = this.headG.attributes.position.array, L = this.span * 3;
@@ -391,7 +400,7 @@ export class City3D {
     };
     if (c.d < 22) {
       const R = c.d * .7, cand = [];
-      for (const h of this.houses) { if (h === this.hi) continue; const dd = Math.hypot(h.x - c.x, h.z - c.z); if (dd < R) cand.push([dd, h]); }
+      for (const h of this.houses) { if (h === this.hi || h.n > (this.growN ?? Infinity)) continue; const dd = Math.hypot(h.x - c.x, h.z - c.z); if (dd < R) cand.push([dd, h]); }
       cand.sort((a, b) => a[0] - b[0]);
       const placed = [];
       for (const [, h] of cand.slice(0, 40)) { const p = this.project(h.x, h.top + .05, h.z); if (!p) continue; if (placed.some(q => Math.abs(q[0] - p[0]) < 70 && Math.abs(q[1] - p[1]) < 24)) continue; placed.push(p); pill(p[0], p[1], h.label, false, false); }
