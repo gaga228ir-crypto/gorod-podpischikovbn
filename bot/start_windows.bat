@@ -49,6 +49,7 @@ if not exist .venv\Scripts\python.exe (
   .venv\Scripts\python -m pip install -q --upgrade pip
 )
 .venv\Scripts\python -m pip install -q -r requirements.txt
+if not exist "%ProgramFiles%\Google\Chrome\Application\chrome.exe" if not exist "%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe" .venv\Scripts\python -m playwright install chromium
 
 echo.
 echo Бот запущен. Не закрывай это окно (его можно свернуть). Остановить — закрой окно.

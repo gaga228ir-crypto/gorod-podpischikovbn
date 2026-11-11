@@ -13,17 +13,85 @@ def _universal(html: str):
     return json.loads(m.group(1)) if m else None
 
 
-async def profile(nick: str, cookies: dict | None = None) -> dict | None:
-    """{'uniqueId','signature','secUid'} или None, если профиль не открылся."""
-    async with httpx.AsyncClient(timeout=20, headers=H, cookies=cookies or {}, follow_redirects=True) as c:
+async def _profile_http(nick):
+    async with httpx.AsyncClient(timeout=20, headers=H, follow_redirects=True) as c:
         r = await c.get(f"https://www.tiktok.com/@{nick}", params={"lang": "ru-RU"})
-    d = _universal(r.text)
+    return _user(_universal(r.text))
+
+
+def _user(d):
     try:
-        ud = d["__DEFAULT_SCOPE__"]["webapp.user-detail"]
-        u = ud["userInfo"]["user"]
+        u = d["__DEFAULT_SCOPE__"]["webapp.user-detail"]["userInfo"]["user"]
         return {"uniqueId": u.get("uniqueId", ""), "signature": u.get("signature", ""), "secUid": u.get("secUid", "")}
     except (TypeError, KeyError):
         return None
+
+
+# ---------- невидимый Chrome: TikTok пускает «как обычный браузер» ----------
+_pw = _browser = None
+_lock = asyncio.Lock()
+
+
+async def _context(sessionid=None):
+    global _pw, _browser
+    async with _lock:
+        if _browser is None or not _browser.is_connected():
+            from playwright.async_api import async_playwright
+            _pw = _pw or await async_playwright().start()
+            args = ["--disable-blink-features=AutomationControlled", "--mute-audio"]
+            try:
+                _browser = await _pw.chromium.launch(channel="chrome", headless=True, args=args)  # установленный Google Chrome
+            except Exception:
+                _browser = await _pw.chromium.launch(headless=True, args=args)
+    ctx = await _browser.new_context(user_agent=UA, locale="ru-RU", viewport={"width": 1280, "height": 900})
+    if sessionid:
+        await ctx.add_cookies([{"name": n, "value": sessionid, "domain": ".tiktok.com", "path": "/", "secure": True, "httpOnly": True}
+                               for n in ("sessionid", "sessionid_ss")])
+    return ctx
+
+
+async def _open(nick, sessionid=None):
+    ctx = await _context(sessionid)
+    page = await ctx.new_page()
+    await page.goto(f"https://www.tiktok.com/@{nick}?lang=ru-RU", wait_until="domcontentloaded", timeout=60000)
+    await page.wait_for_timeout(3500)
+    return ctx, page
+
+
+async def profile(nick: str, cookies: dict | None = None) -> dict | None:
+    """{'uniqueId','signature','secUid'} или None, если профиль не открылся."""
+    try:
+        p = await _profile_http(nick)
+        if p:
+            return p
+    except Exception:
+        pass
+    ctx = None
+    try:
+        ctx, page = await _open(nick)
+        raw = await page.evaluate("() => { const e = document.getElementById('__UNIVERSAL_DATA_FOR_REHYDRATION__'); return e ? e.textContent : null }")
+        p = _user(json.loads(raw)) if raw else None
+        if p and not p["signature"]:  # на всякий случай — текст «О себе» со страницы
+            bio = await page.evaluate("() => { const e = document.querySelector('[data-e2e=\"user-bio\"]'); return e ? e.innerText : '' }")
+            p["signature"] = bio or ""
+        return p
+    finally:
+        if ctx:
+            await ctx.close()
+
+
+FOLLOWERS_JS = """async (secUid) => {
+  const sleep = ms => new Promise(r => setTimeout(r, ms)); const out = [], seen = new Set(); let cursor = 0;
+  for (let p = 0; p < 400; p++) {
+    let j; try { j = await (await fetch(`/api/user/list/?aid=1988&app_name=tiktok_web&device_platform=web_pc&count=30&maxCursor=0&minCursor=${cursor}&scene=67&secUid=${encodeURIComponent(secUid)}`, { credentials: 'include' })).json(); }
+    catch (e) { return { err: 'сеть/не JSON на странице ' + p, list: out }; }
+    if (j.statusCode !== 0) return { err: 'TikTok: ' + (j.status_msg || j.statusCode), list: out };
+    for (const it of (j.userList || [])) { const n = ((it.user && it.user.uniqueId) || '').toLowerCase(); if (n && !seen.has(n)) { seen.add(n); out.push(n); } }
+    if (!j.hasMore || !j.minCursor || j.minCursor === cursor || !(j.userList || []).length) break;
+    cursor = j.minCursor; await sleep(1100 + Math.random() * 800);
+  }
+  return { err: null, list: out };
+}"""
 
 
 CODE_RE = r"(?:ДОМ|DOM|дом|dom|Дом|Dom)\s*[-–—#:]?\s*{code}(?!\d)"
@@ -34,34 +102,23 @@ def bio_has_code(signature: str, code: str) -> bool:
 
 
 async def followers(owner: str, sessionid: str, log=None) -> list[str]:
-    """Все подписчики owner, новые первыми. Бросает RuntimeError, если TikTok не отдал список."""
-    cookies = {"sessionid": sessionid, "sessionid_ss": sessionid}
-    p = await profile(owner, cookies)
-    if not p or not p["secUid"]:
-        raise RuntimeError("не открылся профиль TikTok")
-    out, seen, cursor = [], set(), 0
-    async with httpx.AsyncClient(timeout=25, headers=H, cookies=cookies) as c:
-        for page in range(400):
-            r = await c.get("https://www.tiktok.com/api/user/list/", params={
-                "aid": "1988", "app_name": "tiktok_web", "device_platform": "web_pc", "count": "30",
-                "maxCursor": "0", "minCursor": str(cursor), "scene": "67", "secUid": p["secUid"]})
-            try:
-                j = r.json()
-            except ValueError:
-                raise RuntimeError(f"TikTok ответил не JSON (HTTP {r.status_code}) — возможно, нужен свежий sessionid")
-            if j.get("statusCode") != 0:
-                raise RuntimeError(f"TikTok: {j.get('status_msg') or j.get('statusCode')}")
-            for it in j.get("userList") or []:
-                n = ((it.get("user") or {}).get("uniqueId") or "").lower()
-                if n and n not in seen:
-                    seen.add(n); out.append(n)
-            if not j.get("hasMore") or not j.get("minCursor") or j.get("minCursor") == cursor or not j.get("userList"):
-                break
-            cursor = j["minCursor"]
-            await asyncio.sleep(1.2 + random.random())
+    """Все подписчики owner, новые первыми — через невидимый Chrome с твоим sessionid."""
+    ctx = None
+    try:
+        ctx, page = await _open(owner, sessionid)
+        raw = await page.evaluate("() => { const e = document.getElementById('__UNIVERSAL_DATA_FOR_REHYDRATION__'); return e ? e.textContent : null }")
+        u = _user(json.loads(raw)) if raw else None
+        if not u or not u["secUid"]:
+            raise RuntimeError("не открылся профиль TikTok в Chrome")
+        res = await page.evaluate(FOLLOWERS_JS, u["secUid"])
+    finally:
+        if ctx:
+            await ctx.close()
+    if res.get("err") and len(res.get("list") or []) < 30:
+        raise RuntimeError(res["err"] + " — проверь, что sessionid свежий и это аккаунт-владелец")
     if log:
-        log.info("tiktok followers: %s", len(out))
-    return out
+        log.info("tiktok followers: %s%s", len(res["list"]), f" (оборвалось: {res['err']})" if res.get("err") else "")
+    return res["list"]
 
 
 def merge(current: list[str], newest_first: list[str]) -> tuple[list[str], int, int, int]:
