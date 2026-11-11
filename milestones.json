@@ -1,0 +1,7 @@
+[
+  { "at": 2500, "name": "Неоновый парк", "type": "park" },
+  { "at": 5000, "name": "ТЦ «Неон»", "type": "mall" },
+  { "at": 10000, "name": "Школа", "type": "school" },
+  { "at": 25000, "name": "Стадион", "type": "stadium" },
+  { "at": 50000, "name": "Телебашня", "type": "tvtower" }
+]
