@@ -73,6 +73,8 @@ const SUPABASE_URL = '';
 const SUPABASE_ANON_KEY = '';
 const FALLBACK = ['@твой_ник'];
 const CHECK_TIME = 'каждый день около 17:00 по МСК';
+// Ники, которые не показываем над домами (дом остаётся, подпись — «Житель №…»)
+const HIDE = /1488|14\.88|14_88|88\.14|nazi|hitler|adolf|fuck|fak|sperma|sex|porno|dildo|penis|pisun|pisduk|pizd|puzd|pidor|pidar|pedik|gay|gei_|dolboeb|ebani|ebanu|zaeba|naeb|hui|huy|xyi|xye|xyu|zalup|drochi|dro4|mazafuk|bitch|dick|negr|sukibl|blyat|blyad|govno|govna|dildo|kokain|kanabis|narko|nekushay/;
 /* ===================================================== */
 
 const cv = document.getElementById('c'), g = cv.getContext('2d');
@@ -93,14 +95,14 @@ cells.sort((a, b) => (Math.hypot(a[0] - 1.5, a[1] - 1.5) - Math.hypot(b[0] - 1.5
 
 let houses = [], FREE = null, EMPTY = [], walkers = [];
 function buildCity(list) { // list: [{nick, recipe}]
-  houses = list.map((r, i) => { const h = CityHouse.build(r.nick, r.recipe, cells[i], i); h.key = norm(r.nick); h.appear = T + 0.2 + Math.min(i, 60) * 0.04; return h; });
+  houses = list.map((r, i) => { const h = CityHouse.build(r.nick, r.recipe, cells[i], i); h.key = norm(r.nick); h.label = HIDE.test(h.key) && !/^user\d+$/.test(h.key) ? 'Житель №' + (i + 1) : r.nick; h.appear = T + 0.2 + Math.min(i, 60) * 0.04; return h; });
   FREE = cells[houses.length]; EMPTY = cells.slice(houses.length + 1, houses.length + 13);
   document.getElementById('cnt').textContent = houses.length;
   walkers = []; const r = rnd(7), span = Math.ceil(Math.sqrt(houses.length + 20)) + 4;
   for (let i = 0; i < Math.min(90, 8 + houses.length * 2); i++) {
     const alongX = r() < 0.5, line = Math.round((r() * 2 - 1) * span / 3) * 3 + (r() < .5 ? 0.28 : -0.28);
     walkers.push({ alongX, line, pos: (r() * 2 - 1) * span, dir: r() < .5 ? 1 : -1, sp: 0.5 + r() * 0.5, span, ph: r() * 6,
-      col: ['#ff6b8a', '#ffd166', '#6ee7b7', '#7cc8ff', '#c084fc', '#ff9f68'][(r() * 6) | 0], nick: houses.length ? houses[(r() * houses.length) | 0].nick : '' });
+      col: ['#ff6b8a', '#ffd166', '#6ee7b7', '#7cc8ff', '#c084fc', '#ff9f68'][(r() * 6) | 0], nick: houses.length ? houses[(r() * houses.length) | 0].label : '' });
   }
 }
 async function loadCity() {
@@ -172,9 +174,9 @@ function frame(now) {
   for (const h of houses) {
     if (!h.apex || h === hi) continue;
     const near = Math.hypot(h.apex[0] - W / 2, h.apex[1] - H * 0.5) < Math.min(W, H) * 0.32;
-    if (houses.length <= 12 || (cam.z > 1.15 && near)) pill(h.apex[0], h.apex[1] - 2, h.nick, false, false);
+    if (houses.length <= 12 || (cam.z > 1.15 && near)) pill(h.apex[0], h.apex[1] - 2, h.label, false, false);
   }
-  if (hi && hi.apex) pill(hi.apex[0], hi.apex[1] - 6 - Math.abs(Math.sin(T * 4)) * 6, hi.nick, true, true);
+  if (hi && hi.apex) pill(hi.apex[0], hi.apex[1] - 6 - Math.abs(Math.sin(T * 4)) * 6, hi.label, true, true);
   if (cam.z > 1.6) for (const w of walkers) if (w.head && w.nick && Math.hypot(w.head[0] - W / 2, w.head[1] - H * 0.55) < Math.min(W, H) * 0.25) pill(w.head[0], w.head[1], w.nick, false, false);
   if (hi && hi.apex) { g.strokeStyle = 'rgba(255,210,63,' + (0.6 - ((T - hiT) % 1.2) / 2) + ')'; g.lineWidth = 3; g.beginPath(); g.arc(hi.apex[0], hi.apex[1] + 30 * cam.z, 20 + ((T - hiT) % 1.2) * 50, 0, 7); g.stroke(); }
   requestAnimationFrame(frame);
@@ -203,7 +205,7 @@ function pick(x, y) {
 }
 function focus(h, fly = true) {
   hi = h; hiT = T; if (fly) { cam.tx = h.x + .5; cam.ty = h.y + .5; cam.tz = 1.8; }
-  document.getElementById('cnick').textContent = h.nick;
+  document.getElementById('cnick').textContent = h.label;
   document.getElementById('csub').textContent = `Дом №${h.born + 1}${h.special ? ' · особый дом' : ''}`;
   card.classList.add('show'); history.replaceState(null, '', '#' + encodeURIComponent(h.key));
 }
