@@ -21,6 +21,9 @@ class LocalDB:
         create table if not exists klad (
           id integer primary key autoincrement, tg_id integer not null, nick text not null, day text not null,
           used integer not null default 0, created_at text not null default (strftime('%Y-%m-%dT%H:%M:%SZ','now')), unique (tg_id, day));
+        create table if not exists ai_orders (
+          id integer primary key autoincrement, tg_id integer not null, nick text not null, text text not null,
+          status text not null default 'new', recipe text, charge_id text, created_at text not null default (strftime('%Y-%m-%dT%H:%M:%SZ','now')));
         """)
         self.c.commit()
 
@@ -107,3 +110,20 @@ class LocalDB:
     async def special(self):
         return [{"nick": r["nick"], "recipe": json.loads(r["recipe"])} for r in
                 self.c.execute("select nick, recipe from residents where status='approved' and recipe is not null order by nick")]
+
+    # ---- дома по описанию ----
+    async def ai_create(self, tg_id, nick, text):
+        cur = self.c.execute("insert into ai_orders (tg_id, nick, text) values (?,?,?)", (tg_id, nick, text))
+        self.c.commit()
+        return cur.lastrowid
+
+    async def ai_get(self, oid):
+        return self._row(self.c.execute("select * from ai_orders where id=?", (oid,)).fetchone())
+
+    async def ai_patch(self, oid, body):
+        body = {k: (json.dumps(v, ensure_ascii=False) if k == "recipe" else v) for k, v in body.items()}
+        self.c.execute(f"update ai_orders set {', '.join(k + '=?' for k in body)} where id=?", (*body.values(), oid))
+        self.c.commit()
+
+    async def ai_list(self, status):
+        return [self._row(r) for r in self.c.execute("select * from ai_orders where status=? order by id", (status,))]

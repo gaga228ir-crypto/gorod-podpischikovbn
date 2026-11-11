@@ -51,6 +51,19 @@ if not exist .venv\Scripts\python.exe (
 .venv\Scripts\python -m pip install -q -r requirements.txt
 if not exist "%ProgramFiles%\Google\Chrome\Application\chrome.exe" if not exist "%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe" .venv\Scripts\python -m playwright install chromium
 
+rem --- нейросеть для «дома по описанию»: Ollama + модель (ставится один раз) ---
+set "OMODEL=qwen2.5:7b"
+for /f "tokens=1,* delims==" %%a in ('findstr /b "OLLAMA_MODEL=" .env 2^>nul') do if not "%%b"=="" set "OMODEL=%%b"
+set "OLLAMA=%LOCALAPPDATA%\Programs\Ollama\ollama.exe"
+if not exist "%OLLAMA%" (
+  echo Ставлю Ollama для домов по описанию ^(один раз, пара минут^)...
+  winget install -e --id Ollama.Ollama --scope user --accept-package-agreements --accept-source-agreements
+)
+if exist "%OLLAMA%" (
+  tasklist /fi "imagename eq ollama.exe" | find /i "ollama.exe" >nul || start "" /min "%OLLAMA%" serve
+  "%OLLAMA%" list 2>nul | find /i "%OMODEL%" >nul || start "Ollama: скачиваю модель %OMODEL% (~5 ГБ, один раз)" /min "%OLLAMA%" pull %OMODEL%
+)
+
 echo.
 echo Бот запущен. Не закрывай это окно (его можно свернуть). Остановить — закрой окно.
 .venv\Scripts\python bot.py

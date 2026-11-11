@@ -115,7 +115,8 @@ import { City3D, HousePreview, BIZ } from './city3d.js';
 const TIKTOK_URL = 'https://www.tiktok.com/@eben51041';
 const TIKTOK_NICK = '@eben51041';
 const BOT_URL = 'https://t.me/gorodpodpischikov_bot';
-const CUSTOM_PRICE = 10;
+const CUSTOM_PRICE = 0; // конструктор бесплатно
+const AI_PRICE = 15;   // дом по описанию (нейросеть)
 const SUPABASE_URL = 'https://gqfipqimnhwiludpepbc.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_gj1pBQtVG9rFw3zbvu_2NA_e4I0TLiD';
 const FALLBACK = ['@твой_ник'];
@@ -292,31 +293,41 @@ function openStudio() {
   const mine = city.byKey.get(ME); if (mine && mine.recipe) studio.r = { ...mine.recipe };
   renderStudio(); modal.classList.add('show');
 }
+const DECOR_N = { garland: '🎄 Гирлянда', tree: '🌲 Ёлка', car: '🚗 Машина', pet: '🐶 Питомец' };
 function renderStudio() {
   const S = studio, R = S.r, opts = (key, list, fmt) => list.map(v => `<button class="opt ${R[key] === v ? 'on' : ''}" data-k="${key}" data-v="${v}">${fmt(v)}</button>`).join('');
   const sw = (key, list) => list.map(v => `<button class="opt sw ${R[key] === v ? 'on' : ''}" data-k="${key}" data-v="${v}" style="background:${v}"></button>`).join('');
+  const dec = new Set(R.decor || []);
+  const go = S.tab === 'free' ? 'ВЫБРАТЬ' : S.tab === 'ai' ? `ПОСТРОИТЬ · ${AI_PRICE} ⭐` : (GIFT ? 'ЗАБРАТЬ БЕСПЛАТНО 💎' : CUSTOM_PRICE ? 'ОПЛАТИТЬ ' + CUSTOM_PRICE + ' ⭐' : 'СОХРАНИТЬ');
   sheet.innerHTML = `<div class="studio"><h2>Мой дом · @${esc(ME)}</h2>
-    <canvas id="prev" style="width:200px;height:200px"></canvas>
-    <div class="tabs"><button data-tab="free" class="${S.tab === 'free' ? 'on' : ''}">БЕСПЛАТНО · 5</button><button data-tab="pro" class="${S.tab === 'pro' ? 'on' : ''}">КОНСТРУКТОР · ${GIFT ? '💎 ДАРОМ' : CUSTOM_PRICE + '⭐'}</button></div>
-    ${S.tab === 'free' ? `<div class="pre">${CityHouse.PRESETS.map((p, i) => `<button class="opt ${S.preset === i ? 'on' : ''}" data-pre="${i}">${esc(p.name)}</button>`).join('')}</div>` : `
+    ${S.tab === 'ai' ? '' : '<canvas id="prev" style="width:200px;height:200px"></canvas>'}
+    <div class="tabs"><button data-tab="free" class="${S.tab === 'free' ? 'on' : ''}">5 ГОТОВЫХ</button><button data-tab="pro" class="${S.tab === 'pro' ? 'on' : ''}">КОНСТРУКТОР</button><button data-tab="ai" class="${S.tab === 'ai' ? 'on' : ''}">✨ ПО ОПИСАНИЮ</button></div>
+    ${S.tab === 'free' ? `<div class="pre">${CityHouse.PRESETS.map((p, i) => `<button class="opt ${S.preset === i ? 'on' : ''}" data-pre="${i}">${esc(p.name)}</button>`).join('')}</div>` : S.tab === 'ai' ? `
+    <p>Опиши дом мечты — <b>нейросеть соберёт его в 3D</b> из деталей: ракета, пончик, замок, дом-кот… Перед тем как поставить в город, дом проверит мэрия. Если не получится — звёзды вернём.</p>
+    <textarea id="aitext" maxlength="300" placeholder="Например: дом-ракета с иллюминаторами и огнём из сопел">${esc(S.ai || '')}</textarea>` : `
     <div class="srow"><span>Форма</span><div class="opts">${opts('shape', CityHouse.SHAPES, v => SHAPE_N[v])}</div></div>
     <div class="srow"><span>Стены</span><div class="opts">${sw('wall', WALL_C)}</div></div>
     <div class="srow"><span>Крыша</span><div class="opts">${sw('roof', ROOF_C)}</div></div>
     <div class="srow"><span>Этажи</span><div class="opts">${opts('floors', [1, 2, 3, 4, 5, 6], v => v)}</div></div>
     <div class="srow"><span>Знак на фасаде</span><div class="opts">${opts('emblem', CityHouse.EMBLEMS, v => EMB[v])}</div></div>
-    <div class="srow"><span>Свет в окнах</span><div class="opts">${opts('lights', CityHouse.LIGHTS, v => LIGHT_N[v])}</div></div>`}
+    <div class="srow"><span>Свет в окнах</span><div class="opts">${opts('lights', CityHouse.LIGHTS, v => LIGHT_N[v])}</div></div>
+    <div class="srow"><span>Декор · 📢 бонус подписчикам ТГ-канала</span><div class="opts">${Object.entries(DECOR_N).map(([k, n]) => `<button class="opt ${dec.has(k) ? 'on' : ''}" data-dec="${k}">${n}</button>`).join('')}</div></div>`}
     <div class="err" id="serr"></div>
-    <div class="btns"><button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button><button id="sgo" type="button">${S.tab === 'free' ? 'ВЫБРАТЬ' : (GIFT ? 'ЗАБРАТЬ БЕСПЛАТНО 💎' : 'ОПЛАТИТЬ ' + CUSTOM_PRICE + ' ⭐')}</button></div></div>`;
-  sheet.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { S.tab = b.dataset.tab; if (S.tab === 'free') S.r = { ...CityHouse.PRESETS[S.preset].r }; renderStudio(); });
+    <div class="btns"><button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button><button id="sgo" type="button">${go}</button></div></div>`;
+  sheet.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { if (S.tab === 'ai') S.ai = ($('aitext') || {}).value || S.ai; S.tab = b.dataset.tab; if (S.tab === 'free') S.r = { ...CityHouse.PRESETS[S.preset].r }; renderStudio(); });
   sheet.querySelectorAll('[data-pre]').forEach(b => b.onclick = () => { S.preset = +b.dataset.pre; S.r = { ...CityHouse.PRESETS[S.preset].r }; renderStudio(); });
   sheet.querySelectorAll('[data-k]').forEach(b => b.onclick = () => { const k = b.dataset.k; R[k] = k === 'floors' ? +b.dataset.v : b.dataset.v; renderStudio(); });
+  sheet.querySelectorAll('[data-dec]').forEach(b => b.onclick = () => { const d = new Set(R.decor || []); d.has(b.dataset.dec) ? d.delete(b.dataset.dec) : d.add(b.dataset.dec); R.decor = [...d]; renderStudio(); });
   closeBtn();
   $('sgo').onclick = () => {
-    const data = S.tab === 'free' ? { t: 'preset', i: S.preset } : { t: 'custom', r: CityHouse.normRecipe(R) };
+    let data;
+    if (S.tab === 'free') data = { t: 'preset', i: S.preset };
+    else if (S.tab === 'ai') { const d = ($('aitext').value || '').trim(); if (d.length < 5) { $('serr').textContent = 'Опиши дом хотя бы парой слов 🙂'; return; } data = { t: 'ai', d }; }
+    else data = { t: 'custom', r: { ...CityHouse.normRecipe(R), decor: R.decor || [] } };
     try { tg.sendData(JSON.stringify(data)); } catch (e) { $('serr').textContent = 'Открой город кнопкой «🏙 Открыть город» внизу чата с ботом — тогда выбор отправится.'; }
   };
-  if (preview) preview.alive = false;
-  preview = new HousePreview($('prev')); preview.set(R);
+  if (preview) preview.alive = false; preview = null;
+  if ($('prev')) { preview = new HousePreview($('prev')); preview.set(R); }
 }
 if (TG) { try { tg.ready(); tg.expand(); } catch (e) {} $('cta').textContent = '🎨 МОЙ ДОМ'; }
 

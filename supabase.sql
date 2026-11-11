@@ -83,3 +83,10 @@ create table if not exists public.klad (
 );
 alter table public.klad enable row level security;
 revoke all on public.klad from anon, authenticated;
+
+-- ===== Дома по описанию (нейросеть) =====
+create table if not exists public.ai_orders (
+  id bigint generated always as identity primary key, tg_id bigint not null, nick text not null, text text not null,
+  status text not null default 'new', recipe jsonb, charge_id text, created_at timestamptz not null default now());
+alter table public.ai_orders enable row level security;
+revoke all on public.ai_orders from anon, authenticated;

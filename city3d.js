@@ -80,7 +80,41 @@ function neonSign(text, color, w = .62) {
 }
 
 // ---------- особый дом (по рецепту) — отдельная группа ----------
+// ---------- дом «по описанию»: собран ИИ из деталей ----------
+// part: { t: box|cyl|cone|sphere|dome|pyramid|torus, p:[x,y,z] (низ детали по y), s:[ширина,высота,глубина], c:'#hex', g:0..1 свечение, r: поворот°, w: окна }
+const PART_T = ['box', 'cyl', 'cone', 'sphere', 'dome', 'pyramid', 'torus'];
+const clampN = (v, a, b, d) => { v = +v; return Number.isFinite(v) ? Math.max(a, Math.min(b, v)) : d; };
+export function cleanParts(parts) {
+  if (!Array.isArray(parts)) return [];
+  return parts.slice(0, 48).filter(q => q && PART_T.includes(q.t)).map(q => ({
+    t: q.t, p: [clampN(q.p?.[0], -.5, .5, 0), clampN(q.p?.[1], 0, 2.2, 0), clampN(q.p?.[2], -.5, .5, 0)],
+    s: [clampN(q.s?.[0], .02, 1, .3), clampN(q.s?.[1], .02, 1.6, .3), clampN(q.s?.[2], .02, 1, .3)],
+    c: /^#[0-9a-f]{6}$/i.test(q.c) ? q.c : '#cccccc', g: clampN(q.g, 0, 1, 0), r: clampN(q.r, -360, 360, 0), w: !!q.w }));
+}
+function makeParts(parts, lights) {
+  const G = new THREE.Group(); let top = .3;
+  for (const q of cleanParts(parts)) {
+    const [w, h, d] = q.s; let geo;
+    switch (q.t) {
+      case 'cyl': geo = new THREE.CylinderGeometry(.5, .5, 1, 20); break;
+      case 'cone': geo = new THREE.ConeGeometry(.5, 1, 20); break;
+      case 'pyramid': geo = new THREE.ConeGeometry(.5 * Math.SQRT2, 1, 4); geo.rotateY(Math.PI / 4); break;
+      case 'sphere': geo = new THREE.SphereGeometry(.5, 20, 14); break;
+      case 'dome': geo = new THREE.SphereGeometry(.5, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2); geo.translate(0, -.5, 0); geo.scale(1, 2, 1); break;
+      case 'torus': geo = new THREE.TorusGeometry(.38, .12, 10, 24); geo.rotateX(Math.PI / 2); break;
+      default: geo = new THREE.BoxGeometry(1, 1, 1);
+    }
+    geo.translate(0, .5, 0);
+    const mat = q.w && (q.t === 'box' || q.t === 'cyl') ? bodyMat(lights, q.c) : flat(q.c, q.g ? q.c : null, q.g * 1.6);
+    if (q.w && mat.map) { mat.map = mat.map.clone(); mat.emissiveMap = mat.emissiveMap.clone(); for (const t of [mat.map, mat.emissiveMap]) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(Math.max(1, Math.round(w / .3)), Math.max(1, Math.round(h / FH))); } }
+    const m = new THREE.Mesh(geo, mat); m.scale.set(w, h, d); m.position.set(q.p[0], q.p[1], q.p[2]); m.rotation.y = q.r * Math.PI / 180; G.add(m);
+    top = Math.max(top, q.p[1] + h);
+  }
+  G.userData.top = top; return G;
+}
+
 export function makeHouse(rec, nick = '') {
+  if (rec && Array.isArray(rec.parts) && rec.parts.length) { const G = makeParts(rec.parts, rec.lights || 'warm'); return G; }
   const G = new THREE.Group(), R = rec, floors = Math.max(1, Math.min(6, R.floors | 0 || 2));
   const wall = R.wall || '#f28b82', roof = R.roof || '#c2414b', L = R.lights || 'warm';
   const add = (geo, mat, y = 0) => { const m = new THREE.Mesh(geo, mat); m.position.y = y; G.add(m); return m; };

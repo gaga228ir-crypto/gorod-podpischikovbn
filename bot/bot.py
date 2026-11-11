@@ -20,6 +20,7 @@ from aiogram.types import (BufferedInputFile, CallbackQuery, InlineKeyboardButto
 
 import cards
 import tiktok
+import ai
 from localdb import LocalDB
 
 # ---------- настройки ----------
@@ -48,7 +49,11 @@ ELECTION_URL = E("ELECTION_URL", "") or SITE_BASE + "election.json"
 POCHTA_URL = E("POCHTA_URL", "")
 CHANNEL_URL = E("CHANNEL_URL", "")
 TIKTOK_URL = E("TIKTOK_URL", "https://www.tiktok.com/@eben51041")
-PRICE = int(E("CUSTOM_PRICE", "10"))
+PRICE = int(E("CUSTOM_PRICE", "0"))          # конструктор: 0 = бесплатно
+AI_PRICE = int(E("AI_PRICE", "15"))           # дом по описанию (нейросеть)
+OLLAMA_URL = E("OLLAMA_URL", "http://127.0.0.1:11434")
+OLLAMA_MODEL = E("OLLAMA_MODEL", "qwen2.5:7b")
+CHANNEL_ID = E("CHANNEL_ID", "")              # @username канала — бот должен быть в нём админом
 KLAD_SALT = E("KLAD_SALT", "gorod-klad-v1")
 KLAD_LIMIT = int(E("KLAD_LIMIT", "20"))
 GITHUB_TOKEN = E("GITHUB_TOKEN", "")
@@ -64,6 +69,7 @@ log = logging.getLogger("gorod")
 SHAPES = ["house", "tower", "castle", "skyscraper", "dome", "clocktower"]
 EMBLEMS = ["none", "sun", "moon", "star", "heart", "clock", "crown", "flame", "leaf", "lightning", "diamond", "snake"]
 LIGHTS = ["warm", "cool", "pink", "green"]
+DECOR = ["garland", "tree", "car", "pet"]
 WALL_C = ["#ffcf4a", "#f28b82", "#a7d36f", "#7cc8ff", "#c9a0e8", "#f7a8d0", "#86d4c8", "#9aa3b5"]
 ROOF_C = ["#d1404f", "#3d5a99", "#6b3fa0", "#2f7a6b", "#b8562f", "#374070"]
 PRESETS = [
@@ -82,21 +88,39 @@ def norm_nick(s: str) -> str:
     return s.lstrip("@").split("?")[0].strip("/")
 
 
+def _near(c, pal):
+    """Ближайший цвет палитры (у особых домов бывают свои цвета)."""
+    if c in pal:
+        return c
+    try:
+        rgb = [int(c[i:i + 2], 16) for i in (1, 3, 5)]
+    except (TypeError, ValueError):
+        return pal[0]
+    return min(pal, key=lambda p: sum((int(p[i:i + 2], 16) - v) ** 2 for i, v in zip((1, 3, 5), rgb)))
+
+
 def encode_recipe(r: dict) -> str | None:
     """Рецепт из конструктора → короткая строка индексов (влезает в payload счёта)."""
     try:
+        r = dict(r, wall=_near(r.get("wall"), WALL_C), roof=_near(r.get("roof"), ROOF_C))
+        dec = sum(1 << DECOR.index(d) for d in set(r.get("decor") or []) if d in DECOR)
         return ",".join(str(x) for x in (SHAPES.index(r["shape"]), int(r["floors"]), WALL_C.index(r["wall"]),
-                                         ROOF_C.index(r["roof"]), EMBLEMS.index(r["emblem"]), LIGHTS.index(r["lights"])))
+                                         ROOF_C.index(r["roof"]), EMBLEMS.index(r["emblem"]), LIGHTS.index(r["lights"]), dec))
     except (KeyError, ValueError, TypeError):
         return None
 
 
 def decode_recipe(code: str) -> dict | None:
     try:
-        s, f, w, r, e, l = (int(x) for x in code.split(","))
+        v = [int(x) for x in code.split(",")]
+        s, f, w, r, e, l = v[:6]
+        dec = v[6] if len(v) > 6 else 0
         if not 1 <= f <= 6:
             return None
-        return {"shape": SHAPES[s], "floors": f, "wall": WALL_C[w], "roof": ROOF_C[r], "emblem": EMBLEMS[e], "lights": LIGHTS[l]}
+        rec = {"shape": SHAPES[s], "floors": f, "wall": WALL_C[w], "roof": ROOF_C[r], "emblem": EMBLEMS[e], "lights": LIGHTS[l]}
+        if dec:
+            rec["decor"] = [d for i, d in enumerate(DECOR) if dec >> i & 1]
+        return rec
     except (ValueError, IndexError):
         return None
 
@@ -182,6 +206,20 @@ class DB:
 
     async def klad_use(self, kid):
         await self.q("PATCH", f"klad?id=eq.{kid}", {"used": True}, "return=minimal")
+
+    async def ai_create(self, tg_id, nick, text):
+        rows = await self.q("POST", "ai_orders", {"tg_id": tg_id, "nick": nick, "text": text}, "return=representation")
+        return rows[0]["id"]
+
+    async def ai_get(self, oid):
+        rows = await self.q("GET", f"ai_orders?id=eq.{oid}&select=*")
+        return rows[0] if rows else None
+
+    async def ai_patch(self, oid, body):
+        await self.q("PATCH", f"ai_orders?id=eq.{oid}", body, "return=minimal")
+
+    async def ai_list(self, status):
+        return await self.q("GET", f"ai_orders?status=eq.{status}&select=*&order=id.asc") or []
 
     async def special(self):
         return await self.q("GET", "residents?status=eq.approved&recipe=not.is.null&select=nick,recipe&order=nick.asc") or []
@@ -554,27 +592,70 @@ async def web_app(m: Message, bot: Bot):
         if not code:
             await m.answer("Что-то не так с конструктором, попробуй ещё раз.")
             return
+        rec = decode_recipe(code)
+        note = ""
+        if rec.get("decor") and not await in_channel(bot, m.from_user.id):
+            rec.pop("decor")
+            code = encode_recipe(rec)
+            note = "\n\n🎁 Декор (гирлянда, ёлка, машина, питомец) — бонус для подписчиков канала. Подпишись и сохрани дом ещё раз — декор появится."
         gift = await db.klad_gift(m.from_user.id)
-        if gift:  # приз за клад — без оплаты
-            await db.patch(me["id"], {"recipe": decode_recipe(code)})
-            await db.klad_use(gift)
+        if PRICE == 0 or gift:
+            await db.patch(me["id"], {"recipe": rec})
+            if gift and PRICE:
+                await db.klad_use(gift)
+            kb = [[IB(text="📢 Канал города", url=CHANNEL_URL)]] if note and CHANNEL_URL else None
             await m.answer_photo(photo(cards.built_card(me["nick"], await house_no(me["nick"]), True)),
-                                 caption="Готово! 💎 Особый дом за клад уже стоит в городе.", reply_markup=city_keyboard(me["nick"]))
+                                 caption="Готово! 🏠 Твой дом уже в городе — обнови страницу, чтобы увидеть." + note,
+                                 reply_markup=InlineKeyboardMarkup(inline_keyboard=kb) if kb else city_keyboard(me["nick"]))
             return
         await bot.send_invoice(m.chat.id, title="Особый дом", description=f"Твой дом @{me['nick']} в городе станет таким, как ты собрал в конструкторе.",
                                payload=f"c|{me['id']}|{code}", currency="XTR", prices=[LabeledPrice(label="Особый дом", amount=PRICE)])
+    elif data.get("t") == "ai":
+        text = re.sub(r"\s+", " ", str(data.get("d") or "")).strip()[:300]
+        if len(text) < 5:
+            await m.answer("Опиши дом подробнее — хотя бы пару слов 🙂")
+            return
+        oid = await db.ai_create(m.from_user.id, me["nick"], text)
+        await bot.send_invoice(m.chat.id, title="Дом по описанию ✨", description=f"Нейросеть построит дом @{me['nick']} по твоему описанию: «{text[:120]}». Перед тем как поставить, его проверит мэрия.",
+                               payload=f"a|{oid}", currency="XTR", prices=[LabeledPrice(label="Дом по описанию", amount=AI_PRICE)])
+
+
+async def in_channel(bot, uid) -> bool:
+    if not CHANNEL_ID:
+        return True
+    try:
+        mem = await bot.get_chat_member(CHANNEL_ID, uid)
+        return mem.status in ("member", "administrator", "creator", "restricted")
+    except Exception as e:  # бот не админ в канале или неверный CHANNEL_ID — не мешаем людям
+        log.warning("канал: %s", e)
+        return True
 
 
 @r.pre_checkout_query()
 async def pre_checkout(q: PreCheckoutQuery):
     parts = q.invoice_payload.split("|")
-    ok = len(parts) == 3 and parts[0] == "c" and decode_recipe(parts[2]) is not None and q.total_amount == PRICE
-    await q.answer(ok=ok, error_message=None if ok else "Счёт устарел, собери дом заново.")
+    if parts[0] == "a":
+        o = await db.ai_get(int(parts[1])) if len(parts) == 2 and parts[1].isdigit() else None
+        ok = bool(o) and o["status"] == "new" and q.total_amount == AI_PRICE
+    else:
+        ok = len(parts) == 3 and parts[0] == "c" and decode_recipe(parts[2]) is not None and q.total_amount == PRICE
+    await q.answer(ok=ok, error_message=None if ok else "Счёт устарел, оформи заново.")
 
 
 @r.message(F.successful_payment)
 async def paid(m: Message, bot: Bot):
     p = m.successful_payment
+    if p.invoice_payload.startswith("a|"):
+        oid = int(p.invoice_payload.split("|")[1])
+        await db.ai_patch(oid, {"status": "paid", "charge_id": p.telegram_payment_charge_id})
+        o = await db.ai_get(oid)
+        try:
+            await db.add_payment(m.from_user.id, o["nick"], p.total_amount, p.telegram_payment_charge_id, {"ai": o["text"]})
+        except RuntimeError as e:
+            log.warning("payment log: %s", e)
+        await m.answer("Спасибо! ⭐ Нейросеть уже строит твой дом ✨\nЭто займёт несколько минут, потом его посмотрит мэрия — и пришлю результат сюда.")
+        asyncio.create_task(build_ai(bot, oid))
+        return
     _, rid, code = p.invoice_payload.split("|")
     rec = decode_recipe(code)
     row = await db.get(int(rid))
@@ -589,6 +670,95 @@ async def paid(m: Message, bot: Bot):
         log.warning("payment log: %s", e)
     await m.answer_photo(photo(cards.built_card(row["nick"], await house_no(row["nick"]), True)),
                          caption="Спасибо! ⭐ Твой особый дом уже стоит в городе.", reply_markup=city_keyboard(row["nick"]))
+
+
+# ---------- дом по описанию: нейросеть на ПК → превью → мэрия одобряет ----------
+_ai_lock = asyncio.Lock()
+
+
+def ai_kb(oid):
+    return InlineKeyboardMarkup(inline_keyboard=[[IB(text="✅ Поставить в город", callback_data=f"ai_ok:{oid}")],
+                                                 [IB(text="🔄 Другой вариант", callback_data=f"ai_re:{oid}"), IB(text="❌ Вернуть звёзды", callback_data=f"ai_no:{oid}")]])
+
+
+async def build_ai(bot, oid):
+    async with _ai_lock:  # нейросеть одна — по очереди
+        o = await db.ai_get(oid)
+        if not o or o["status"] not in ("paid", "review"):
+            return
+        try:
+            rec = await ai.generate(o["text"], OLLAMA_URL, OLLAMA_MODEL)
+            png = await ai.preview(rec, SITE_BASE)
+        except Exception as e:
+            log.warning("ai %s: %s", oid, e)
+            for a in ADMIN_IDS:
+                try:
+                    await bot.send_message(a, f"⚠️ Дом по описанию #{oid} (@{o['nick']}) не собрался: {e}\nОписание: «{o['text']}»",
+                                           reply_markup=InlineKeyboardMarkup(inline_keyboard=[[IB(text="🔄 Попробовать снова", callback_data=f"ai_re:{oid}"),
+                                                                                               IB(text="❌ Вернуть звёзды", callback_data=f"ai_no:{oid}")]]))
+                except Exception:
+                    pass
+            return
+        await db.ai_patch(oid, {"status": "review", "recipe": rec})
+        for a in ADMIN_IDS:
+            try:
+                await bot.send_photo(a, photo(png, "house.png"), reply_markup=ai_kb(oid), caption=(
+                    f"✨ <b>Дом по описанию #{oid}</b> · @{o['nick']}\n«{o['text']}»\n\nНейросеть: <b>{rec['name']}</b> · деталей: {len(rec['parts'])}"))
+            except Exception as e:
+                log.warning("ai notify: %s", e)
+
+
+@r.callback_query(F.data.startswith("ai_"))
+async def ai_decide(c: CallbackQuery, bot: Bot):
+    if not is_admin(c.from_user.id):
+        await c.answer()
+        return
+    act, oid = c.data.split(":")
+    o = await db.ai_get(int(oid))
+    if not o or o["status"] in ("done", "refunded"):
+        await c.answer("Уже обработан", show_alert=True)
+        return
+    note = lambda t: c.message.edit_caption(caption=(c.message.caption or "") + "\n\n" + t) if c.message.photo else c.message.edit_text((c.message.text or "") + "\n\n" + t)
+    if act == "ai_re":
+        await c.answer("Собираю новый вариант…")
+        await db.ai_patch(o["id"], {"status": "paid"})
+        await note("🔄 Пересобираю…")
+        asyncio.create_task(build_ai(bot, o["id"]))
+    elif act == "ai_no":
+        try:
+            await bot.refund_star_payment(o["tg_id"], o["charge_id"])
+        except Exception as e:
+            await c.answer(f"Не вернулись: {e}", show_alert=True)
+            return
+        await db.ai_patch(o["id"], {"status": "refunded"})
+        await c.answer("Звёзды вернули")
+        await note("❌ Звёзды возвращены")
+        try:
+            await bot.send_message(o["tg_id"], "Не получилось построить дом по твоему описанию 😕 Звёзды вернули. Попробуй описать иначе!")
+        except Exception:
+            pass
+    elif act == "ai_ok" and o.get("recipe"):
+        me = await db.linked(o["tg_id"])
+        if not me:
+            await c.answer("Ник больше не привязан", show_alert=True)
+            return
+        await db.patch(me["id"], {"recipe": o["recipe"]})
+        await db.ai_patch(o["id"], {"status": "done"})
+        await c.answer("Поставлен!")
+        await note("✅ Стоит в городе")
+        try:
+            png = await ai.preview(o["recipe"], SITE_BASE)
+            await bot.send_photo(o["tg_id"], photo(png, "house.png"), reply_markup=city_keyboard(me["nick"]), caption=(
+                f"✨ Твой дом «{o['recipe'].get('name', 'по описанию')}» готов и уже стоит в городе! Открой город и найди @{me['nick']} 🏙"))
+        except Exception as e:
+            log.warning("ai send: %s", e)
+
+
+async def ai_resume(bot):
+    """После перезапуска — достроить оплаченные дома."""
+    await asyncio.sleep(20)
+    for o in await db.ai_list("paid"):
+        asyncio.create_task(build_ai(bot, o["id"]))
 
 
 # ---------- админ: одна панель ----------
@@ -750,6 +920,7 @@ async def main():
     log.info("Бот запущен · база: %s", "Supabase" if isinstance(db, DB) else "локальный файл gorod.db")
     asyncio.create_task(export_loop())
     asyncio.create_task(sync_loop(bot))
+    asyncio.create_task(ai_resume(bot))
     asyncio.create_task(restart_later())
     await dp.start_polling(bot)
 
