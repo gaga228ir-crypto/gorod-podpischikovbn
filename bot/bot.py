@@ -36,9 +36,14 @@ BOT_TOKEN = E("BOT_TOKEN", "")
 ADMIN_IDS = {int(x) for x in re.findall(r"\d+", E("ADMIN_IDS", ""))}
 SB_URL = E("SUPABASE_URL", "").rstrip("/")
 SB_KEY = E("SUPABASE_SERVICE_KEY", "")
-SITE_URL = E("SITE_URL", "").rstrip("/") + "/"
-SUBS_URL = E("SUBS_URL", "") or SITE_URL + "subscribers.json"
-ELECTION_URL = E("ELECTION_URL", "") or SITE_URL + "election.json"
+_site = E("SITE_URL", "").strip()
+if _site.endswith(".html"):
+    _site = _site.rsplit("/", 1)[0]
+SITE_BASE = _site.rstrip("/") + "/"
+# SourceCraft отдаёт 404 на адрес «папка/», поэтому город всегда открываем как …/index.html
+SITE_URL = SITE_BASE + "index.html"
+SUBS_URL = E("SUBS_URL", "") or SITE_BASE + "subscribers.json"
+ELECTION_URL = E("ELECTION_URL", "") or SITE_BASE + "election.json"
 POCHTA_URL = E("POCHTA_URL", "")
 CHANNEL_URL = E("CHANNEL_URL", "")
 TIKTOK_URL = E("TIKTOK_URL", "https://www.tiktok.com/@eben51041")
