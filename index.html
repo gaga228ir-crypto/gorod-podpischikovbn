@@ -88,7 +88,7 @@ const api = (path, opt = {}) => fetch(SUPABASE_URL + '/rest/v1/' + path, { ...op
 // ---------- планировка ----------
 const isRoad = (x, y) => (((x % 3) + 3) % 3 === 0) || (((y % 3) + 3) % 3 === 0);
 const cells = [];
-for (let x = -45; x <= 45; x++) for (let y = -45; y <= 45; y++) if (!isRoad(x, y)) cells.push([x, y]);
+for (let x = -80; x <= 80; x++) for (let y = -80; y <= 80; y++) if (!isRoad(x, y)) cells.push([x, y]);
 cells.sort((a, b) => (Math.hypot(a[0] - 1.5, a[1] - 1.5) - Math.hypot(b[0] - 1.5, b[1] - 1.5)) || (a[0] - b[0]) || (a[1] - b[1]));
 
 let houses = [], FREE = null, EMPTY = [], walkers = [];
@@ -104,12 +104,20 @@ function buildCity(list) { // list: [{nick, recipe}]
   }
 }
 async function loadCity() {
-  if (!SUPABASE_URL) { buildCity(FALLBACK.map(n => ({ nick: n.startsWith('@') ? n : '@' + n, recipe: null }))); return; }
-  try {
-    const res = await api('residents?select=nick,recipe,approved_at&status=eq.approved&order=approved_at.asc,id.asc');
-    const rows = await res.json();
-    buildCity(rows.map(r => ({ nick: '@' + r.nick, recipe: r.recipe })));
-  } catch (e) { buildCity([]); document.getElementById('msg').textContent = 'Город не загрузился — обнови страницу'; }
+  // Базовые жители — из subscribers.json (порядок = порядок заселения)
+  let base = [];
+  try { const r = await fetch('subscribers.json?v=' + Date.now()); if (r.ok) base = await r.json(); } catch (e) {}
+  if (!Array.isArray(base) || !base.length) base = FALLBACK;
+  const list = [], byKey = new Map();
+  for (const n of base) { const k = norm(String(n)); if (k && !byKey.has(k)) { const it = { nick: '@' + k, recipe: null }; byKey.set(k, it); list.push(it); } }
+  // Особые дома из базы (если подключена): накладываем рецепт на жителя или добавляем нового
+  if (SUPABASE_URL) {
+    try {
+      const rows = await (await api('residents?select=nick,recipe,approved_at&status=eq.approved&order=approved_at.asc,id.asc')).json();
+      for (const r of rows) { const ex = byKey.get(r.nick); if (ex) ex.recipe = r.recipe; else { const it = { nick: '@' + r.nick, recipe: r.recipe }; byKey.set(r.nick, it); list.push(it); } }
+    } catch (e) { /* без особых домов город всё равно работает */ }
+  }
+  buildCity(list.slice(0, cells.length - 13));
 }
 
 // ---------- камера и отрисовка ----------

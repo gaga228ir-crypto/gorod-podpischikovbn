@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Обновить жителей — Город подписчиков</title>
+<style>
+:root{--bg:#0b0826;--card:#160f3d;--line:rgba(160,150,255,.25);--gold:#ffd23f;--pink:#ff3d7f;--muted:#bdb6ea}
+*{box-sizing:border-box}
+body{margin:0 auto;max-width:640px;padding:20px 16px;background:var(--bg);color:#fff;font:500 15px/1.5 Inter,system-ui,sans-serif}
+h1{font-size:22px;margin:0 0 6px}
+p{color:var(--muted);margin:6px 0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin:14px 0}
+.drop{border:2px dashed var(--line);border-radius:14px;padding:26px 14px;text-align:center;cursor:pointer;color:var(--muted)}
+.drop.on{border-color:var(--gold);color:#fff}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center}
+.stats b{display:block;font-size:26px;color:var(--gold)}
+button,.btn{display:inline-block;border:0;border-radius:999px;padding:12px 18px;font-weight:800;cursor:pointer;background:var(--pink);color:#fff;text-decoration:none}
+.btn.ghost{background:rgba(255,255,255,.12)}
+ol{padding-left:20px;color:var(--muted)} ol b{color:#fff}
+.err{color:#ff8fae}
+code{background:rgba(255,255,255,.08);padding:1px 6px;border-radius:6px}
+</style>
+</head>
+<body>
+<h1>🏙 Обновить жителей</h1>
+<p>Кидай сюда файл от сборщика (<code>followers_….json</code>) или выгрузку TikTok. Старые жители останутся на своих местах, новые заселятся следом.</p>
+
+<div class="card">
+  <label class="drop" id="drop">Нажми или перетащи файл сюда<input id="file" type="file" accept=".json,.txt" hidden></label>
+  <p class="err" id="err"></p>
+</div>
+
+<div class="card" id="res" hidden>
+  <div class="stats"><div><b id="sOld">0</b>было</div><div><b id="sNew">0</b>новых</div><div><b id="sAll">0</b>станет</div></div>
+  <p id="note"></p>
+  <ol>
+    <li>Нажми <b>«Скачать subscribers.json»</b></li>
+    <li>Нажми <b>«Открыть GitHub»</b> → перетащи скачанный файл → внизу <b>Commit changes</b></li>
+    <li>Через 1–2 минуты дома появятся в городе</li>
+  </ol>
+  <p><button id="dl">Скачать subscribers.json</button> <a class="btn ghost" href="https://github.com/gaga228ir-crypto/gorod-podpischikovbn/upload/main" target="_blank" rel="noopener">Открыть GitHub</a></p>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const norm = s => String(s || '').trim().replace(/^@+/, '').toLowerCase();
+const valid = n => /^[a-z0-9_.]{2,24}$/.test(n);
+
+// Достаёт ники в порядке «старые → новые» из файла сборщика, выгрузки TikTok или txt
+function extract(text) {
+  try {
+    const j = JSON.parse(text);
+    if (j && Array.isArray(j.nicks)) { const a = j.nicks.map(norm); return j.order === 'newest_first' ? a.reverse() : a; }
+    if (Array.isArray(j) && j.every(x => typeof x === 'string')) return j.map(norm);
+    // выгрузка TikTok: ищем списки под ключами с «fans»/«follower» и берём UserName (сортируем по дате)
+    const found = [];
+    (function walk(o, inFans) {
+      if (Array.isArray(o)) { o.forEach(x => walk(x, inFans)); return; }
+      if (!o || typeof o !== 'object') return;
+      const un = o.UserName ?? o.userName ?? o.username ?? o.uniqueId;
+      if (inFans && typeof un === 'string') found.push({ n: norm(un), d: Date.parse(o.Date || o.date || '') || 0 });
+      for (const [k, v] of Object.entries(o)) walk(v, inFans || /fans|follower/i.test(k));
+    })(j, false);
+    if (found.length) return found.sort((a, b) => a.d - b.d).map(x => x.n);
+  } catch (e) { /* не JSON — пробуем как текст */ }
+  return text.split(/[\s,;]+/).map(norm).filter(Boolean);
+}
+
+let merged = null;
+async function handle(file) {
+  $('err').textContent = ''; $('res').hidden = true;
+  const incoming = extract(await file.text()).filter(valid);
+  if (!incoming.length) { $('err').textContent = 'В файле не нашлось ников. Это точно список подписчиков?'; return; }
+  let current = [];
+  try { const r = await fetch('subscribers.json?v=' + Date.now()); if (r.ok) current = (await r.json()).map(norm).filter(valid); } catch (e) {}
+  const have = new Set(current), fresh = [];
+  for (const n of incoming) if (!have.has(n)) { have.add(n); fresh.push(n); }
+  merged = current.concat(fresh);
+  const gone = current.filter(n => !incoming.includes(n)).length;
+  $('sOld').textContent = current.length; $('sNew').textContent = fresh.length; $('sAll').textContent = merged.length;
+  $('note').textContent = fresh.length ? `Первые новые: ${fresh.slice(0, 5).map(n => '@' + n).join(', ')}${fresh.length > 5 ? '…' : ''}` + (gone ? ` · ${gone} отписались, но их дома остаются` : '') : 'Новых жителей нет — город уже актуален.';
+  $('res').hidden = false;
+}
+$('file').onchange = e => e.target.files[0] && handle(e.target.files[0]);
+const drop = $('drop');
+['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('on'); }));
+['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('on'); }));
+drop.addEventListener('drop', e => e.dataTransfer.files[0] && handle(e.dataTransfer.files[0]));
+$('dl').onclick = () => {
+  const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([JSON.stringify(merged, null, 0)], { type: 'application/json' })), download: 'subscribers.json' });
+  document.body.appendChild(a); a.click(); a.remove();
+};
+</script>
+</body>
+</html>
