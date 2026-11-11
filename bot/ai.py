@@ -1,5 +1,5 @@
 """Дом по описанию: локальная нейросеть (Ollama) собирает 3D-дом из деталей, Chrome рисует превью."""
-import json, re
+import asyncio, json, re
 
 import httpx
 
@@ -86,10 +86,16 @@ async def generate(text: str, url: str, model: str) -> dict:
                     "options": {"temperature": 0.7 + 0.1 * attempt, "num_ctx": 8192, "num_predict": 3000}}
             if attempt % 2 == 0:
                 body["format"] = "json"   # чётные попытки — строгий JSON, нечётные — свободный текст, JSON вытаскиваем сами
-            try:
-                r = await c.post(url.rstrip("/") + "/api/chat", json=body)
-            except httpx.HTTPError as e:
-                raise RuntimeError(f"Ollama не отвечает ({e.__class__.__name__}) — запущена ли она?")
+            for wait in range(12):  # 503 = модель ещё грузится/качается — ждём до ~4 минут
+                try:
+                    r = await c.post(url.rstrip("/") + "/api/chat", json=body)
+                except httpx.HTTPError as e:
+                    raise RuntimeError(f"Ollama не отвечает ({e.__class__.__name__}) — запущена ли она?")
+                if r.status_code != 503:
+                    break
+                await asyncio.sleep(20)
+            else:
+                raise RuntimeError("Ollama всё ещё загружает модель (503) — попробуй через пару минут")
             rj = {}
             try:
                 rj = r.json()
