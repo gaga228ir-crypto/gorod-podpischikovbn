@@ -76,9 +76,22 @@ button.ghost{background:rgba(255,255,255,.12)}
 .code{font:800 40px Unbounded,sans-serif;color:var(--gold);text-align:center;letter-spacing:.04em;padding:14px;border:2px dashed var(--gold);border-radius:18px}
 .err{color:#ff8fae;font:600 13px Inter,sans-serif;min-height:1em}
 .btns{display:flex;gap:8px}.btns>*{flex:1}
+#load{position:fixed;inset:0;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:radial-gradient(120% 80% at 50% 0%,#2a1d6b 0%,#120c38 45%,#070b24 100%);transition:opacity .5s}
+#load.hide{opacity:0;pointer-events:none}
+#load .logo{font:800 26px/1.15 Unbounded,sans-serif;text-align:center;letter-spacing:.02em}
+#load .logo b{color:var(--gold);font-weight:800}
+#load .sky{display:flex;align-items:flex-end;gap:6px;height:70px}
+#load .sky i{display:block;width:16px;border-radius:4px 4px 0 0;background:linear-gradient(var(--pink),#6b3fa0);animation:grow 1.2s ease-in-out infinite alternate}
+#load .sky i:nth-child(2n){background:linear-gradient(var(--gold),#b8562f)}#load .sky i:nth-child(3n){background:linear-gradient(var(--cyan),#3d5a99)}
+@keyframes grow{from{height:12px}to{height:70px}}
+#load .lbar{width:min(70vw,260px);height:6px;border-radius:9px;background:rgba(255,255,255,.12);overflow:hidden}
+#load .lbar i{display:block;height:100%;width:8%;background:linear-gradient(90deg,var(--pink),var(--gold));border-radius:9px;transition:width .4s}
+#load .ltxt{font:600 13px Inter,sans-serif;color:var(--muted)}
 </style>
 </head>
 <body>
+<div id="load"><div class="sky"><i style="animation-delay:0s"></i><i style="animation-delay:.15s"></i><i style="animation-delay:.3s"></i><i style="animation-delay:.45s"></i><i style="animation-delay:.6s"></i><i style="animation-delay:.75s"></i><i style="animation-delay:.9s"></i></div><div class="logo">ГОРОД<br><b>ПОДПИСЧИКОВ</b></div><div class="lbar"><i id="lbarI"></i></div><div class="ltxt" id="ltxt">Загружаем город…</div></div>
+<script>setTimeout(function(){var l=document.getElementById('load');if(l)l.classList.add('hide')},20000)</script>
 <canvas id="c"></canvas>
 <canvas id="lbl"></canvas>
 <div class="top">
@@ -94,7 +107,6 @@ button.ghost{background:rgba(255,255,255,.12)}
 
 <div class="modal" id="modal"><div class="sheet" id="sheet"></div></div>
 
-<script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="houses.js"></script>
 <script type="importmap">{"imports":{"three":"./vendor/three.module.min.js","three/addons/":"./vendor/addons/"}}</script>
 <script type="module">
@@ -118,8 +130,9 @@ const HIDE = /1488|14\.88|14_88|88\.14|nazi|hitler|adolf|fuck|fak|sperma|sex|por
 const $ = id => document.getElementById(id);
 const norm = s => String(s || '').trim().replace(/^@+/, '').toLowerCase();
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const api = (path) => fetch(SUPABASE_URL + '/rest/v1/' + path, { headers: SUPABASE_ANON_KEY.startsWith('sb_') ? { apikey: SUPABASE_ANON_KEY } : { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } });
-const getJSON = async (f) => { try { const r = await fetch(f + '?v=' + Date.now()); return r.ok ? await r.json() : null; } catch (e) { return null; } };
+const withTimeout = (ms) => { const c = new AbortController(); setTimeout(() => c.abort(), ms); return c.signal; };
+const api = (path) => fetch(SUPABASE_URL + '/rest/v1/' + path, { signal: withTimeout(6000), headers: SUPABASE_ANON_KEY.startsWith('sb_') ? { apikey: SUPABASE_ANON_KEY } : { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } });
+const getJSON = async (f) => { try { const r = await fetch(f + '?v=' + Date.now(), { signal: withTimeout(15000) }); return r.ok ? await r.json() : null; } catch (e) { return null; } };
 
 let city;
 try { city = new City3D($('c'), $('lbl')); } catch (e) { location.replace('2d.html' + location.search + location.hash); throw e; }
@@ -127,23 +140,37 @@ window.city = city;
 
 // ---------- данные ----------
 let houses = [], milestones = MILESTONES_DEFAULT, election = null;
+const loadStep = (p, t) => { $('lbarI').style.width = p + '%'; if (t) $('ltxt').textContent = t; };
+const hideLoad = () => { loadStep(100); setTimeout(() => $('load').classList.add('hide'), 250); setTimeout(() => $('load').remove(), 900); };
+let baseList = [], hallInfo = null;
 async function loadCity() {
-  let base = await getJSON('subscribers.json');
-  if (!Array.isArray(base) || !base.length) base = FALLBACK;
-  const list = [], byKey = new Map();
-  for (const n of base) { const k = norm(n); if (k && !byKey.has(k)) { const it = { nick: '@' + k, key: k, recipe: null }; byKey.set(k, it); list.push(it); } }
-  if (SUPABASE_URL) {
-    try { const rows = await (await api('residents?select=nick,recipe&status=eq.approved&recipe=not.is.null')).json();
-      for (const r of rows) { const ex = byKey.get(r.nick); if (ex) ex.recipe = CityHouse.normRecipe(r.recipe) && { ...r.recipe, ...CityHouse.normRecipe(r.recipe) }; } } catch (e) {}
-  }
-  list.forEach((it, i) => it.label = HIDE.test(it.key) && !/^user\d+$/.test(it.key) ? 'Житель №' + (i + 1) : it.nick);
-  const ms = await getJSON('milestones.json'); if (Array.isArray(ms) && ms.length) milestones = ms;
-  election = await getJSON('election.json');
-  const hall = election && election.winner ? { open: true, title: 'Ратуша · мэр @' + norm(election.winner) } : null;
-  city.treSeed = KLAD.seed; city.setCity(list, milestones, hall);
-  houses = city.houses;
-  $('cnt').textContent = houses.length.toLocaleString('ru');
+  loadStep(20, 'Загружаем жителей…');
+  const [base, ms, el] = await Promise.all([getJSON('subscribers.json'), getJSON('milestones.json'), getJSON('election.json')]);
+  loadStep(60, 'Строим дома…');
+  const src = Array.isArray(base) && base.length ? base : FALLBACK, byKey = new Map();
+  for (const n of src) { const k = norm(n); if (k && !byKey.has(k)) { const it = { nick: '@' + k, key: k, recipe: null }; byKey.set(k, it); baseList.push(it); } }
+  baseList.forEach((it, i) => it.label = HIDE.test(it.key) && !/^user\d+$/.test(it.key) ? 'Житель №' + (i + 1) : it.nick);
+  if (Array.isArray(ms) && ms.length) milestones = ms;
+  election = el; hallInfo = election && election.winner ? { open: true, title: 'Ратуша · мэр @' + norm(election.winner) } : null;
+  await new Promise(r => setTimeout(r, 30));
+  buildCity();
   renderProgress(); renderElection(); renderKlad();
+  requestAnimationFrame(() => requestAnimationFrame(hideLoad));
+  loadSpecial(byKey); // особые дома — в фоне: если база недоступна, город всё равно уже на экране
+}
+function buildCity() {
+  const keep = city.hi && city.hi.key;
+  city.treSeed = KLAD.seed; city.setCity(baseList, milestones, hallInfo);
+  houses = city.houses; $('cnt').textContent = houses.length.toLocaleString('ru');
+  if (keep && city.byKey.get(keep)) city.focus(city.byKey.get(keep), false);
+}
+async function loadSpecial(byKey) {
+  if (!SUPABASE_URL) return;
+  try {
+    const rows = await (await api('residents?select=nick,recipe&status=eq.approved&recipe=not.is.null')).json();
+    let n = 0; for (const r of rows) { const ex = byKey.get(r.nick), nr = CityHouse.normRecipe(r.recipe); if (ex && nr) { ex.recipe = { ...r.recipe, ...nr }; n++; } }
+    if (n) buildCity();
+  } catch (e) {}
 }
 function renderProgress() {
   const N = houses.length, next = milestones.find(m => N < m.at), el = $('prog');
@@ -244,6 +271,7 @@ function renderElection() {
 }
 
 // ---------- «Получить дом» / мини-приложение ----------
+if (/tgWebApp/.test(location.hash + location.search) || window.TelegramWebviewProxy) await new Promise(res => { const sc = document.createElement('script'); sc.src = 'https://telegram.org/js/telegram-web-app.js'; sc.onload = sc.onerror = res; document.head.appendChild(sc); setTimeout(res, 5000); });
 const tg = window.Telegram && window.Telegram.WebApp;
 const TG = !!(tg && tg.platform && tg.platform !== 'unknown');
 const GIFT = new URLSearchParams(location.search).get('gift') === '1';
