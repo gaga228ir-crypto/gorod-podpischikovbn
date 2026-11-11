@@ -18,6 +18,10 @@ bash install.sh          # второй запуск — ставит и зап�
 Логи: `journalctl -u gorod-bot -f` · перезапуск: `sudo systemctl restart gorod-bot`
 Обновить бота: `cd gorod-podpischikovbn && git pull && sudo systemctl restart gorod-bot`
 
+## База
+По умолчанию (строки SUPABASE пустые) бот хранит всё в файле `bot/gorod.db` — VPN не нужен. Не удаляй этот файл: там заявки, особые дома и оплаты.
+С `GITHUB_TOKEN` бот раз в 2 минуты выкладывает особые дома в `recipes.json` — сайт показывает их всем без VPN.
+
 ## Перед запуском
 1. В Supabase → SQL Editor выполни весь `supabase.sql` (там же таблицы оплат и клада; повторный запуск безопасен).
 2. В `.env`: `SUPABASE_SERVICE_KEY` — ключ **service_role** (Project Settings → API). Он секретный: только в `.env`, не на сайт и не в чат.

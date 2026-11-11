@@ -165,12 +165,11 @@ function buildCity() {
   if (keep && city.byKey.get(keep)) city.focus(city.byKey.get(keep), false);
 }
 async function loadSpecial(byKey) {
-  if (!SUPABASE_URL) return;
-  try {
-    const rows = await (await api('residents?select=nick,recipe&status=eq.approved&recipe=not.is.null')).json();
-    let n = 0; for (const r of rows) { const ex = byKey.get(r.nick), nr = CityHouse.normRecipe(r.recipe); if (ex && nr) { ex.recipe = { ...r.recipe, ...nr }; n++; } }
-    if (n) buildCity();
-  } catch (e) {}
+  // 1) recipes.json рядом с сайтом — его выкладывает бот, открывается без VPN; 2) Supabase, если указан
+  const apply = rows => { let n = 0; for (const r of rows || []) { const ex = byKey.get(norm(r.nick)), nr = r.recipe && CityHouse.normRecipe(r.recipe); if (ex && nr) { ex.recipe = { ...r.recipe, ...nr }; n++; } } return n; };
+  let n = apply(await getJSON('recipes.json'));
+  if (SUPABASE_URL) { try { n += apply(await (await api('residents?select=nick,recipe&status=eq.approved&recipe=not.is.null')).json()); } catch (e) {} }
+  if (n) buildCity();
 }
 function renderProgress() {
   const N = houses.length, next = milestones.find(m => N < m.at), el = $('prog');

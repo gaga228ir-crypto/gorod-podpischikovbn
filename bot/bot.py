@@ -5,7 +5,7 @@
   Админ (/admin): одна панель — заявки, продажи, статистика.
 Настройки — в файле .env (см. .env.example).
 """
-import asyncio, datetime as dt, json, logging, os, random, re, time
+import asyncio, base64, datetime as dt, hashlib, json, logging, os, random, re, time
 from pathlib import Path
 
 import httpx
@@ -19,6 +19,7 @@ from aiogram.types import (BufferedInputFile, CallbackQuery, InlineKeyboardButto
                            PreCheckoutQuery, ReplyKeyboardMarkup, WebAppInfo, BotCommand)
 
 import cards
+from localdb import LocalDB
 
 # ---------- настройки ----------
 def load_env(path: Path):
@@ -44,6 +45,8 @@ TIKTOK_URL = E("TIKTOK_URL", "https://www.tiktok.com/@eben51041")
 PRICE = int(E("CUSTOM_PRICE", "10"))
 KLAD_SALT = E("KLAD_SALT", "gorod-klad-v1")
 KLAD_LIMIT = int(E("KLAD_LIMIT", "20"))
+GITHUB_TOKEN = E("GITHUB_TOKEN", "")
+GITHUB_REPO = E("GITHUB_REPO", "gaga228ir-crypto/gorod-podpischikovbn")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("gorod")
@@ -171,11 +174,44 @@ class DB:
     async def klad_use(self, kid):
         await self.q("PATCH", f"klad?id=eq.{kid}", {"used": True}, "return=minimal")
 
+    async def special(self):
+        return await self.q("GET", "residents?status=eq.approved&recipe=not.is.null&select=nick,recipe&order=nick.asc") or []
+
     async def add_payment(self, tg_id, nick, stars, charge_id, recipe):
         await self.q("POST", "payments", {"tg_id": tg_id, "nick": nick, "stars": stars, "charge_id": charge_id, "recipe": recipe}, "return=minimal")
 
 
-db = DB()
+# База: Supabase, если он указан в .env, иначе локальный файл gorod.db (работает без VPN)
+db = DB() if SB_URL and SB_KEY else LocalDB(Path(__file__).parent / "gorod.db")
+
+
+# ---------- выгрузка особых домов в recipes.json на GitHub → сайт видит их без VPN ----------
+async def export_loop():
+    if not GITHUB_TOKEN:
+        log.info("GITHUB_TOKEN не задан — особые дома на сайт не выгружаются")
+        return
+    last = None
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/recipes.json"
+    h = {"Authorization": f"Bearer {GITHUB_TOKEN}", "Accept": "application/vnd.github+json"}
+    while True:
+        try:
+            rows = await db.special()
+            body = json.dumps(rows, ensure_ascii=False, separators=(",", ":"))
+            digest = hashlib.sha1(body.encode()).hexdigest()
+            if digest != last:
+                async with httpx.AsyncClient(timeout=30) as c:
+                    cur = await c.get(url, headers=h, params={"ref": "main"})
+                    sha = cur.json().get("sha") if cur.status_code == 200 else None
+                    old = base64.b64decode(cur.json()["content"]).decode() if sha else None
+                    if old != body:
+                        r = await c.put(url, headers=h, json={"message": f"Особые дома: {len(rows)}", "branch": "main",
+                                                              "content": base64.b64encode(body.encode()).decode(), **({"sha": sha} if sha else {})})
+                        r.raise_for_status()
+                        log.info("recipes.json обновлён: %s домов", len(rows))
+                last = digest
+        except Exception as e:
+            log.warning("export: %s", e)
+        await asyncio.sleep(120)
 _subs = {"t": 0, "list": [], "set": set()}
 
 
@@ -539,7 +575,7 @@ async def decide(c: CallbackQuery, bot: Bot):
 
 
 async def main():
-    missing = [k for k, v in {"BOT_TOKEN": BOT_TOKEN, "SUPABASE_URL": SB_URL, "SUPABASE_SERVICE_KEY": SB_KEY, "SITE_URL": SITE_URL.strip("/"), "ADMIN_IDS": ADMIN_IDS}.items() if not v]
+    missing = [k for k, v in {"BOT_TOKEN": BOT_TOKEN, "SITE_URL": SITE_URL.strip("/"), "ADMIN_IDS": ADMIN_IDS}.items() if not v]
     if missing:
         raise SystemExit("Заполни в .env: " + ", ".join(missing))
     bot = Bot(BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
@@ -547,7 +583,8 @@ async def main():
     dp.include_router(r)
     await bot.set_my_commands([BotCommand(command="start", description="Главное меню"), BotCommand(command="home", description="Мой дом")])
     await bot.set_chat_menu_button(menu_button=MenuButtonWebApp(text="Город", web_app=WebAppInfo(url=SITE_URL)))
-    log.info("Бот запущен")
+    log.info("Бот запущен · база: %s", "Supabase" if isinstance(db, DB) else "локальный файл gorod.db")
+    asyncio.create_task(export_loop())
     await dp.start_polling(bot)
 
 
