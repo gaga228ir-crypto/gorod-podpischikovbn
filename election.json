@@ -32,6 +32,13 @@
    "promise": "Я сделаю: 1.Работы для получения валюты 2.Магазины для приобретения разных вещей за эту валюту 3.Развелечения 4.Казино 5.Ну и в целом сделать город лучше",
    "votes": 1,
    "vote": "https://t.me/gorodpodpischikov_bot?start=vote_6"
+  },
+  {
+   "id": 4,
+   "nick": "leomokroidk",
+   "promise": "Сделаю город лучше, обещаю заходить каждый день и улучшать город",
+   "votes": 0,
+   "vote": "https://t.me/gorodpodpischikov_bot?start=vote_4"
   }
  ],
  "stage": 2,
