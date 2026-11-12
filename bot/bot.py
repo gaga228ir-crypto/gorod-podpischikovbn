@@ -1150,6 +1150,32 @@ async def build_ai(bot, oid):
                 log.warning("ai notify: %s", e)
 
 
+@r.message(Command("ai_hand"))
+async def ai_hand(m: Message, bot: Bot):
+    """/ai_hand N — подставить в заказ #N дом, собранный вручную (handmade.json на сайте), и прислать превью с кнопками.
+    Работает и для уже поставленных домов: после ✅ дом жителя обновится."""
+    if not is_admin(m.from_user.id):
+        return
+    arg = (m.text or "").split()[1:]
+    if not arg or not arg[0].isdigit():
+        return await m.answer("Напиши номер заказа: /ai_hand 4")
+    oid = int(arg[0])
+    o = await db.ai_get(oid)
+    if not o:
+        return await m.answer(f"Заказа #{oid} нет.")
+    try:
+        async with httpx.AsyncClient(timeout=20) as c:
+            hand = (await c.get(SITE_BASE + "handmade.json", params={"v": int(time.time())})).json()
+        rec = hand[str(oid)]
+    except Exception:
+        return await m.answer(f"Для заказа #{oid} нет ручного дома в handmade.json (или сайт ещё не обновился — подожди минуту).")
+    await db.ai_patch(oid, {"status": "review", "recipe": rec})
+    png = await ai.preview(rec, SITE_BASE)
+    await m.answer_photo(photo(png, "house.png"), reply_markup=ai_kb(oid), caption=(
+        f"🛠 <b>Дом #{oid} собран вручную</b> · @{o['nick']}\n«{o['text'][:300]}»\n\n"
+        f"<b>{rec['name']}</b> · деталей: {len(rec['parts'])}\nНажми «✅ Поставить в город»."))
+
+
 @r.message(Command("ai"))
 async def ai_cmd(m: Message, bot: Bot):
     """/ai — показать заказы «дом по описанию» с кнопками (если кнопки потерялись)."""
