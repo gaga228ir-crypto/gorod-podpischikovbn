@@ -155,6 +155,8 @@ async function loop(now) {
   requestAnimationFrame(loop);
 }
 
+// телефон: нажатие — полный экран (без адресной строки), чтобы транслировать экран в эфир TikTok
+addEventListener('click', () => { const d = document.documentElement; (d.requestFullscreen || d.webkitRequestFullscreen)?.call(d); try { screen.orientation?.lock?.('portrait'); } catch (e) {} });
 (async () => {
   for (let i = 0; i < 20 && !(await loadCity()); i++) await new Promise(r => setTimeout(r, 3000));
   idleReload = performance.now(); setLikes(0); connect(); requestAnimationFrame(loop);
