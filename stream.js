@@ -39,7 +39,7 @@ function burst(x, y, n = 70, sp = 1, cols = COLS) {
   for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2, v = (.25 + Math.random() * .75) * innerWidth * .55 * sp;
     parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v * .85 - innerWidth * .12, life: 1.4 + Math.random() * .8, t: 0, s: innerWidth * (.004 + Math.random() * .006), c: cols[i % cols.length] }); }
 }
-function firework(k = 1) { for (let i = 0; i < k; i++) setTimeout(() => burst(innerWidth * (.2 + Math.random() * .6), innerHeight * (.2 + Math.random() * .3), 80, .8), i * 350); }
+function firework(k = 1) { for (let i = 0; i < k; i++) setTimeout(() => { burst(innerWidth * (.2 + Math.random() * .6), innerHeight * (.2 + Math.random() * .3), 80, .8); sfx('boom', 2); }, i * 350); }
 function drawFx(dt) {
   g2.clearRect(0, 0, fx.width, fx.height); g2.globalCompositeOperation = 'lighter';
   parts = parts.filter(p => (p.t += dt) < p.life);
@@ -57,12 +57,12 @@ let toastTimer = 0;
 function toast(html, sec = 5) { $('toast').querySelector('span').innerHTML = html; $('toast').style.opacity = 1; clearTimeout(toastTimer); toastTimer = setTimeout(() => $('toast').style.opacity = 0, sec * 1000); }
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const chatQ = []; let chatBusy = false;
-function chatNext() { if (chatBusy || !chatQ.length) return; chatBusy = true; const m = chatQ.shift(); $('chat').querySelector('span').innerHTML = `💬 <b>${esc(m.name)}:</b> ${esc(m.text)}`; $('chat').style.opacity = 1;
+function chatNext() { if (chatBusy || !chatQ.length) return; chatBusy = true; sfx('pop'); const m = chatQ.shift(); $('chat').querySelector('span').innerHTML = `💬 <b>${esc(m.name)}:</b> ${esc(m.text)}`; $('chat').style.opacity = 1;
   setTimeout(() => { $('chat').style.opacity = 0; setTimeout(() => { chatBusy = false; chatNext(); }, 600); }, 7000); }
 
 // ---------- лайки: «Зажги город» ----------
 let likes = 0, goal = 5000;
-function setLikes(total) { likes = Math.max(likes, total); while (likes >= goal) { firework(6); banner('❤️ ЦЕЛЬ ВЗЯТА!', 'ГОРОД ЗАЖЁГСЯ!', `${fmt(goal)} лайков — спасибо! Следующая цель ${fmt(goal * 2)}`, 6); goal *= 2; }
+function setLikes(total) { likes = Math.max(likes, total); while (likes >= goal) { firework(6); sfx('goal', 3); banner('❤️ ЦЕЛЬ ВЗЯТА!', 'ГОРОД ЗАЖЁГСЯ!', `${fmt(goal)} лайков — спасибо! Следующая цель ${fmt(goal * 2)}`, 6); goal *= 2; }
   $('likes').querySelector('span').textContent = `${fmt(likes)} / ${fmt(goal)}`; $('likes').querySelector('i').style.width = cl(likes / goal) * 100 + '%'; }
 
 // ---------- камера: кадры с плавным переходом ----------
@@ -97,7 +97,7 @@ const Q = [], lastVisit = new Map(); let nudgeT = 0;
 function enqueue(job) { if (job.prio) Q.unshift(job); else if (Q.length < 10) Q.push(job); }
 function visitShot(h, title, sub, dur = 8) {
   return { dur, pose: t => ({ p: orbit([h.x, h.z], lerp(5.5, 3.9, ease(cl(t / 3))), lerp(4, 2.7, ease(cl(t / 3))), .6 + t * .22), t: [h.x, 1.15, h.z], d: 6 }),
-    tick: t => { if (t < .05) { city.focus(h, false); const ad = city.address(h); const nb = city.neighbors(h).filter(o => !o.h.gone).slice(0, 2).map(o => o.h.label).join(', ');
+    tick: t => { if (t < .05) { sfx('visit'); city.focus(h, false); const ad = city.address(h); const nb = city.neighbors(h).filter(o => !o.h.gone).slice(0, 2).map(o => o.h.label).join(', ');
       banner(title, h.label, sub || `📍 ${ad.text} · ${ad.district}${nb ? `\nСоседи: ${nb}` : ''}`, dur - .6); } } };
 }
 async function runJob(j) {
@@ -109,15 +109,50 @@ async function runJob(j) {
     const H = h, grow = 2.2;
     return { dur: 10, blend: 1.4, pose: t => { const e = ease(cl(t / 2.4)); return { p: L3([H.x + 10, 14, H.z + 14], orbit([H.x, H.z], 4, 2.7, .7 + t * .18), e), t: [H.x, lerp(.45, 1.15, e), H.z], d: lerp(20, 6, e) }; },
       tick: (t, dt) => { const g = cl((t - grow) / 1.1); if (t < grow + 1.3) city.setGrowth(H.n + g, 1); else if (!H._grown) { H._grown = 1; city.setGrowth(Infinity); }
-        if (g > .05 && !H._boom) { H._boom = 1; const p = city.project(H.x, .6, H.z); if (p) burst(p[0], p[1], 110, 1.1); city.focus(H, false); }
+        if (g > .05 && !H._boom) { H._boom = 1; sfx('build', 4); const p = city.project(H.x, .6, H.z); if (p) burst(p[0], p[1], 110, 1.1); city.focus(H, false); }
         if (t > grow && !H._ban) { H._ban = 1; const ad = city.address(H); banner('🎉 НОВЫЙ ЖИТЕЛЬ!', H.label, `Дом №${fmt(H.n)} · 📍 ${ad.text}`, 7); } } };
   }
   if (j.type === 'visit') { const h = city.byKey.get(j.nick); return h && !h.gone ? visitShot(h, j.title || '📍 ВОТ ТВОЙ ДОМ', null, 8) : null; }
   return null;
 }
 
+// ---------- звук: фоновая музыка + синтезированные эффекты событий ----------
+const SND = { ac: null, music: null, on: false, duckT: 0 };
+const MUSIC_VOL = .32;
+function audioOn() {
+  if (SND.on) return;
+  try { SND.ac = SND.ac || new (window.AudioContext || window.webkitAudioContext)(); SND.ac.resume(); } catch (e) {}
+  if (!SND.music) { SND.music = new Audio('media/stream_music.mp3'); SND.music.loop = true; SND.music.volume = MUSIC_VOL; }
+  SND.music.play().then(() => { SND.on = true; $('off').textContent = ''; }).catch(() => { $('off').textContent = '· нажми M — включить звук ·'; });
+}
+function tone(f, t0, d, type = 'sine', v = .16, f2 = 0) {
+  const ac = SND.ac; if (!ac) return; const o = ac.createOscillator(), g = ac.createGain(), s = ac.currentTime + t0;
+  o.type = type; o.frequency.setValueAtTime(f, s); if (f2) o.frequency.exponentialRampToValueAtTime(f2, s + d);
+  g.gain.setValueAtTime(0, s); g.gain.linearRampToValueAtTime(v, s + .015); g.gain.exponentialRampToValueAtTime(.0001, s + d);
+  o.connect(g).connect(ac.destination); o.start(s); o.stop(s + d + .05);
+}
+function noise(t0, d, v = .25, f = 1200) {
+  const ac = SND.ac; if (!ac) return; const n = Math.floor(ac.sampleRate * d), b = ac.createBuffer(1, n, ac.sampleRate), x = b.getChannelData(0);
+  for (let i = 0; i < n; i++) x[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 2.5);
+  const src = ac.createBufferSource(), bp = ac.createBiquadFilter(), g = ac.createGain(), s = ac.currentTime + t0;
+  bp.type = 'lowpass'; bp.frequency.value = f; g.gain.value = v; src.buffer = b; src.connect(bp).connect(g).connect(ac.destination); src.start(s);
+}
+const SFX = {
+  build: () => { [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, i * .1, .6, 'triangle', .13)); tone(2093, .55, 1.4, 'sine', .07); noise(0, .9, .12, 600); },
+  boom: () => { tone(160, 0, .7, 'sine', .3, 45); noise(0, 1.1, .35, 2500); for (let i = 0; i < 6; i++) noise(.25 + Math.random() * .5, .12, .08, 6000); },
+  whoosh: () => { tone(300, 0, .9, 'sine', .05, 900); noise(0, .7, .1, 1500); },
+  visit: () => { tone(880, 0, .3, 'sine', .11); tone(1320, .12, .6, 'sine', .09); },
+  pop: () => tone(740, 0, .12, 'triangle', .06, 1100),
+  goal: () => { [392, 523, 659, 784, 1047].forEach((f, i) => tone(f, i * .14, .5, 'square', .05)); [523, 659, 784].forEach(f => tone(f, .75, 1.6, 'triangle', .1)); },
+};
+function sfx(k, duck = 0) {
+  if (!SND.on || !SND.ac) return; try { SFX[k](); } catch (e) {}
+  if (duck && SND.music) { SND.music.volume = MUSIC_VOL * .45; clearTimeout(SND.duckT); SND.duckT = setTimeout(() => { SND.music.volume = MUSIC_VOL; }, duck * 1000); }
+}
+addEventListener('keydown', e => { if (e.key === 'm' || e.key === 'M' || e.key === 'ь' || e.key === 'Ь') { if (SND.on) { SND.music.pause(); SND.on = false; } else audioOn(); } else audioOn(); });
+
 function onEvent(e) {
-  if (e.type === 'follow' && e.nick) { enqueue({ type: 'follow', nick: norm(e.nick), prio: true }); toast(`➕ <b>@${esc(e.nick)}</b> подписался — строим дом!`, 4); }
+  if (e.type === 'follow' && e.nick) { enqueue({ type: 'follow', nick: norm(e.nick), prio: true }); sfx('whoosh'); toast(`➕ <b>@${esc(e.nick)}</b> подписался — строим дом!`, 4); }
   else if (e.type === 'comment' && e.nick) {
     const me = norm(e.nick), words = (e.text || '').toLowerCase().match(/@?[a-z0-9._]{3,24}/g) || [];
     const target = words.map(norm).find(w => city.byKey.has(w) && w !== me) || (city.byKey.has(me) ? me : null);
@@ -156,8 +191,8 @@ async function loop(now) {
 }
 
 // телефон: нажатие — полный экран (без адресной строки), чтобы транслировать экран в эфир TikTok
-addEventListener('click', () => { const d = document.documentElement; (d.requestFullscreen || d.webkitRequestFullscreen)?.call(d); try { screen.orientation?.lock?.('portrait'); } catch (e) {} });
+addEventListener('click', () => { audioOn(); const d = document.documentElement; (d.requestFullscreen || d.webkitRequestFullscreen)?.call(d); try { screen.orientation?.lock?.('portrait'); } catch (e) {} });
 (async () => {
   for (let i = 0; i < 20 && !(await loadCity()); i++) await new Promise(r => setTimeout(r, 3000));
-  idleReload = performance.now(); setLikes(0); connect(); requestAnimationFrame(loop);
+  idleReload = performance.now(); setLikes(0); connect(); audioOn(); requestAnimationFrame(loop);
 })();
