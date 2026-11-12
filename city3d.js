@@ -12,8 +12,52 @@ const blockOf = (x, y) => [Math.floor((x - 1) / 3), Math.floor((y - 1) / 3)];
 export const LANDMARK_BLOCKS = [[0, 0], [1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, -1]];
 const RES = new Set(LANDMARK_BLOCKS.map(b => b.join(',')));
 export const blockCenter = ([bx, by]) => [3 * bx + 2, 3 * by + 2];
+// ---------- река ----------
+// извилистая неоновая река через весь город (южнее центральной площади); riverZ(x) — середина русла
+export const riverZ = x => -13 + 5 * Math.sin(x / 17) + 2 * Math.sin(x / 7.3 + 1);
+export const RIVER_W = 1.7; // полуширина воды
+export const inWater = (x, z, pad = 0) => Math.abs(z - riverZ(x)) < RIVER_W + pad;
+const riverSlope = x => 5 / 17 * Math.cos(x / 17) + 2 / 7.3 * Math.cos(x / 7.3 + 1);
+const md = (v, m) => ((v % m) + m) % m;
+
+// ---------- районы и улицы ----------
+const DIST_N = ['Пиксельный квартал', 'Лазерная слобода', 'Фиолетовые холмы', 'Хромовый район', 'Синтвейв', 'Кибер-сити', 'Мятный квартал', 'Розовый бульвар',
+  'Голографский', 'Электрогорск', 'Неоновые сады', 'Аркадный район', 'Вольтовка', 'Светлячково', 'Диско-сторона', 'Радужный'];
+const DIST_S = ['Заречье', 'Лунная гавань', 'Набережный', 'Мостовой', 'Тихая заводь', 'Звёздный берег', 'Маячный', 'Причальный'];
+const STREETS = ['Неоновая', 'Пиксельная', 'Лазерная', 'Хромовая', 'Световая', 'Вольтовая', 'Голографическая', 'Аркадная', 'Ночная', 'Звёздная',
+  'Лунная', 'Радужная', 'Электрическая', 'Мятная', 'Розовая', 'Фиолетовая', 'Диско', 'Синтовая', 'Яркая', 'Кибер'];
+export function districtOf(x, z) {
+  if (Math.hypot(x - 2, z - 2) < 11) return 'Неоновый центр';
+  const sx = Math.floor((x + 10) / 21), sz = Math.floor((z + 10) / 21);
+  return z < riverZ(x) ? DIST_S[md(sx * 3 + sz, DIST_S.length)] : DIST_N[md(sx * 5 + sz * 3, DIST_N.length)];
+}
+// дом смотрит дверью на ближайшую «горизонтальную» улицу своего квартала
+const streetSide = cy => md(cy, 3) === 1 ? -1 : 1; // -1: улица со стороны меньших z
+export function addressOf(cx, cy) {
+  const s = streetSide(cy), roadY = cy + s, name = STREETS[md(roadY / 3, STREETS.length)];
+  return { street: name + ' улица', num: 2 * (cx + 92) + (s < 0 ? 1 : 2) };
+}
+
+// ---------- места: парки, площади, памятники ----------
+// примерно каждый 16-й квартал (сдвиг через ряд — места разбросаны равномерно); в воде и в центре мест нет
+const PLACE_KINDS = ['park', 'square', 'fountain', 'park', 'playground', 'art', 'park', 'monument'];
+const PLACE_NAMES = {
+  park: ['Парк «Неон»', 'Сад Светлячков', 'Парк Подписчиков', 'Лазерный сквер', 'Парк Мечты', 'Сквер Лайков', 'Ночной сад', 'Парк Огней'],
+  square: ['Площадь Подписчиков', 'Площадь Первого дома', 'Площадь Рекомендаций', 'Звёздная площадь'],
+  fountain: ['Поющий фонтан', 'Фонтан желаний', 'Неоновый фонтан'],
+  playground: ['Детская площадка', 'Площадка «Радуга»', 'Двор игр'],
+  art: ['Арт-объект «Сердце»', 'Неоновое кольцо', 'Арт-объект «Лайк»'],
+  monument: ['Памятник Первому жителю', 'Памятник Подписке', 'Памятник Автору'],
+};
+export function placeAt(bx, by) {
+  if (md(by, 4) !== 2 || md(bx + (md(Math.floor(by / 4), 2) ? 2 : 0), 4) !== 1) return null;
+  const [cx, cz] = blockCenter([bx, by]); if (Math.hypot(cx - 2, cz - 2) < 6 || inWater(cx, cz, 1.2)) return null;
+  const i = md(bx * 7 + by * 13, 97), kind = PLACE_KINDS[i % PLACE_KINDS.length], names = PLACE_NAMES[kind];
+  return { kind, name: names[(i >> 3) % names.length], bx, by, x: cx, z: cz };
+}
+
 export const CELLS = [];
-for (let x = -90; x <= 90; x++) for (let y = -90; y <= 90; y++) if (!isRoad(x, y) && !RES.has(blockOf(x, y).join(','))) CELLS.push([x, y]);
+for (let x = -90; x <= 90; x++) for (let y = -90; y <= 90; y++) { const b = blockOf(x, y); if (!isRoad(x, y) && !RES.has(b.join(',')) && !inWater(x + .5, y + .5, .75) && !placeAt(b[0], b[1])) CELLS.push([x, y]); }
 CELLS.sort((a, b) => (Math.hypot(a[0] + .5 - 2, a[1] + .5 - 2) - Math.hypot(b[0] + .5 - 2, b[1] + .5 - 2)) || (a[0] - b[0]) || (a[1] - b[1]));
 
 function rnd(seed) { return () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
@@ -27,10 +71,15 @@ export const BIZ = {
   burger: ['БУРГЕРНАЯ', '#ff9f1a'], coffee: ['КОФЕЙНЯ', '#c08457'], pizza: ['ПИЦЦА', '#ff4d4d'], shop: ['МАГАЗИН', '#4dabf7'],
   gym: ['КАЧАЛКА', '#ff3d7f'], studio: ['СТУДИЯ', '#b197fc'], gaming: ['КИБЕРКЛУБ', '#20e3b2'], cinema: ['КИНО', '#ffd23f'],
 };
+// вывески на обычных домах-бизнесах (каждый ~5-й невысокий дом)
+const STREET_BIZ = [['КОФЕЙНЯ', '#ffb36b'], ['ДОНЕРНАЯ', '#ff9f1a'], ['БАРБЕРШОП', '#5ef2ff'], ['ЦВЕТЫ', '#ff7ad9'], ['ПЕКАРНЯ', '#ffd23f'], ['СУШИ', '#ff4d6d'],
+  ['ПИЦЦА', '#ff4d4d'], ['КИБЕРКЛУБ', '#20e3b2'], ['МАГАЗИН', '#4dabf7'], ['КАЧАЛКА', '#ff3d7f'], ['АПТЕКА', '#63e6be'], ['КНИГИ', '#c084fc']];
 export const DECOR = ['garland', 'tree', 'car', 'pet'];
 const EMOJI = { sun: '☀️', moon: '🌙', star: '⭐', heart: '❤️', clock: '🕐', crown: '👑', flame: '🔥', leaf: '🍃', lightning: '⚡', diamond: '💎', snake: '🐍' };
 
 const FOOT = 0.72, FH = 0.3;
+// пробный режим «улицы-фасады»: дома стоят вплотную вдоль улицы, внутри квартала двор (?facade=1)
+const FACADE = typeof location !== 'undefined' && /[?&]facade=1/.test(location.search);
 
 // ---------- текстуры ----------
 function canvasTex(w, h, draw) {
@@ -45,6 +94,22 @@ const EMIS_T = canvasTex(128, 128, (g, s) => { g.fillStyle = '#000'; g.fillRect(
 const GLOW_T = canvasTex(64, 64, (g) => { const r = g.createRadialGradient(32, 32, 0, 32, 32, 32); r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(.25, 'rgba(255,255,255,.55)'); r.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = r; g.fillRect(0, 0, 64, 64); });
 const BOARD_T = canvasTex(128, 64, (g) => { g.clearRect(0, 0, 128, 64); g.strokeStyle = '#fff'; g.lineWidth = 6; g.strokeRect(5, 5, 118, 54); g.fillStyle = 'rgba(255,255,255,.9)'; g.fillRect(16, 16, 58, 10); g.fillRect(16, 34, 40, 8); g.beginPath(); g.arc(98, 32, 13, 0, 7); g.fill(); });
 const ZEBRA_T = canvasTex(64, 16, (g) => { g.clearRect(0, 0, 64, 16); g.fillStyle = 'rgba(235,235,255,.8)'; for (let i = 0; i < 6; i++) g.fillRect(3 + i * 10.4, 0, 6, 16); });
+// течение реки: светлые блики-полоски, текстура едет вдоль русла
+const FLOW_T = canvasTex(512, 128, (g) => { g.fillStyle = '#000'; g.fillRect(0, 0, 512, 128); const r = rnd(5);
+  for (let i = 0; i < 70; i++) { const y = r() * 128, w = 20 + r() * 90, a = .15 + r() * .5; g.fillStyle = `rgba(${r() < .3 ? '255,120,220' : '120,220,255'},${a})`; g.fillRect(r() * 512, y, w, 1.5 + r() * 2); } });
+FLOW_T.wrapS = FLOW_T.wrapT = THREE.RepeatWrapping;
+// полоса вдоль реки: от смещения o1 до o2 от середины русла (по нормали), на высоте y
+function riverRibbon(o1, o2, y, x0, x1, step = .5) {
+  const pos = [], uv = [], idx = []; let s = 0, px = null, pz = null;
+  for (let x = x0, i = 0; x <= x1 + 1e-6; x += step, i++) {
+    const z = riverZ(x), d = riverSlope(x), L = Math.hypot(1, d), nx = -d / L, nz = 1 / L;
+    if (px !== null) s += Math.hypot(x - px, z - pz); px = x; pz = z;
+    pos.push(x + nx * o1, y, z + nz * o1, x + nx * o2, y, z + nz * o2); uv.push(s / 8, 0, s / 8, 1);
+    if (i) { const a = (i - 1) * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx); g.computeVertexNormals(); if (g.attributes.normal.array[1] < 0) { idx.reverse(); g.setIndex(idx); g.computeVertexNormals(); } return g;
+}
 const SHADOW_T = canvasTex(64, 64, (g) => { const r = g.createRadialGradient(32, 32, 8, 32, 32, 32); r.addColorStop(0, 'rgba(0,0,0,.6)'); r.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = r; g.fillRect(0, 0, 64, 64); });
 
 function bodyGeo(floors, w = FOOT, d = FOOT) {
@@ -244,6 +309,15 @@ export class City3D {
   buildStatic() {
     const S = this.scene;
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: '#141832', roughness: 1 })); ground.rotation.x = -Math.PI / 2; S.add(ground);
+    // река: вода с бегущими бликами, каменные набережные, неоновые бортики
+    const X0 = -200, X1 = 200, W = RIVER_W;
+    this.flow = FLOW_T.clone(); this.flow.repeat.set(1, 1); this.flow.needsUpdate = true;
+    S.add(new THREE.Mesh(riverRibbon(-W - .05, W + .05, .075, X0, X1), new THREE.MeshStandardMaterial({ color: '#0a1640', roughness: .15, metalness: .5, emissive: '#3aa0ff', emissiveMap: this.flow, emissiveIntensity: 1.1 })));
+    const stone = new THREE.MeshStandardMaterial({ color: '#33385f', roughness: .9 });
+    for (const sd of [-1, 1]) {
+      S.add(new THREE.Mesh(riverRibbon(sd * W, sd * (W + .38), .095, X0, X1), stone));
+      S.add(new THREE.Mesh(riverRibbon(sd * (W - .02), sd * (W + .05), .1, X0, X1), new THREE.MeshBasicMaterial({ color: sd < 0 ? '#ff4fa3' : '#4fe3ff' })));
+    }
     // звёзды
     const sp = [], r = rnd(9); for (let i = 0; i < 900; i++) { const a = r() * Math.PI * 2, e = .15 + r() * 1.2, R = 300; sp.push(Math.cos(a) * Math.cos(e) * R, Math.sin(e) * R * .6 + 20, Math.sin(a) * Math.cos(e) * R); }
     const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3));
@@ -262,14 +336,20 @@ export class City3D {
     // кварталы-газоны и тротуары
     const blocks = new Set(); for (const h of this.houses) blocks.add(blockOf(Math.floor(h.x), Math.floor(h.z)).join(','));
     for (const b of LANDMARK_BLOCKS) blocks.add(b.join(','));
+    // кварталы вдоль реки тоже мостим, чтобы набережная шла без дыр
+    const rMax = this.houses.reduce((m, h) => Math.max(m, Math.hypot(h.x - 2, h.z - 2)), 6);
+    for (let bx = -span; bx <= span; bx++) for (let by = -span; by <= span; by++) { const [cx, cz] = blockCenter([bx, by]); if (Math.hypot(cx - 2, cz - 2) < rMax + 1 && inWater(cx, cz, 2.2)) blocks.add(bx + ',' + by); }
+    this.rMax = rMax;
+    this.places = [];
+    for (let bx = -span; bx <= span; bx++) for (let by = -span; by <= span; by++) { const pl = placeAt(bx, by); if (pl && Math.hypot(pl.x - 2, pl.z - 2) < rMax - 1) { this.places.push(pl); blocks.add(bx + ',' + by); } }
     const bl = [...blocks].map(s => s.split(',').map(Number));
     const side = new THREE.InstancedMesh(new THREE.BoxGeometry(2.3, .04, 2.3), new THREE.MeshStandardMaterial({ color: '#2c3155', roughness: .9 }), bl.length);
     const grass = new THREE.InstancedMesh(new THREE.BoxGeometry(2, .06, 2), new THREE.MeshStandardMaterial({ color: '#1d3b3a', roughness: 1 }), bl.length);
-    const M = new THREE.Matrix4();
+    const M = new THREE.Matrix4(), V3 = new THREE.Vector3();
     bl.forEach(([bx, by], i) => { const [cx, cz] = blockCenter([bx, by]); M.makeTranslation(cx, .02, cz); side.setMatrixAt(i, M); M.makeTranslation(cx, .03, cz); grass.setMatrixAt(i, M); });
     add(side); add(grass);
     // разметка
-    const dashes = []; for (let k = -span; k <= span; k++) for (let t = -span * 3; t <= span * 3; t += 1) { if (Math.abs(t % 3) === 0) continue; dashes.push([k * 3 + .5, t + .5, 0], [t + .5, k * 3 + .5, 1]); }
+    const dashes = []; for (let k = -span; k <= span; k++) for (let t = -span * 3; t <= span * 3; t += 1) { if (Math.abs(t % 3) === 0) continue; if (!inWater(k * 3 + .5, t + .5, .1)) dashes.push([k * 3 + .5, t + .5, 0]); if (!inWater(t + .5, k * 3 + .5, .1)) dashes.push([t + .5, k * 3 + .5, 1]); }
     const dm = new THREE.InstancedMesh(new THREE.BoxGeometry(.04, .01, .3), new THREE.MeshStandardMaterial({ color: '#d9cf86', emissive: '#7a6f20', emissiveIntensity: .6 }), dashes.length);
     dashes.forEach(([a, b, rot], i) => { if (!rot) { M.makeRotationY(0); M.setPosition(a, .012, b); } else { M.makeRotationY(Math.PI / 2); M.setPosition(a, .012, b); } dm.setMatrixAt(i, M); });
     add(dm);
@@ -278,32 +358,54 @@ export class City3D {
     this.grow = []; const reg = (mesh, list) => { const base = list.map((_, i) => { const m = new THREE.Matrix4(); mesh.getMatrixAt(i, m); return m; }); this.grow.push({ mesh, list, base }); };
     this.pickables = [];
     const groups = new Map();
-    for (const h of regular) { const rr = rnd(hash(h.key)); h.floors = rr() < .18 ? 3 + Math.floor(rr() * 2) : 1 + Math.floor(rr() * 2); h.wall = WALLS[(rr() * WALLS.length) | 0]; h.roof = ROOFS[(rr() * ROOFS.length) | 0]; h.rot = (rr() * 4 | 0) * Math.PI / 2; h.top = h.floors * FH + .34; if (h.gone) { h.wall = '#5b5a66'; h.roof = '#2b2a33'; } const gk = h.floors + (h.gone ? 'g' : ''); if (!groups.has(gk)) groups.set(gk, []); groups.get(gk).push(h); }
+    // центр — высотки с плоскими крышами, дальше — дома пониже, на окраинах — частный сектор
+    for (const h of regular) { const rr = rnd(hash(h.key)), u = rr(), u2 = rr(), dc = Math.hypot(h.x - 2, h.z - 2);
+      h.floors = dc < 13 ? 3 + Math.floor(u * 4) : dc < 24 ? 2 + Math.floor(u * 2.6) : (u < .1 ? 3 : 1 + Math.floor(u2 * 2));
+      h.wall = WALLS[(rr() * WALLS.length) | 0]; h.roof = ROOFS[(rr() * ROOFS.length) | 0]; rr();
+      h.rot = streetSide(Math.floor(h.z)) < 0 ? Math.PI : 0; h.tall = h.floors >= 4; h.k = h.tall ? 1.2 : 1;
+      if (FACADE) { h.kx = 1.36; h.kz = .86; h.oz = .19; } else { h.kx = h.kz = h.k; h.oz = 0; }
+      h.ox = Math.sin(h.rot) * h.oz; h.ozz = Math.cos(h.rot) * h.oz;
+      h.top = h.floors * FH + (h.tall ? .14 : .34); if (h.gone) { h.wall = '#5b5a66'; h.roof = '#2b2a33'; } const gk = h.floors + (h.gone ? 'g' : ''); if (!groups.has(gk)) groups.set(gk, []); groups.get(gk).push(h); }
     const C = new THREE.Color(), roofM = new THREE.InstancedMesh(roofGeo(), flat('#ffffff'), regular.length);
     let ri = 0;
     const deadMat = new THREE.MeshStandardMaterial({ color: '#ffffff', map: WALL_T, roughness: .95 });
     for (const [gk, arr] of groups) {
       const f = parseInt(gk), im = new THREE.InstancedMesh(bodyGeo(f), String(gk).endsWith('g') ? deadMat : bodyMat('warm'), arr.length);
-      arr.forEach((h, i) => { M.makeRotationY(h.rot); M.setPosition(h.x, .06, h.z); im.setMatrixAt(i, M); im.setColorAt(i, C.set(h.wall));
-        M.makeRotationY(0); M.setPosition(h.x, .06 + f * FH, h.z); roofM.setMatrixAt(ri, M); roofM.setColorAt(ri, C.set(h.roof)); ri++; });
+      arr.forEach((h, i) => { M.makeRotationY(h.rot); M.scale(V3.set(h.kx, 1, h.kz)); M.setPosition(h.x + h.ox, .06, h.z + h.ozz); im.setMatrixAt(i, M); im.setColorAt(i, C.set(h.wall));
+        if (h.tall) M.makeScale(0, 0, 0); else { M.makeScale(h.kx / h.k, 1, h.kz / h.k); M.setPosition(h.x + h.ox, .06 + f * FH, h.z + h.ozz); } roofM.setMatrixAt(ri, M); roofM.setColorAt(ri, C.set(h.roof)); ri++; });
       im.userData.list = arr; this.pickables.push(im); add(im); reg(im, arr);
     }
     add(roofM); reg(roofM, [...groups.values()].flat());
+    // плоские крыши высоток: бортик + техбудка/бак
+    const tall = regular.filter(h => h.tall), ft = FOOT * 1.2 + .04;
+    if (tall.length) {
+      const capM = new THREE.InstancedMesh(new THREE.BoxGeometry(ft, .06, ft), flat('#ffffff'), tall.length), boxM = new THREE.InstancedMesh(new THREE.BoxGeometry(.22, .14, .18), flat('#5b6190'), tall.length);
+      const tankG = new THREE.CylinderGeometry(.08, .08, .16, 10); tankG.translate(0, .08, 0); const tankM = new THREE.InstancedMesh(tankG, flat('#8a90b8', '#5ef2ff', .25), tall.length);
+      tall.forEach((h, i) => { const y = .06 + h.floors * FH, rr = rnd(hash(h.key) ^ 0x51); M.makeScale((h.kx * FOOT + .04) / ft, 1, (h.kz * FOOT + .04) / ft); M.setPosition(h.x + h.ox, y + .03, h.z + h.ozz); capM.setMatrixAt(i, M); capM.setColorAt(i, C.set(h.roof));
+        M.makeTranslation(h.x + h.ox + (rr() - .5) * .3, y + .13, h.z + h.ozz + (rr() - .5) * .2); boxM.setMatrixAt(i, M); M.makeTranslation(h.x + h.ox + (rr() < .5 ? .2 : -.2), y + .06, h.z + h.ozz + (rr() < .5 ? .15 : -.15)); tankM.setMatrixAt(i, M); });
+      for (const m of [capM, boxM, tankM]) { add(m); reg(m, tall); }
+    }
     // двери, трубы, неоновые билборды на крышах высоток
     const doorM = new THREE.InstancedMesh(new THREE.BoxGeometry(.13, .19, .02), flat('#3a2418', '#ffb347', .55), regular.length);
     const chim = [], boards = [];
-    regular.forEach((h, i) => { const s = Math.sin(h.rot), c = Math.cos(h.rot); M.makeRotationY(h.rot); M.setPosition(h.x + s * .365, .155, h.z + c * .365); doorM.setMatrixAt(i, M);
-      const rr = rnd(hash(h.key) ^ 0x9e37); if (rr() < .4) chim.push([h.x + (rr() < .5 ? .17 : -.17), h.floors * FH + .26, h.z + (rr() < .5 ? .17 : -.17), h]);
+    regular.forEach((h, i) => { const s = Math.sin(h.rot), c = Math.cos(h.rot), o = h.oz + .365 * h.kz; M.makeRotationY(h.rot); M.setPosition(h.x + s * o, .155, h.z + c * o); doorM.setMatrixAt(i, M);
+      const rr = rnd(hash(h.key) ^ 0x9e37); if (rr() < .4 && !h.tall) chim.push([h.x + h.ox + (rr() < .5 ? .17 : -.17), h.floors * FH + .26, h.z + h.ozz + (rr() < .5 ? .14 : -.14), h]);
       if (h.floors >= 3 && rr() < .45) boards.push([h, rr()]); });
     add(doorM); reg(doorM, regular);
+    // бизнесы: неоновая вывеска над дверью у каждого ~5-го невысокого дома
+    const bizBy = new Map();
+    for (const h of regular) { if (h.gone || h.tall) continue; const v = hash(h.key + '#biz'); if (v % 5) continue; const b = (v >>> 4) % STREET_BIZ.length; h.biz = STREET_BIZ[b][0]; if (!bizBy.has(b)) bizBy.set(b, []); bizBy.get(b).push(h); }
+    for (const [b, arr] of bizBy) { const [name, col] = STREET_BIZ[b], sg = neonSign(name, col, .56), im = new THREE.InstancedMesh(sg.geometry, sg.material, arr.length);
+      arr.forEach((h, i) => { const o = h.oz + .36 * h.kz + .012; M.makeRotationY(h.rot); M.setPosition(h.x + Math.sin(h.rot) * o, .32, h.z + Math.cos(h.rot) * o); im.setMatrixAt(i, M); });
+      add(im); reg(im, arr); }
     const gone = regular.filter(h => h.gone);
     if (gone.length) {
       const signT = canvasTex(128, 64, (g) => { g.fillStyle = '#f2e6c9'; g.fillRect(0, 0, 128, 64); g.strokeStyle = '#7a4b2a'; g.lineWidth = 6; g.strokeRect(3, 3, 122, 58); g.fillStyle = '#b3261e'; g.font = '800 19px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('ПРОДАЁТСЯ', 64, 33); });
       const sM = new THREE.InstancedMesh(new THREE.PlaneGeometry(.34, .17), new THREE.MeshBasicMaterial({ map: signT, side: THREE.DoubleSide }), gone.length), pM = new THREE.InstancedMesh(new THREE.BoxGeometry(.02, .3, .02), flat('#6b4a2e'), gone.length);
       const bM2 = new THREE.InstancedMesh(new THREE.BoxGeometry(.5, .05, .02), flat('#8a6a48'), gone.length * 2);
-      gone.forEach((h, i) => { const s = Math.sin(h.rot), c = Math.cos(h.rot), x = h.x + s * .46, z = h.z + c * .46;
+      gone.forEach((h, i) => { const s = Math.sin(h.rot), c = Math.cos(h.rot), fr = h.oz + .36 * h.kz + .1, x = h.x + s * fr, z = h.z + c * fr;
         M.makeRotationY(h.rot); M.setPosition(x, .3, z); sM.setMatrixAt(i, M); M.makeTranslation(x, .15, z); pM.setMatrixAt(i, M);
-        for (const [k, y] of [[0, .14], [1, .2]]) { M.makeRotationY(h.rot); M.multiply(new THREE.Matrix4().makeRotationZ(k ? -.5 : .5)); M.setPosition(h.x + s * .375, .06 + y, h.z + c * .375); bM2.setMatrixAt(i * 2 + k, M); } });
+        for (const [k, y] of [[0, .14], [1, .2]]) { M.makeRotationY(h.rot); M.multiply(new THREE.Matrix4().makeRotationZ(k ? -.5 : .5)); M.setPosition(h.x + s * (fr - .085), .06 + y, h.z + c * (fr - .085)); bM2.setMatrixAt(i * 2 + k, M); } });
       add(sM); add(pM); add(bM2); reg(sM, gone); reg(pM, gone); reg(bM2, gone.flatMap(h => [h, h]));
     }
     const chimM = new THREE.InstancedMesh(new THREE.BoxGeometry(.08, .2, .08), flat('#6b5a6e'), Math.max(1, chim.length)); chimM.count = chim.length;
@@ -311,8 +413,8 @@ export class City3D {
     const NEON = ['#ff3d7f', '#5ef2ff', '#ffd23f', '#a6ff8f', '#c084fc', '#ff9f43'];
     const bM = new THREE.InstancedMesh(new THREE.PlaneGeometry(.56, .28), new THREE.MeshBasicMaterial({ map: BOARD_T, transparent: true, side: THREE.DoubleSide, depthWrite: false }), Math.max(1, boards.length)); bM.count = boards.length;
     const legM = new THREE.InstancedMesh(new THREE.BoxGeometry(.02, .22, .02), flat('#4a4f78'), Math.max(1, boards.length * 2)); legM.count = boards.length * 2;
-    boards.forEach(([h, v], i) => { const rot = h.rot + Math.PI / 4 * (v < .5 ? 1 : -1), y = .06 + h.floors * FH + .5; M.makeRotationY(rot); M.setPosition(h.x, y, h.z); bM.setMatrixAt(i, M); bM.setColorAt(i, C.set(NEON[(v * 97 | 0) % NEON.length]).multiplyScalar(1.6));
-      const ox = Math.cos(rot) * .2, oz = -Math.sin(rot) * .2; M.makeTranslation(h.x + ox, y - .2, h.z + oz); legM.setMatrixAt(i * 2, M); M.makeTranslation(h.x - ox, y - .2, h.z - oz); legM.setMatrixAt(i * 2 + 1, M); });
+    boards.forEach(([h, v], i) => { const rot = h.rot + Math.PI / 4 * (v < .5 ? 1 : -1), y = .06 + h.floors * FH + .5; M.makeRotationY(rot); M.setPosition(h.x + h.ox, y, h.z + h.ozz); bM.setMatrixAt(i, M); bM.setColorAt(i, C.set(NEON[(v * 97 | 0) % NEON.length]).multiplyScalar(1.6));
+      const ox = Math.cos(rot) * .2, oz = -Math.sin(rot) * .2; M.makeTranslation(h.x + h.ox + ox, y - .2, h.z + h.ozz + oz); legM.setMatrixAt(i * 2, M); M.makeTranslation(h.x + h.ox - ox, y - .2, h.z + h.ozz - oz); legM.setMatrixAt(i * 2 + 1, M); });
     add(bM); add(legM); reg(bM, boards.map(b => b[0])); reg(legM, boards.flatMap(b => [b[0], b[0]]));
     // тени под домами
     const sh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1.15, 1.15), new THREE.MeshBasicMaterial({ map: SHADOW_T, transparent: true, depthWrite: false }), this.houses.length);
@@ -325,8 +427,106 @@ export class City3D {
     bl.forEach(([bx, by]) => { const [cx, cz] = blockCenter([bx, by]), rb = rnd(hash(bx + ':' + by));
       for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) { lamps.push([cx + sx * 1.08, cz + sz * 1.08]);
         const ix = cx + sx * 1.5, iz = cz + sz * 1.5; zebra.add(ix + ',' + iz); }
-      for (const [ex, ez, rot] of [[0, 1.02, 0], [0, -1.02, 0], [1.02, 0, 1], [-1.02, 0, 1]]) { const v = rb(); if (v < .5) strees.push([cx + ex, cz + ez, .8 + rb() * .4]); else if (v < .75) benches.push([cx + ex * 1.06, cz + ez * 1.06, rot]); } });
-    const poleM = new THREE.InstancedMesh(new THREE.CylinderGeometry(.015, .02, .7, 6), flat('#4a4f78'), lamps.length);
+      if (FACADE) for (const dx of [-.5, .5]) strees.push([cx + dx, cz, 1.1]); // деревья во дворе
+      const E = FACADE ? 1.14 : 1.02;
+      for (const [ex, ez, rot] of [[0, E, 0], [0, -E, 0], [E, 0, 1], [-E, 0, 1]]) { const v = rb(); if (v < .5) strees.push([cx + ex, cz + ez, .8 + rb() * .4]); else if (v < .75) benches.push([cx + ex * 1.06, cz + ez * 1.06, rot]); } });
+    // в воде ничего не ставим
+    const dry = a => a.filter(([x, z]) => !inWater(x, z, .45));
+    lamps.splice(0, lamps.length, ...dry(lamps)); strees.splice(0, strees.length, ...dry(strees)); benches.splice(0, benches.length, ...dry(benches));
+    for (const t of [...zebra]) { const [x, z] = t.split(',').map(Number); if (inWater(x, z, 1)) zebra.delete(t); }
+    // набережные: деревья и фонари вдоль воды (кроме мест, где мост)
+    const R2 = rMax + 2;
+    for (const sd of [-1, 1]) for (let x = -R2, i = 0; x <= R2; x += .85, i++) {
+      if (md(Math.floor(x), 3) === 0 || md(Math.floor(x + .3), 3) === 0 || md(Math.floor(x - .3), 3) === 0) continue;
+      const d = riverSlope(x), L = Math.hypot(1, d), o = sd * (RIVER_W + .2), px = x - d / L * o, pz = riverZ(x) + o / L;
+      if (Math.hypot(px - 2, pz - 2) > R2) continue;
+      if (i % 3 === 1) lamps.push([px, pz]); else strees.push([px, pz, .7 + ((i * 37) % 10) / 25]);
+    }
+    // места: парки, площади, памятники, фонтаны, площадки, арт-объекты
+    this.placeG = [];
+    const paveL = [], pathL = [], pondL = [];
+    const at = (m, x, y, z) => { m.position.set(x, y, z); return m; };
+    for (const pl of this.places) {
+      const { x, z, kind } = pl, rp = rnd(hash(pl.name + pl.bx + ':' + pl.by));
+      for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) lamps.push([x + sx * .78, z + sz * .78]);
+      if (kind === 'park') {
+        pathL.push([x, z, 0], [x, z, 1]); pondL.push([x + .5, z - .5]);
+        for (const [tx, tz] of [[-.6, -.6], [-.75, -.25], [-.3, -.75], [.6, .6], [.25, .75], [.75, .3], [-.6, .6], [-.3, .75], [.8, -.85]]) strees.push([x + tx + (rp() - .5) * .1, z + tz + (rp() - .5) * .1, .9 + rp() * .5]);
+        benches.push([x - .25, z + .2, 0], [x + .2, z - .25, 1]);
+        continue;
+      }
+      paveL.push([x, z]);
+      const G = new THREE.Group(); G.position.set(x, .09, z); add(G); this.placeG.push(G);
+      if (kind === 'monument' || kind === 'square') { // постамент + фигура жителя с телефоном (на площади — золотой обелиск со звездой)
+        G.add(at(new THREE.Mesh(new THREE.BoxGeometry(.5, .22, .5), flat('#4a4f78')), 0, .11, 0));
+        G.add(at(new THREE.Mesh(new THREE.BoxGeometry(.4, .06, .4), flat('#ffd23f', '#ffb000', .5)), 0, .25, 0));
+        const gold = new THREE.MeshStandardMaterial({ color: '#ffd23f', metalness: .7, roughness: .3, emissive: '#ffb000', emissiveIntensity: .45 });
+        if (kind === 'monument') {
+          G.add(at(new THREE.Mesh(new THREE.CapsuleGeometry(.07, .22, 4, 10), gold), 0, .45, 0));
+          G.add(at(new THREE.Mesh(new THREE.SphereGeometry(.07, 12, 10), gold), 0, .67, 0));
+          const arm = at(new THREE.Mesh(new THREE.CapsuleGeometry(.025, .2, 3, 6), gold), .1, .6, 0); arm.rotation.z = -.7; G.add(arm);
+          G.add(at(new THREE.Mesh(new THREE.BoxGeometry(.05, .08, .01), flat('#5ef2ff', '#5ef2ff', 2)), .18, .72, 0));
+        } else {
+          G.add(at(new THREE.Mesh(new THREE.ConeGeometry(.12, .9, 4), gold), 0, .73, 0));
+          const st = emojiSprite('⭐', .3); st.position.y = 1.3; G.add(st);
+        }
+        benches.push([x, z + .75, 0], [x, z - .75, 0], [x + .75, z, 1], [x - .75, z, 1]);
+      } else if (kind === 'fountain') {
+        const stoneM = flat('#8a90b8'), water = flat('#5ef2ff', '#00c8ff', 1.3);
+        for (const [r, h, y] of [[.6, .1, 0], [.3, .12, .1], [.14, .1, .22]]) {
+          G.add(at(new THREE.Mesh(new THREE.CylinderGeometry(r, r * 1.05, h, 24), stoneM), 0, y + h / 2, 0));
+          G.add(at(new THREE.Mesh(new THREE.CylinderGeometry(r * .88, r * .88, .02, 24), water), 0, y + h + .005, 0));
+        }
+        const sp = [], rr = rnd(3); for (let i = 0; i < 60; i++) { const a = rr() * Math.PI * 2, d = rr() * .45; sp.push(Math.cos(a) * d, .35 + rr() * .5 * (1 - d), Math.sin(a) * d); }
+        const sg2 = new THREE.BufferGeometry(); sg2.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3));
+        const spray = new THREE.Points(sg2, new THREE.PointsMaterial({ color: '#bff6ff', size: .07, map: GLOW_T, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })); spray.userData.spin = true; G.add(spray);
+        benches.push([x, z + .8, 0], [x, z - .8, 0]);
+      } else if (kind === 'playground') {
+        const C1 = flat('#ff4d6d'), C2 = flat('#ffd23f'), C3 = flat('#4dabf7'), C4 = flat('#63e6be');
+        G.add(at(new THREE.Mesh(new THREE.BoxGeometry(1.6, .02, 1.6), flat('#c9a46a')), 0, .01, 0));
+        G.add(at(new THREE.Mesh(new THREE.BoxGeometry(.3, .35, .3), C3), -.4, .18, -.3));
+        const roofP = at(new THREE.Mesh(new THREE.ConeGeometry(.26, .2, 4), C1), -.4, .45, -.3); roofP.rotation.y = Math.PI / 4; G.add(roofP);
+        const slide = at(new THREE.Mesh(new THREE.BoxGeometry(.16, .02, .55), C2), -.4, .17, .1); slide.rotation.x = .6; G.add(slide);
+        for (const sx of [.2, .7]) G.add(at(new THREE.Mesh(new THREE.BoxGeometry(.03, .4, .03), C4), sx, .2, -.4));
+        G.add(at(new THREE.Mesh(new THREE.BoxGeometry(.53, .03, .03), C4), .45, .4, -.4));
+        for (const sx of [.33, .57]) G.add(at(new THREE.Mesh(new THREE.BoxGeometry(.1, .02, .06), C1), sx, .12, -.4));
+        const car = at(new THREE.Mesh(new THREE.CylinderGeometry(.28, .28, .05, 16), new THREE.MeshStandardMaterial({ color: '#c084fc', emissive: '#7b2cbf', emissiveIntensity: .4 })), .35, .06, .35); car.userData.spin = true; G.add(car);
+      } else if (kind === 'art') { // большое неоновое кольцо с сияющим ядром
+        const ring = at(new THREE.Mesh(new THREE.TorusGeometry(.38, .045, 10, 40), flat('#ff3d7f', '#ff3d7f', 1.6)), 0, .55, 0); ring.userData.spin = true; G.add(ring);
+        G.add(at(new THREE.Mesh(new THREE.SphereGeometry(.12, 16, 12), flat('#5ef2ff', '#5ef2ff', 1.6)), 0, .55, 0));
+        G.add(at(new THREE.Mesh(new THREE.CylinderGeometry(.18, .22, .1, 16), flat('#4a4f78')), 0, .05, 0));
+        benches.push([x, z + .8, 0], [x + .8, z, 1]);
+      }
+    }
+    if (paveL.length) { const pm = new THREE.InstancedMesh(new THREE.BoxGeometry(2.04, .03, 2.04), new THREE.MeshStandardMaterial({ color: '#3d3868', roughness: .8 }), paveL.length);
+      paveL.forEach(([x, z], i) => { M.makeTranslation(x, .075, z); pm.setMatrixAt(i, M); }); add(pm); }
+    if (pathL.length) { const pm = new THREE.InstancedMesh(new THREE.BoxGeometry(2.02, .02, .22), flat('#8a7f9e'), pathL.length);
+      pathL.forEach(([x, z, r90], i) => { M.makeRotationY(r90 ? Math.PI / 2 : 0); M.setPosition(x, .07, z); pm.setMatrixAt(i, M); }); add(pm); }
+    if (pondL.length) { const pm = new THREE.InstancedMesh(new THREE.CylinderGeometry(.3, .3, .02, 24), flat('#2a6bff', '#3aa0ff', .9), pondL.length);
+      pondL.forEach(([x, z], i) => { M.makeTranslation(x, .08, z); pm.setMatrixAt(i, M); }); add(pm); }
+    // мосты: на каждой «вертикальной» улице через реку; через один — с неоновой аркой
+    this.bridges = [];
+    const deckM = flat('#3a3f66'), railM = flat('#ff4fa3', '#ff4fa3', .9), railM2 = flat('#4fe3ff', '#4fe3ff', .9), bridgeLights = [];
+    for (let k = -span; k <= span; k++) {
+      const x = k * 3 + .5, zc = riverZ(x); if (Math.hypot(x - 2, zc - 2) > rMax + 1.5) continue;
+      const len = 2 * RIVER_W + Math.abs(riverSlope(x)) + 1.1, B = new THREE.Group(), rm = k % 2 ? railM : railM2;
+      const deck = new THREE.Mesh(new THREE.BoxGeometry(1.02, .1, len), deckM); deck.position.y = .17; B.add(deck);
+      for (const sx of [-.48, .48]) { const rail = new THREE.Mesh(new THREE.BoxGeometry(.04, .06, len), rm); rail.position.set(sx, .27, 0); B.add(rail);
+        if (!(k % 2)) { const a = new THREE.Mesh(new THREE.TorusGeometry(len / 2 - .1, .016, 6, 28, Math.PI), rm); a.rotation.y = Math.PI / 2; a.scale.set(1, .32, 1); a.position.set(sx, .22, 0); B.add(a); }
+        for (const t of [-.5, 0, .5]) bridgeLights.push(x + sx, .36, zc + t * (len - .3)); }
+      for (const sz of [-1, 1]) { const p = new THREE.Mesh(new THREE.BoxGeometry(1.06, .26, .12), deckM); p.position.set(0, .11, sz * (RIVER_W - .15)); B.add(p); }
+      B.position.set(x, 0, zc); add(B); this.bridges.push({ x, zc, half: len / 2 });
+    }
+    if (bridgeLights.length) { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(bridgeLights, 3));
+      add(new THREE.Points(g, new THREE.PointsMaterial({ color: '#fff0c0', size: .4, map: GLOW_T, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }))); }
+    // лодки на реке
+    this.boats = []; const boatN = Math.max(4, Math.min(14, (rMax / 4) | 0));
+    const hullG = new THREE.BoxGeometry(.5, .07, .18); hullG.translate(0, .1, 0); const cabG = new THREE.BoxGeometry(.2, .08, .13); cabG.translate(-.05, .17, 0);
+    this.boatHull = add(new THREE.InstancedMesh(hullG, flat('#ffffff'), boatN)); this.boatCab = add(new THREE.InstancedMesh(cabG, flat('#fff6d8', '#ffd27a', .9), boatN));
+    const BC = ['#ff4fa3', '#4fe3ff', '#ffd23f', '#a6ff8f', '#c084fc'];
+    for (let i = 0; i < boatN; i++) { this.boats.push({ pos: (r() * 2 - 1) * rMax, dir: r() < .5 ? 1 : -1, off: (r() < .5 ? .7 : -.7) * (r() * .5 + .5), sp: .25 + r() * .3, L: rMax + 6 }); this.boatHull.setColorAt(i, C.set(BC[i % BC.length])); }
+    this.boats.forEach(b => b.off = b.dir > 0 ? -Math.abs(b.off) : Math.abs(b.off));
+    const poleM =new THREE.InstancedMesh(new THREE.CylinderGeometry(.015, .02, .7, 6), flat('#4a4f78'), lamps.length);
     const gp = []; lamps.forEach(([x, z], i) => { M.makeTranslation(x, .35, z); poleM.setMatrixAt(i, M); gp.push(x, .72, z); }); add(poleM);
     const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(gp, 3));
     add(new THREE.Points(lg, new THREE.PointsMaterial({ color: '#ffcf7a', size: .55, map: GLOW_T, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })));
@@ -353,7 +553,10 @@ export class City3D {
     this.cars = []; const CC = ['#ff4d6d', '#4dabf7', '#ffd43b', '#f8f9fa', '#63e6be', '#9775fa', '#ff922b'];
     const carN = Math.min(90, 14 + N / 30 | 0);
     const carBody = new THREE.InstancedMesh(new THREE.BoxGeometry(.4, .1, .2), flat('#ffffff'), carN), carTop = new THREE.InstancedMesh(new THREE.BoxGeometry(.22, .08, .18), flat('#3b4a7a', '#223', .3), carN);
-    for (let i = 0; i < carN; i++) { const alongX = r() < .5, dir = r() < .5 ? 1 : -1; this.cars.push({ alongX, dir, line: Math.round((r() * 2 - 1) * span) * 3 + .5 + (dir > 0 ? .17 : -.17), pos: (r() * 2 - 1) * span * 3, sp: 1.3 + r() * 1.4 }); carBody.setColorAt(i, C.set(CC[(r() * CC.length) | 0])); }
+    // улицы вдоль x, которые где-то упираются в реку, для транспорта не берём
+    const ZLO = -13 - 7 - RIVER_W - .8, ZHI = -13 + 7 + RIVER_W + .8;
+    const lineFor = alongX => { let l; for (let t = 0; t < 30; t++) { l = Math.round((r() * 2 - 1) * span) * 3 + .5; if (!alongX || l < ZLO || l > ZHI) break; } return l; };
+    for (let i = 0; i < carN; i++) { const alongX = r() < .5, dir = r() < .5 ? 1 : -1; this.cars.push({ alongX, dir, line: lineFor(alongX) + (dir > 0 ? .17 : -.17), pos: (r() * 2 - 1) * span * 3, sp: 1.3 + r() * 1.4 }); carBody.setColorAt(i, C.set(CC[(r() * CC.length) | 0])); }
     this.carBody = add(carBody); this.carTop = add(carTop);
     this.headG = new THREE.BufferGeometry(); this.headG.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(carN * 6), 3));
     const hc = new Float32Array(carN * 6); for (let i = 0; i < carN; i++) hc.set([1, .92, .6, 1, .2, .25], i * 6);
@@ -363,8 +566,12 @@ export class City3D {
     const pb = new THREE.CapsuleGeometry(.035, .1, 3, 6); pb.translate(0, .1, 0); const ph = new THREE.SphereGeometry(.04, 8, 6); ph.translate(0, .22, 0);
     const SH = ['#ff6b8a', '#ffd166', '#6ee7b7', '#7cc8ff', '#c084fc', '#ff9f68', '#f1f3f5', '#20c997'], SK = ['#f6d2b5', '#eac0a0', '#d9a47c', '#b07a52', '#8a5a3b'];
     const pBody = new THREE.InstancedMesh(pb, flat('#ffffff'), pplN), pHead = new THREE.InstancedMesh(ph, flat('#ffffff'), pplN);
-    for (let i = 0; i < pplN; i++) { const alongX = r() < .5; this.ppl.push({ alongX, dir: r() < .5 ? 1 : -1, line: Math.round((r() * 2 - 1) * span) * 3 + .5 + (r() < .5 ? .43 : -.43), pos: (r() * 2 - 1) * span * 3, sp: .25 + r() * .25, ph: r() * 6, nick: this.houses.length ? this.houses[(r() * this.houses.length) | 0].label : '' }); pBody.setColorAt(i, C.set(SH[(r() * SH.length) | 0])); pHead.setColorAt(i, C.set(SK[(r() * SK.length) | 0])); }
+    for (let i = 0; i < pplN; i++) { const alongX = r() < .5; this.ppl.push({ alongX, dir: r() < .5 ? 1 : -1, line: lineFor(alongX) + (r() < .5 ? .43 : -.43), pos: (r() * 2 - 1) * span * 3, sp: .25 + r() * .25, ph: r() * 6, nick: this.houses.length ? this.houses[(r() * this.houses.length) | 0].label : '' }); pBody.setColorAt(i, C.set(SH[(r() * SH.length) | 0])); pHead.setColorAt(i, C.set(SK[(r() * SK.length) | 0])); }
     this.pBody = add(pBody); this.pHead = add(pHead);
+    // клетки домов → поиск соседей; районы → подписи на общем плане
+    this.cellMap = new Map(this.houses.map(h => [Math.floor(h.x) + ',' + Math.floor(h.z), h]));
+    const dist = new Map(); for (const h of this.houses) { const nm = districtOf(h.x, h.z); h.district = nm; const d = dist.get(nm) || { name: nm, x: 0, z: 0, n: 0 }; d.x += h.x; d.z += h.z; d.n++; dist.set(nm, d); }
+    this.districts = [...dist.values()].filter(d => d.n >= 25 && d.name !== 'Неоновый центр').map(d => ({ name: d.name, x: d.x / d.n, z: d.z / d.n, n: d.n }));
     this.N = N;
     if (this.treSeed != null) this.setTreasure(this.treSeed);
   }
@@ -385,6 +592,15 @@ export class City3D {
     for (const g of this.grow || []) { g.list.forEach((h, i) => { const s = sc(h); if (s === 1) { g.mesh.setMatrixAt(i, g.base[i]); return; }
       T1.makeTranslation(h.x, 0, h.z); S.makeScale(s || 1e-4, s || 1e-4, s || 1e-4); T2.makeTranslation(-h.x, 0, -h.z); M.multiplyMatrices(T1, S).multiply(T2).multiply(g.base[i]); g.mesh.setMatrixAt(i, M); }); g.mesh.instanceMatrix.needsUpdate = true; }
     for (const g of this.specialG || []) { const s = sc(g.userData.house); g.visible = s > 0; g.scale.setScalar(Math.max(s, 1e-4)); }
+  }
+  // «Неоновая улица, 45 · Пиксельный квартал»
+  address(h) { const cx = Math.floor(h.x), cy = Math.floor(h.z), a = addressOf(cx, cy); return { ...a, district: h.district || districtOf(h.x, h.z), text: `${a.street}, ${a.num}` }; }
+  // соседи по улице слева/справа и дом напротив (через дорогу)
+  neighbors(h) {
+    const cx = Math.floor(h.x), cy = Math.floor(h.z), get = (x, y) => this.cellMap?.get(x + ',' + y), out = [];
+    for (const dir of [-1, 1]) for (let s = 1; s <= 3; s++) { const n = get(cx + dir * s, cy); if (n) { out.push({ h: n, rel: dir < 0 ? 'слева' : 'справа' }); break; } }
+    const opp = get(cx, cy + streetSide(cy) * 2); if (opp) out.push({ h: opp, rel: 'напротив' });
+    return out;
   }
   focus(h, fly = true) { this.hi = h; this.hiT = this.T; if (h && fly) { this.ctl.tx = h.x; this.ctl.tz = h.z; this.ctl.td = 7; } }
   flyTo(x, z, d = 9) { this.ctl.tx = x; this.ctl.tz = z; this.ctl.td = d; }
@@ -417,11 +633,18 @@ export class City3D {
     const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), S1 = new THREE.Vector3(1, 1, 1), P = new THREE.Vector3(), hp = this.headG.attributes.position.array, L = this.span * 3;
     this.cars.forEach((o, i) => { let p = o.pos + o.dir * o.sp * T; p = ((p + L) % (2 * L) + 2 * L) % (2 * L) - L; const x = o.alongX ? p : o.line, z = o.alongX ? o.line : p;
       Q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), o.alongX ? (o.dir > 0 ? 0 : Math.PI) : (o.dir > 0 ? -Math.PI / 2 : Math.PI / 2));
-      M.compose(P.set(x, .1, z), Q, S1); this.carBody.setMatrixAt(i, M); M.compose(P.set(x - (o.alongX ? .02 * o.dir : 0), .19, z - (o.alongX ? 0 : .02 * o.dir)), Q, S1); this.carTop.setMatrixAt(i, M);
-      const fx = o.alongX ? o.dir * .22 : 0, fz = o.alongX ? 0 : o.dir * .22; hp.set([x + fx, .12, z + fz, x - fx, .12, z - fz], i * 6); });
+      const ly = !o.alongX && inWater(x, z, .6) ? .17 : 0; // на мосту — по настилу
+      M.compose(P.set(x, .1 + ly, z), Q, S1); this.carBody.setMatrixAt(i, M); M.compose(P.set(x - (o.alongX ? .02 * o.dir : 0), .19 + ly, z - (o.alongX ? 0 : .02 * o.dir)), Q, S1); this.carTop.setMatrixAt(i, M);
+      const fx = o.alongX ? o.dir * .22 : 0, fz = o.alongX ? 0 : o.dir * .22; hp.set([x + fx, .12 + ly, z + fz, x - fx, .12 + ly, z - fz], i * 6); });
+    // река течёт, лодки плывут
+    if (this.flow) this.flow.offset.x = -T * .04;
+    if (this.boats) { this.boats.forEach((b, i) => { let x = b.pos + b.dir * b.sp * T; x = ((x + b.L) % (2 * b.L) + 2 * b.L) % (2 * b.L) - b.L;
+        const d = riverSlope(x), L = Math.hypot(1, d), z = riverZ(x) + b.off / L, bob = Math.sin(T * 2 + i) * .012;
+        Q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), -Math.atan2(d * b.dir, b.dir)); M.compose(P.set(x - d / L * b.off, bob, z), Q, S1); this.boatHull.setMatrixAt(i, M); this.boatCab.setMatrixAt(i, M); });
+      this.boatHull.instanceMatrix.needsUpdate = this.boatCab.instanceMatrix.needsUpdate = true; }
     this.carBody.instanceMatrix.needsUpdate = this.carTop.instanceMatrix.needsUpdate = true; this.headG.attributes.position.needsUpdate = true;
     // люди
-    this.ppl.forEach((o, i) => { let p = o.pos + o.dir * o.sp * T; p = ((p + L) % (2 * L) + 2 * L) % (2 * L) - L; const x = o.alongX ? p : o.line, z = o.alongX ? o.line : p, b = Math.abs(Math.sin(T * 8 * o.sp + o.ph)) * .02;
+    this.ppl.forEach((o, i) => { let p = o.pos + o.dir * o.sp * T; p = ((p + L) % (2 * L) + 2 * L) % (2 * L) - L; const x = o.alongX ? p : o.line, z = o.alongX ? o.line : p, b = Math.abs(Math.sin(T * 8 * o.sp + o.ph)) * .02 + (!o.alongX && inWater(x, z, .6) ? .17 : 0);
       M.makeTranslation(x, b, z); this.pBody.setMatrixAt(i, M); this.pHead.setMatrixAt(i, M); o.x = x; o.z = z; o.y = b; });
     this.pBody.instanceMatrix.needsUpdate = this.pHead.instanceMatrix.needsUpdate = true;
     // анимации
@@ -443,6 +666,24 @@ export class City3D {
       g.beginPath(); g.moveTo(x - 5, y - 7); g.lineTo(x + 5, y - 7); g.lineTo(x, y); g.fill();
       g.fillStyle = '#1a1238'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, x, y - 6 - h / 2 + 1);
     };
+    // названия районов — когда смотрим на город сверху
+    if (c.d > 24 && this.districts && !this.noLmLabels) {
+      const a = Math.min(1, (c.d - 24) / 10); g.textAlign = 'center'; g.textBaseline = 'middle';
+      const used = [];
+      for (const d of [...this.districts].sort((u, v) => v.n - u.n)) { const p = this.project(d.x, 1.2, d.z); if (!p || p[0] < -80 || p[0] > this.W + 80 || p[1] < 0 || p[1] > this.H) continue;
+        if (used.some(q => Math.abs(q[0] - p[0]) < 190 && Math.abs(q[1] - p[1]) < 30)) continue; used.push(p);
+        const big = d.name === 'Неоновый центр'; g.font = `800 ${big ? 17 : 14}px Unbounded, sans-serif`; g.lineWidth = 4; g.strokeStyle = `rgba(12,8,36,${.85 * a})`;
+        const t = d.name.toUpperCase(); g.strokeText(t, p[0], p[1]); g.fillStyle = big ? `rgba(255,210,63,${a})` : `rgba(255,140,220,${.95 * a})`; g.fillText(t, p[0], p[1]); }
+    }
+    // названия мест (парки, площади, памятники) — на среднем плане
+    if (c.d > 7 && c.d < 24 && this.places && !this.noLmLabels) {
+      const R = c.d * 1.1, used = []; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = '700 12px Inter, sans-serif';
+      const ICON = { park: '🌳', square: '⭐', fountain: '⛲', playground: '🎠', art: '💗', monument: '🗿' };
+      for (const pl of this.places) { if (Math.hypot(pl.x - c.x, pl.z - c.z) > R) continue; const p = this.project(pl.x, 1.1, pl.z); if (!p) continue;
+        if (used.some(q => Math.abs(q[0] - p[0]) < 150 && Math.abs(q[1] - p[1]) < 26)) continue; used.push(p);
+        const t = `${ICON[pl.kind] || '📍'} ${pl.name}`, w = g.measureText(t).width + 16;
+        g.fillStyle = 'rgba(20,60,45,.88)'; g.beginPath(); g.roundRect(p[0] - w / 2, p[1] - 11, w, 22, 11); g.fill(); g.fillStyle = '#b8ffd9'; g.fillText(t, p[0], p[1] + 1); }
+    }
     if (c.d < 22) {
       const R = c.d * .7, cand = [];
       for (const h of this.houses) { if (h === this.hi || h.n > (this.growN ?? Infinity)) continue; const dd = Math.hypot(h.x - c.x, h.z - c.z); if (dd < R) cand.push([dd, h]); }
