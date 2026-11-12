@@ -37,6 +37,8 @@ button.ghost{background:rgba(255,255,255,.12)}
 .card .nick{font:800 18px Unbounded,sans-serif;color:var(--gold);word-break:break-all}
 .card .sub{font:500 13px Inter,sans-serif;color:var(--muted);margin-top:4px}
 .card .grow{flex:1;min-width:0}
+.vbar{height:6px;border-radius:3px;background:rgba(255,255,255,.12);margin:6px 0 2px;overflow:hidden}.vbar i{display:block;height:100%;background:linear-gradient(90deg,#ff3d7f,#ffd23f)}
+.vbtn{padding:8px 14px!important;font-size:13px!important;align-self:center;flex:none}
 .card .nb button{font:700 13px Inter,sans-serif;color:var(--gold);background:none;border:0;padding:0 2px;cursor:pointer;text-decoration:underline dotted}
 .cta{position:fixed;right:16px;bottom:18px;z-index:2}
 .card.show ~ .cta{display:none}
@@ -269,9 +271,15 @@ function renderElection() {
   const E = election; $('chips').innerHTML = ''; if (!E || !E.stage) return;
   const chip = document.createElement('button'); chip.className = 'chip'; chip.textContent = E.chip || '🗳 ВЫБОРЫ МЭРА'; $('chips').appendChild(chip);
   chip.onclick = () => {
-    const cands = (E.candidates || []).map((c, i) => `<div class="cand"><b>${i + 1}</b><div><div class="n">@${esc(norm(c.nick))}</div><div class="p">${esc(c.promise || '')}</div></div></div>`).join('');
+    const tot = (E.candidates || []).reduce((n, c) => n + (c.votes || 0), 0), open2 = E.stage === 2;
+    const cands = (E.candidates || []).map((c, i) => { const pc = tot ? Math.round((c.votes || 0) / tot * 100) : 0;
+      return `<div class="cand"><b>${i + 1}</b><div style="flex:1;min-width:0"><div class="n">@${esc(norm(c.nick))}${E.winner && norm(E.winner) === norm(c.nick) ? ' 👑' : ''}</div><div class="p">${esc(c.promise || '')}</div>`
+        + (c.votes != null ? `<div class="vbar"><i style="width:${pc}%"></i></div><div class="p">🗳 ${c.votes} · ${pc}%</div>` : '')
+        + `</div>${open2 && c.vote ? `<a class="btn vbtn tglink" href="${esc(c.vote)}" target="_blank" rel="noopener">ЗА</a>` : ''}</div>`; }).join('')
+      || (open2 ? '<p>Кандидатов пока нет — стань первым! 🙋</p>' : '');
     sheet.innerHTML = `<h2>${esc(E.title || 'Выборы мэра')}</h2><p>${esc(E.text || '')}</p>${cands}${E.until ? `<p>⏳ До: <b>${esc(E.until)}</b></p>` : ''}
-      <div class="btns">${E.link ? `<a class="btn" href="${esc(E.link)}" target="_blank" rel="noopener">${esc(E.button || 'УЧАСТВОВАТЬ')}</a>` : ''}<button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button></div>`;
+      <div class="btns">${open2 && E.apply ? `<a class="btn tglink" href="${esc(E.apply)}" target="_blank" rel="noopener">🙋 СТАТЬ КАНДИДАТОМ</a>` : ''}${E.link && !open2 ? `<a class="btn" href="${esc(E.link)}" target="_blank" rel="noopener">${esc(E.button || 'УЧАСТВОВАТЬ')}</a>` : ''}<button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button></div>`;
+    sheet.querySelectorAll('.tglink').forEach(a => a.onclick = e => { if (TG && tg.openTelegramLink) { e.preventDefault(); tg.openTelegramLink(a.href); } });
     modal.classList.add('show'); closeBtn();
   };
 }

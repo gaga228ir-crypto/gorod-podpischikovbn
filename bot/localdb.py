@@ -158,3 +158,77 @@ class LocalDB:
 
     async def ref_top(self, k=10):
         return [tuple(r) for r in self.c.execute("select ref_by, count(*) c from refs where rewarded=1 group by ref_by order by c desc limit ?", (k,))]
+
+    # ---- выборы мэра ----
+    def _mayor_tables(self):
+        if getattr(self, "_mt", False):
+            return
+        self.c.executescript("""
+        create table if not exists candidates (
+          id integer primary key autoincrement, tg_id integer not null unique, nick text not null, promise text not null,
+          status text not null default 'new', created_at text not null default (strftime('%Y-%m-%dT%H:%M:%SZ','now')));
+        create table if not exists votes (
+          tg_id integer primary key, cand_id integer not null, created_at text not null default (strftime('%Y-%m-%dT%H:%M:%SZ','now')));
+        create table if not exists kv (k text primary key, v text);
+        """)
+        self.c.commit()
+        self._mt = True
+
+    async def kv_get(self, k):
+        self._mayor_tables()
+        r = self.c.execute("select v from kv where k=?", (k,)).fetchone()
+        return r[0] if r else None
+
+    async def kv_set(self, k, v):
+        self._mayor_tables()
+        if v is None:
+            self.c.execute("delete from kv where k=?", (k,))
+        else:
+            self.c.execute("insert into kv (k, v) values (?,?) on conflict(k) do update set v=excluded.v", (k, str(v)))
+        self.c.commit()
+
+    async def cand_by_tg(self, tg_id):
+        self._mayor_tables()
+        r = self.c.execute("select * from candidates where tg_id=?", (tg_id,)).fetchone()
+        return dict(r) if r else None
+
+    async def cand_get(self, cid):
+        self._mayor_tables()
+        r = self.c.execute("select * from candidates where id=?", (cid,)).fetchone()
+        return dict(r) if r else None
+
+    async def cand_add(self, tg_id, nick, promise):
+        """Новая заявка (или повторная после отказа). → id"""
+        self._mayor_tables()
+        self.c.execute("""insert into candidates (tg_id, nick, promise) values (?,?,?)
+                          on conflict(tg_id) do update set nick=excluded.nick, promise=excluded.promise, status='new',
+                          created_at=strftime('%Y-%m-%dT%H:%M:%SZ','now')""", (tg_id, nick, promise))
+        self.c.commit()
+        return self.c.execute("select id from candidates where tg_id=?", (tg_id,)).fetchone()[0]
+
+    async def cand_set(self, cid, status):
+        self._mayor_tables()
+        self.c.execute("update candidates set status=? where id=?", (status, cid))
+        self.c.commit()
+
+    async def cands(self):
+        """Одобренные кандидаты с голосами, по убыванию голосов."""
+        self._mayor_tables()
+        return [dict(r) for r in self.c.execute("""select c.id, c.tg_id, c.nick, c.promise, count(v.tg_id) votes from candidates c
+            left join votes v on v.cand_id = c.id where c.status='approved' group by c.id order by votes desc, c.id asc""")]
+
+    async def vote_get(self, tg_id):
+        self._mayor_tables()
+        r = self.c.execute("select cand_id from votes where tg_id=?", (tg_id,)).fetchone()
+        return r[0] if r else None
+
+    async def vote_add(self, tg_id, cand_id):
+        self._mayor_tables()
+        self.c.execute("insert or ignore into votes (tg_id, cand_id) values (?,?)", (tg_id, cand_id))
+        self.c.commit()
+
+    async def mayor_reset(self):
+        """Новые выборы: старые заявки и голоса — в архив (удаляем)."""
+        self._mayor_tables()
+        self.c.executescript("delete from votes; delete from candidates;")
+        self.c.commit()

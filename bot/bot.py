@@ -56,6 +56,7 @@ PRICE = int(E("CUSTOM_PRICE", "0"))          # конструктор: 0 = бе�
 AI_PRICE = int(E("AI_PRICE", "15"))           # дом по описанию (нейросеть)
 OLLAMA_URL = E("OLLAMA_URL", "http://127.0.0.1:11434")
 OLLAMA_MODEL = E("OLLAMA_MODEL", "qwen2.5:7b")
+CHAT_ID = E("CHAT_ID", "")                    # id чата жителей (-100…) — бот должен быть в чате; узнать: /chatid в чате
 CHANNEL_ID = E("CHANNEL_ID", "")              # @username канала — бот должен быть в нём админом
 KLAD_SALT = E("KLAD_SALT", "gorod-klad-v1")
 KLAD_LIMIT = int(E("KLAD_LIMIT", "20"))
@@ -415,6 +416,15 @@ async def start(m: Message, state: FSMContext):
     if arg[0].startswith("klad") and arg[0][4:].isdigit():
         await claim_klad(m, m.from_user.id, arg[0][4:])
         return
+    if arg[0].startswith("vote_") and arg[0][5:].isdigit():
+        await do_vote(m, m.from_user.id, int(arg[0][5:]), m.bot)
+        return
+    if arg[0] == "cand":
+        await apply_start(m, m.from_user.id, state, m.bot)
+        return
+    if arg[0] == "mayor":
+        await show_election(m)
+        return
     if arg[0].startswith("ref") and arg[0][3:].isdigit():
         await db.ref_set(m.from_user.id, int(arg[0][3:]))
     s = await subscribers()
@@ -550,18 +560,307 @@ async def claim(c: CallbackQuery, bot: Bot):
             log.warning("notify admin: %s", e)
 
 
+# ---------- выборы мэра ----------
+# Кандидат: привязанный ник (свой дом) + подписка на канал + участник чата жителей → программа → проверка админом → сайт.
+# Голос: привязанный ник + подписка на канал; 1 человек = 1 голос. Неделя (MAYOR_DAYS), потом итог — мэр в Ратуше.
+class Mayor(StatesGroup):
+    promise = State()
+
+
+MAYOR_DAYS = int(E("MAYOR_DAYS", "7"))
+_bot_username = ""
+_mayor_dirty = asyncio.Event()
+
+
+def bot_link(arg=""):
+    return f"https://t.me/{_bot_username}" + (f"?start={arg}" if arg else "")
+
+
+async def in_chat(bot, uid) -> bool:
+    if not CHAT_ID:
+        return True
+    try:
+        mem = await bot.get_chat_member(CHAT_ID, uid)
+        return mem.status in ("member", "administrator", "creator", "restricted")
+    except Exception as e:  # бота нет в чате или неверный CHAT_ID — не мешаем людям
+        log.warning("чат: %s", e)
+        return True
+
+
+async def mayor_until():
+    v = await db.kv_get("mayor_until")
+    return dt.datetime.fromisoformat(v) if v else None
+
+
+def msk(d: dt.datetime) -> str:
+    return (d + dt.timedelta(hours=3)).strftime("%d.%m %H:%M") + " МСК"
+
+
+async def mayor_json():
+    until, winner = await mayor_until(), await db.kv_get("mayor_winner")
+    cands = await db.cands()
+    base = {"chip": "🗳 ВЫБОРЫ МЭРА", "title": "Город выбирает мэра!", "link": bot_link("mayor"), "button": "ГОЛОСОВАТЬ В БОТЕ",
+            "apply": bot_link("cand"), "candidates": [{"id": c["id"], "nick": c["nick"], "promise": c["promise"], "votes": c["votes"],
+                                                        "vote": bot_link(f"vote_{c['id']}")} for c in cands]}
+    if winner:
+        return {**base, "stage": 3, "title": f"Мэр города — @{winner}!", "text": "Выборы завершены. Мэр заселился в Ратушу 🏛", "winner": winner, "until": ""}
+    if until:
+        return {**base, "stage": 2, "until": msk(until),
+                "text": "Хочешь стать мэром? Подай заявку в боте: нужен свой дом, подписка на ТГ-канал и чат жителей. "
+                        "Голосовать могут жители с домом, подписанные на канал. 1 житель = 1 голос."}
+    return None
+
+
+async def mayor_publish():
+    """election.json на сайт (через GitHub). Пока выборы не запущены — файл не трогаем."""
+    j = await mayor_json()
+    if not j or not GITHUB_TOKEN:
+        return
+    body = json.dumps(j, ensure_ascii=False, indent=1)
+    old, sha = await gh_get("election.json")
+    if old != body:
+        await gh_put("election.json", body, f"Выборы мэра: {len(j['candidates'])} кандидатов, голосов {sum(c['votes'] for c in j['candidates'])}", sha)
+
+
+async def mayor_loop(bot):
+    """Раз в 5 минут (или сразу после важного события) — выгрузка на сайт и проверка конца выборов."""
+    while True:
+        try:
+            await asyncio.wait_for(_mayor_dirty.wait(), timeout=300)
+        except asyncio.TimeoutError:
+            pass
+        _mayor_dirty.clear()
+        try:
+            until = await mayor_until()
+            if until and not await db.kv_get("mayor_winner") and dt.datetime.utcnow() >= until:
+                await mayor_finish(bot)
+            await mayor_publish()
+        except Exception as e:
+            log.warning("выборы: %s", e)
+        await asyncio.sleep(20)  # не чаще раза в 20 с — бережём GitHub
+
+
+async def mayor_finish(bot):
+    cands = await db.cands()
+    if not cands:
+        await db.kv_set("mayor_until", None)
+        for a in ADMIN_IDS:
+            await bot.send_message(a, "🗳 Выборы закончились, но одобренных кандидатов не было. Запусти заново: /mayor_start")
+        return
+    w = cands[0]
+    await db.kv_set("mayor_winner", w["nick"])
+    try:
+        await bot.send_message(w["tg_id"], f"👑 <b>Ты — мэр Города подписчиков!</b>\n\nЗа тебя проголосовали {w['votes']} жителей. Твой ник теперь на Ратуше 🏛")
+    except Exception:
+        pass
+    for a in ADMIN_IDS:
+        await bot.send_message(a, "🗳 <b>Итоги выборов</b>\n\n" + "\n".join(f"{i + 1}. @{c['nick']} — {c['votes']}" for i, c in enumerate(cands[:10])))
+
+
+def elect_kb(cands, can_apply=True):
+    rows = [[IB(text=f"🗳 @{c['nick']} · {c['votes']}", callback_data=f"vote:{c['id']}")] for c in cands[:10]]
+    if can_apply:
+        rows.append([IB(text="🙋 Стать кандидатом", callback_data="cand")])
+    rows.append([IB(text="🏙 Кандидаты на сайте", url=SITE_URL)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def show_election(m: Message):
+    until, winner = await mayor_until(), await db.kv_get("mayor_winner")
+    if winner:
+        await m.answer(f"👑 Мэр города — <b>@{winner}</b>. Следующие выборы объявим в TikTok и канале.", reply_markup=main_menu())
+        return
+    if not until:
+        await m.answer("🗳 Выборы мэра скоро начнутся — следи за TikTok и каналом!", reply_markup=main_menu())
+        return
+    cands = await db.cands()
+    lst = "\n".join(f"<b>{i + 1}. @{c['nick']}</b> — {c['promise']} · <b>{c['votes']}</b> 🗳" for i, c in enumerate(cands)) or "Кандидатов пока нет — стань первым!"
+    await m.answer_photo(photo(cards.election_card("Город выбирает мэра")), caption=(
+        f"<b>🗳 Выборы мэра</b> · до {msk(until)}\n\n{lst}\n\n"
+        "Голосуют жители с домом, подписанные на ТГ-канал. 1 житель = 1 голос.")[:1000], reply_markup=elect_kb(cands))
+
+
 @r.callback_query(F.data == "elect")
 async def elect(c: CallbackQuery):
     await c.answer()
-    e = await election()
-    if not e or not e.get("stage"):
-        await c.message.answer("Выборы мэра скоро начнутся — следи за TikTok и каналом 🗳")
+    await show_election(c.message)
+
+
+def join_kb(need_chat, need_channel, retry):
+    rows = []
+    if need_channel and CHANNEL_URL:
+        rows.append([IB(text="📢 Подписаться на канал", url=CHANNEL_URL)])
+    if need_chat and CHAT_URL:
+        rows.append([IB(text="💬 Вступить в чат жителей", url=CHAT_URL)])
+    rows.append([IB(text="✅ Я вступил — проверить", callback_data=retry)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def resident_ok(m: Message, uid: int):
+    me = await db.linked(uid)
+    if not me:
+        await m.answer("Сначала получи свой дом: «🏠 Мой дом» → привяжи ник TikTok.", reply_markup=main_menu())
+        return None
+    if me["nick"] in (await subscribers())["gone"]:
+        await m.answer("Твой дом пустует — ты отписался от TikTok 🏚 Подпишись снова и возвращайся.",
+                       reply_markup=InlineKeyboardMarkup(inline_keyboard=[[IB(text="🎵 Подписаться", url=TIKTOK_URL)]]))
+        return None
+    return me
+
+
+async def apply_start(m: Message, uid: int, state: FSMContext, bot):
+    until = await mayor_until()
+    if not until or await db.kv_get("mayor_winner"):
+        await m.answer("Сейчас заявки не принимаются — выборы ещё не начались или уже прошли.", reply_markup=main_menu())
         return
-    cands = "\n".join(f"<b>{i + 1}. @{norm_nick(x['nick'])}</b> — {x.get('promise', '')}" for i, x in enumerate(e.get("candidates") or []))
-    text = f"<b>{e.get('title', 'Выборы мэра')}</b>\n\n{e.get('text', '')}" + (f"\n\n{cands}" if cands else "") + (f"\n\n⏳ До: {e['until']}" if e.get("until") else "")
-    kb = [[IB(text=e.get("button", "Участвовать"), url=e["link"])]] if e.get("link") else []
-    await c.message.answer_photo(photo(cards.election_card(e.get("title", "Город выбирает мэра"))), caption=text[:1000],
-                                 reply_markup=InlineKeyboardMarkup(inline_keyboard=kb) if kb else None)
+    me = await resident_ok(m, uid)
+    if not me:
+        return
+    old = await db.cand_by_tg(uid)
+    if old and old["status"] in ("new", "approved"):
+        await m.answer("Твоя заявка уже " + ("на проверке ⏳" if old["status"] == "new" else "одобрена — ты в списке кандидатов ✅"))
+        return
+    ch, ct = await in_channel(bot, uid, strict=True), await in_chat(bot, uid)
+    if not (ch and ct):
+        await m.answer("Чтобы стать кандидатом, нужно быть с городом везде 👇\n" + ("" if ch else "• подписаться на ТГ-канал\n") + ("" if ct else "• вступить в чат жителей\n"),
+                       reply_markup=join_kb(not ct, not ch, "cand"))
+        return
+    await state.set_state(Mayor.promise)
+    await m.answer(f"🙋 <b>Заявка в мэры от @{me['nick']}</b>\n\nНапиши одним сообщением свою программу: что ты сделаешь, если станешь мэром? "
+                   "(до 200 символов, без мата и ссылок)\n\nОтмена — /start")
+
+
+@r.callback_query(F.data == "cand")
+async def cand_cb(c: CallbackQuery, state: FSMContext):
+    await c.answer()
+    await apply_start(c.message, c.from_user.id, state, c.bot)
+
+
+@r.message(Mayor.promise)
+async def cand_promise(m: Message, state: FSMContext):
+    text = re.sub(r"\s+", " ", (m.text or "")).strip()
+    if not text or text.startswith("/"):
+        await state.clear()
+        return
+    if len(text) > 200 or re.search(r"https?://|t\.me/|@\w{3,}", text):
+        await m.answer("Нужно до 200 символов и без ссылок/упоминаний. Попробуй ещё раз 🙂")
+        return
+    me = await db.linked(m.from_user.id)
+    if not me:
+        await state.clear()
+        return
+    cid = await db.cand_add(m.from_user.id, me["nick"], text)
+    await state.clear()
+    await m.answer("📨 Заявка отправлена! Мэрия проверит её, и ты появишься в списке кандидатов на сайте и в боте.", reply_markup=main_menu())
+    for a in ADMIN_IDS:
+        try:
+            await m.bot.send_message(a, f"🗳 <b>Заявка в мэры</b> #{cid}\n@{me['nick']} (tg {m.from_user.id})\n\n«{html_esc(text)}»",
+                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=[[IB(text="✅ Одобрить", callback_data=f"mc_ok:{cid}"),
+                                                                                         IB(text="❌ Отклонить", callback_data=f"mc_no:{cid}")]]))
+        except Exception as e:
+            log.warning("notify admin: %s", e)
+
+
+def html_esc(s):
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+@r.callback_query(F.data.startswith("mc_ok:") | F.data.startswith("mc_no:"))
+async def cand_moderate(c: CallbackQuery):
+    if not is_admin(c.from_user.id):
+        return await c.answer()
+    ok, cid = c.data.startswith("mc_ok"), int(c.data.split(":")[1])
+    cd = await db.cand_get(cid)
+    if not cd:
+        return await c.answer("Заявка не найдена", show_alert=True)
+    await db.cand_set(cid, "approved" if ok else "rejected")
+    await c.answer("Одобрено ✅" if ok else "Отклонено")
+    await c.message.edit_reply_markup(reply_markup=None)
+    await c.message.answer(("✅ Одобрено" if ok else "❌ Отклонено") + f": @{cd['nick']}")
+    try:
+        await c.bot.send_message(cd["tg_id"], "✅ <b>Ты кандидат в мэры!</b> Твоя программа уже на сайте. Зови друзей голосовать: " + bot_link(f"vote_{cid}")
+                                 if ok else "❌ Заявка в мэры не прошла проверку. Можно подать новую — «🗳 Выборы мэра» → «Стать кандидатом».")
+    except Exception:
+        pass
+    _mayor_dirty.set()
+
+
+async def do_vote(m: Message, uid: int, cid: int, bot, retry_cb=None):
+    until = await mayor_until()
+    if not until or await db.kv_get("mayor_winner"):
+        await m.answer("Голосование сейчас закрыто.", reply_markup=main_menu())
+        return
+    cd = await db.cand_get(cid)
+    if not cd or cd["status"] != "approved":
+        await m.answer("Такого кандидата нет 🤔")
+        return
+    me = await resident_ok(m, uid)
+    if not me:
+        return
+    prev = await db.vote_get(uid)
+    if prev:
+        p = await db.cand_get(prev)
+        await m.answer(f"Ты уже проголосовал за @{p['nick'] if p else '?'} 🗳 Один житель — один голос.")
+        return
+    if not await in_channel(bot, uid, strict=True):
+        await m.answer("Голосовать могут подписчики нашего ТГ-канала 📢 Подпишись и нажми «проверить».", reply_markup=join_kb(False, True, retry_cb or f"vote:{cid}"))
+        return
+    await db.vote_add(uid, cid)
+    await m.answer(f"✅ Твой голос за <b>@{cd['nick']}</b> принят! Результаты — на сайте и в «🗳 Выборы мэра».", reply_markup=main_menu())
+    _mayor_dirty.set()
+
+
+@r.callback_query(F.data.startswith("vote:"))
+async def vote_cb(c: CallbackQuery):
+    await c.answer()
+    await do_vote(c.message, c.from_user.id, int(c.data.split(":")[1]), c.bot)
+
+
+@r.message(Command("mayor_start"))
+async def mayor_start(m: Message):
+    if not is_admin(m.from_user.id):
+        return
+    arg = (m.text or "").split()[1:]
+    days = int(arg[0]) if arg and arg[0].isdigit() else MAYOR_DAYS
+    await db.mayor_reset()
+    await db.kv_set("mayor_winner", None)
+    await db.kv_set("mayor_until", (dt.datetime.utcnow() + dt.timedelta(days=days)).replace(microsecond=0).isoformat())
+    _mayor_dirty.set()
+    await m.answer(f"🗳 Выборы запущены на {days} дн. (до {msk(await mayor_until())}). Заявки — «🗳 Выборы мэра» → «Стать кандидатом».\n"
+                   f"Ссылка для роликов/канала: {bot_link('cand')}\nПродлить: /mayor_extend 2 · завершить сейчас: /mayor_end")
+
+
+@r.message(Command("mayor_extend"))
+async def mayor_extend(m: Message):
+    if not is_admin(m.from_user.id):
+        return
+    u = await mayor_until()
+    if not u:
+        return await m.answer("Выборы не идут. Запуск: /mayor_start")
+    arg = (m.text or "").split()[1:]
+    u += dt.timedelta(days=int(arg[0]) if arg and arg[0].isdigit() else 1)
+    await db.kv_set("mayor_until", u.isoformat())
+    _mayor_dirty.set()
+    await m.answer(f"Продлено до {msk(u)}")
+
+
+@r.message(Command("mayor_end"))
+async def mayor_end(m: Message):
+    if not is_admin(m.from_user.id):
+        return
+    if not await mayor_until():
+        return await m.answer("Выборы не идут.")
+    await mayor_finish(m.bot)
+    _mayor_dirty.set()
+    await m.answer("Готово — итоги отправлены, сайт обновится через минуту.")
+
+
+@r.message(Command("chatid"))
+async def chat_id_cmd(m: Message):
+    """В чате жителей: узнать его CHAT_ID для .env (только админ)."""
+    if is_admin(m.from_user.id):
+        await m.answer(f"CHAT_ID этого чата: <code>{m.chat.id}</code>")
+
 
 
 # ---------- клад дня ----------
@@ -697,7 +996,7 @@ async def web_app(m: Message, bot: Bot):
                                payload=f"a|{oid}", currency="XTR", prices=[LabeledPrice(label="Дом по описанию", amount=AI_PRICE)])
 
 
-async def in_channel(bot, uid) -> bool:
+async def in_channel(bot, uid, strict=False) -> bool:
     if not CHANNEL_ID:
         return True
     try:
@@ -705,7 +1004,7 @@ async def in_channel(bot, uid) -> bool:
         return mem.status in ("member", "administrator", "creator", "restricted")
     except Exception as e:  # бот не админ в канале или неверный CHANNEL_ID — не мешаем людям
         log.warning("канал: %s", e)
-        return True
+        return not strict
 
 
 @r.pre_checkout_query()
@@ -1107,7 +1406,10 @@ async def main():
     await bot.set_my_commands([BotCommand(command="start", description="Главное меню"), BotCommand(command="home", description="Мой дом")])
     await bot.set_chat_menu_button(menu_button=MenuButtonWebApp(text="Город", web_app=WebAppInfo(url=SITE_URL)))
     log.info("Бот запущен · база: %s", "Supabase" if isinstance(db, DB) else "локальный файл gorod.db")
+    global _bot_username
+    _bot_username = (await bot.get_me()).username
     asyncio.create_task(export_loop())
+    asyncio.create_task(mayor_loop(bot))
     asyncio.create_task(sync_loop(bot))
     asyncio.create_task(ai_resume(bot))
     asyncio.create_task(restart_later())
