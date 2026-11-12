@@ -868,6 +868,27 @@ async def chat_id_cmd(m: Message):
         await m.answer(f"CHAT_ID этого чата: <code>{m.chat.id}</code>")
 
 
+# ---------- чат жителей → бегущая строка на стриме (stream_server.py читает chat_feed.json) ----------
+BAD = re.compile(r"(х[уy][йияеёю]|п[иі]зд|(?<![а-яё])[её]б[аеиоуы]|(?:за|на|у|вы|въ|отъ|по|долбо)[её]б|бля|сук[аи]|муд[аи]|пид[оа]р|гандон|шлюх|залуп|дроч|https?://|t\.me/|www\.|@\w{4,})", re.I)
+_feed: list = []
+
+
+@r.message(F.chat.type.in_({"group", "supergroup"}) & F.text & ~F.text.startswith("/"))
+async def chat_feed(m: Message):
+    if not CHAT_ID or str(m.chat.id) != str(CHAT_ID) or not m.from_user or m.from_user.is_bot:
+        return
+    text = re.sub(r"\s+", " ", m.text).strip()
+    if not text or len(text) > 140 or BAD.search(text):
+        return
+    name = (m.from_user.first_name or "Житель")[:20]
+    _feed.append({"id": m.message_id, "ts": time.time(), "name": name, "text": text})
+    del _feed[:-30]
+    try:
+        (Path(__file__).parent / "chat_feed.json").write_text(json.dumps(_feed, ensure_ascii=False), encoding="utf-8")
+    except OSError:
+        pass
+
+
 
 # ---------- клад дня ----------
 async def claim_klad(m: Message, uid: int, code: str):
