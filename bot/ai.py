@@ -3,6 +3,7 @@ import asyncio, json, re
 
 import httpx
 
+import architect  # ИИ выбирает параметры, код собирает дом
 import tiktok  # общий невидимый Chrome
 
 PART_T = ["box", "cyl", "cone", "sphere", "dome", "pyramid", "torus"]
@@ -28,6 +29,12 @@ EXAMPLE = {"name": "Уютный домик", "lights": "warm", "parts": [
     {"t": "box", "p": [0.2, 0.75, -0.1], "s": [0.08, 0.3, 0.08], "c": "#7a5a5a"},
     {"t": "sphere", "p": [-0.38, 0, 0.38], "s": [0.18, 0.18, 0.18], "c": "#2fbf71"},
     {"t": "sphere", "p": [0.38, 0.3, 0.38], "s": [0.06, 0.06, 0.06], "c": "#ffd27a", "g": 1}]}
+
+
+ARCH_USER = "уютный деревянный домик с трубой, ёлкой и гирляндой"
+ARCH_EXAMPLE = {"name": "Уютный домик", "type": "house", "floors": 2, "material": "wood", "roof": "pyramid", "towers": 0,
+                "wall": "#c8874f", "roofColor": "#7a2f2f", "accent": "#ffc95e", "lights": "warm", "floating": False,
+                "decor": ["chimney", "tree", "garland"]}
 
 
 def _num(v, a, b, d):
@@ -76,8 +83,8 @@ def log_raw(text):
 
 async def generate(text: str, url: str, model: str, progress=None) -> dict:
     """→ рецепт {'shape':'custom','name','lights','parts'}; RuntimeError, если Ollama недоступна или ответ плохой."""
-    msgs = [{"role": "system", "content": SYSTEM},
-            {"role": "user", "content": EXAMPLE_USER}, {"role": "assistant", "content": json.dumps(EXAMPLE, ensure_ascii=False)},
+    msgs = [{"role": "system", "content": architect.PROMPT},
+            {"role": "user", "content": ARCH_USER}, {"role": "assistant", "content": json.dumps(ARCH_EXAMPLE, ensure_ascii=False)},
             {"role": "user", "content": text}]
     last = "пустой ответ"
     async with httpx.AsyncClient(timeout=900, trust_env=False) as c:
@@ -136,12 +143,9 @@ async def generate(text: str, url: str, model: str, progress=None) -> dict:
                 if progress:
                     await progress(f"вариант {attempt + 1} не разобрался, пробую ещё…")
                 continue
-            parts = clean(j.get("parts") if isinstance(j, dict) else j)
-            if len(parts) >= 3:
-                lights = j.get("lights") if isinstance(j, dict) and j.get("lights") in ("warm", "cool", "pink", "green") else "warm"
-                name = str(j.get("name") or "Дом по описанию")[:40] if isinstance(j, dict) else "Дом по описанию"
-                return {"shape": "custom", "name": name, "lights": lights, "parts": parts}
-            last = f"слишком мало деталей ({len(parts)})"
+            if isinstance(j, dict) and j.get("type"):
+                return architect.build(j)
+            last = "в ответе нет параметров здания"
     raise RuntimeError("нейросеть не собрала дом: " + last)
 
 
