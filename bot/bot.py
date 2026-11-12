@@ -334,9 +334,10 @@ async def sync_subscribers_once():
 
 
 async def sync_loop(bot):
-    if not (TIKTOK_SESSIONID and GITHUB_TOKEN):
+    if not ((TIKTOK_SESSIONID or tiktok.has_profile()) and GITHUB_TOKEN):
         return
     await asyncio.sleep(30)
+    warned = 0.0
     while True:
         try:
             total, new, gone, back = await sync_subscribers_once()
@@ -344,6 +345,13 @@ async def sync_loop(bot):
         except Exception as e:
             SYNC.update(at=time.strftime("%d.%m %H:%M"), msg=f"❌ {e}")
             log.warning("sync: %s", e)
+            if time.time() - warned > 6 * 3600:  # не чаще раза в 6 часов — чтобы ты узнал, что подписчики не обновляются
+                warned = time.time()
+                for a in ADMIN_IDS:
+                    try:
+                        await bot.send_message(a, f"⚠️ Подписчики из TikTok не обновляются: {e}\n\nЕсли «вход протух» — запусти на ПК <b>tiktok_login.bat</b> в папке бота и войди QR-кодом.")
+                    except Exception:
+                        pass
         await asyncio.sleep(SUBS_EVERY_MIN * 60)
 
 

@@ -52,6 +52,38 @@ async def _context(sessionid=None):
     return ctx
 
 
+# ---------- вход владельца: свой профиль Chrome (вошёл один раз по QR — бот работает от этого входа) ----------
+from pathlib import Path
+PROFILE = Path(__file__).parent / "tt_profile"
+_plock = asyncio.Lock()
+
+
+def has_profile() -> bool:
+    return (PROFILE / ".logged_in").exists()
+
+
+async def _profile_open(nick, headless=True):
+    """Отдельный Chrome с профилем бота (там ты залогинен). Профиль может открыть только один Chrome сразу."""
+    global _pw
+    from playwright.async_api import async_playwright
+    _pw = _pw or await async_playwright().start()
+    ctx = await _pw.chromium.launch_persistent_context(str(PROFILE), channel="chrome", headless=headless, user_agent=UA, locale="ru-RU",
+                                                       viewport={"width": 1280, "height": 900}, args=["--disable-blink-features=AutomationControlled", "--mute-audio"])
+    page = ctx.pages[0] if ctx.pages else await ctx.new_page()
+    if nick:
+        await page.goto(f"https://www.tiktok.com/@{nick}?lang=ru-RU", wait_until="domcontentloaded", timeout=60000)
+        await page.wait_for_timeout(3500)
+    return ctx, page
+
+
+LOGIN_JS = "async () => { try { const r = await fetch('/passport/web/account/info/?aid=1459', {credentials:'include'}); const j = await r.json(); return j && j.data && j.data.username ? j.data.username : null; } catch (e) { return null; } }"
+
+
+async def login_status(page):
+    """Ник, под которым залогинен браузер, или None (вход протух)."""
+    return await page.evaluate(LOGIN_JS)
+
+
 async def _open(nick, sessionid=None):
     ctx = await _context(sessionid)
     page = await ctx.new_page()
@@ -110,7 +142,17 @@ async def followers(owner: str, sessionid: str, log=None) -> list[str]:
     """Все подписчики owner, новые первыми — через невидимый Chrome с твоим sessionid."""
     ctx = None
     try:
-        ctx, page = await _open(owner, sessionid)
+        if has_profile():
+            await _plock.acquire()
+            try:
+                ctx, page = await _profile_open(owner)
+            except Exception:
+                _plock.release()
+                raise
+        else:
+            ctx, page = await _open(owner, sessionid)
+        if not await login_status(page):
+            raise RuntimeError("TikTok: вход протух — запусти tiktok_login.bat в папке бота и войди в аккаунт заново")
         raw = await page.evaluate("() => { const e = document.getElementById('__UNIVERSAL_DATA_FOR_REHYDRATION__'); return e ? e.textContent : null }")
         u = _user(json.loads(raw)) if raw else None
         if not u or not u["secUid"]:
@@ -120,6 +162,8 @@ async def followers(owner: str, sessionid: str, log=None) -> list[str]:
     finally:
         if ctx:
             await ctx.close()
+        if _plock.locked():
+            _plock.release()
     if res.get("err") and len(res.get("list") or []) < 30:
         raise RuntimeError(res["err"] + " — проверь, что sessionid свежий и это аккаунт-владелец")
     if log:
