@@ -82,7 +82,7 @@ async def generate(text: str, url: str, model: str, progress=None) -> dict:
     last = "пустой ответ"
     async with httpx.AsyncClient(timeout=900, trust_env=False) as c:
         for attempt in range(4):
-            body = {"model": model, "messages": msgs, "stream": False, "keep_alive": "2h",
+            body = {"model": model, "messages": msgs, "stream": False, "keep_alive": "2h", "think": False,  # gemma4 по умолчанию «думает»: в 4–5 раз дольше, а с format=json часто пустой ответ
                     "options": {"temperature": 0.7 + 0.1 * attempt}}
             if attempt % 2 == 0:
                 body["format"] = "json"   # чётные попытки — строгий JSON, нечётные — свободный текст, JSON вытаскиваем сами
