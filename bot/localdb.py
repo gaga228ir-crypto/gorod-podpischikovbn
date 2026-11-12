@@ -232,3 +232,8 @@ class LocalDB:
         self._mayor_tables()
         self.c.executescript("delete from votes; delete from candidates;")
         self.c.commit()
+
+    async def cands_new(self):
+        """Заявки в мэры, которые ждут проверки."""
+        self._mayor_tables()
+        return [dict(r) for r in self.c.execute("select * from candidates where status='new' order by id")]

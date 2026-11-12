@@ -844,6 +844,20 @@ async def mayor_start(m: Message):
                    f"Ссылка для роликов/канала: {bot_link('cand')}\nПродлить: /mayor_extend 2 · завершить сейчас: /mayor_end")
 
 
+@r.message(Command("mayor_list"))
+async def mayor_list(m: Message):
+    """Заявки в мэры, ждущие проверки, — заново с кнопками (если сообщения потерялись)."""
+    if not is_admin(m.from_user.id):
+        return
+    rows = await db.cands_new()
+    if not rows:
+        return await m.answer("Новых заявок в мэры нет ✅")
+    for cd in rows:
+        await m.answer(f"🗳 <b>Заявка в мэры</b> #{cd['id']}\n@{cd['nick']} (tg {cd['tg_id']})\n\n«{html_esc(cd['promise'])}»",
+                       reply_markup=InlineKeyboardMarkup(inline_keyboard=[[IB(text="✅ Одобрить", callback_data=f"mc_ok:{cd['id']}"),
+                                                                           IB(text="❌ Отклонить", callback_data=f"mc_no:{cd['id']}")]]))
+
+
 @r.message(Command("mayor_extend"))
 async def mayor_extend(m: Message):
     if not is_admin(m.from_user.id):
