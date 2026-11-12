@@ -7,10 +7,22 @@ import tiktok
 
 async def main():
     ctx, page = await tiktok._profile_open("", headless=False)
-    await page.goto("https://www.tiktok.com/login/qr?lang=ru-RU", wait_until="domcontentloaded")
+    await page.goto("https://www.tiktok.com/login/qrcode?lang=ru-RU", wait_until="domcontentloaded")
+    await page.wait_for_timeout(4000)
+    for sel in ['button:has-text("Отклонить")', 'button:has-text("Decline")']:  # окно про cookie
+        try:
+            await page.locator(sel).first.click(timeout=2000)
+        except Exception:
+            pass
     print("Открылся Chrome. Войди в аккаунт TikTok (лучше QR-кодом с телефона). Жду до 10 минут…")
-    for _ in range(300):
+    qr = tiktok.PROFILE.parent / "tt_qr.png"  # снимок QR-кода — можно переслать на телефон и отсканировать в TikTok
+    for i in range(300):
         await asyncio.sleep(2)
+        if i % 3 == 0:
+            try:
+                await page.screenshot(path=str(qr))
+            except Exception:
+                pass
         try:
             who = await tiktok.login_status(page)
         except Exception:
