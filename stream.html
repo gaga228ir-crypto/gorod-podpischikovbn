@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Город подписчиков LIVE</title>
+<link href="fonts/fonts.css" rel="stylesheet">
+<style>
+/* Страница для стрима (OBS, вертикально 1080×1920). Размеры в vw — масштабируется под любое окно. */
+:root{--pink:#ff3d7f;--gold:#ffd23f;--cyan:#5ef2ff;--ink:#1a0b3a}
+html,body{margin:0;height:100%;overflow:hidden;background:#070b24;color:#fff;font-family:Inter,system-ui,sans-serif}
+#c,#lbl,#fx{position:fixed;inset:0;width:100%;height:100%;display:block}
+#lbl,#fx{pointer-events:none}
+#vign{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at 50% 45%,transparent 55%,rgba(5,2,20,.55))}
+.hud{position:fixed;left:0;right:0;text-align:center;pointer-events:none}
+#head{top:9.5vh}
+#head h1{margin:0;font:800 5.2vw/1.05 Unbounded,sans-serif;letter-spacing:.01em;text-shadow:0 0 1.2vw var(--pink),0 0 3vw rgba(255,61,127,.6),0 .5vw 0 var(--ink)}
+#head h1 b{color:var(--gold);text-shadow:0 0 1.2vw #ffb000,0 0 3vw rgba(255,176,0,.6),0 .5vw 0 var(--ink)}
+#live{display:inline-block;vertical-align:middle;margin-left:1.5vw;font:800 3vw Unbounded,sans-serif;background:#ff2d55;color:#fff;padding:.6vw 1.8vw;border-radius:1.4vw;box-shadow:0 0 2.5vw #ff2d55}
+#cnt{margin-top:1.6vw;font:800 3.6vw Unbounded,sans-serif;color:#fff}
+#cnt b{color:var(--gold)}
+#cta{margin-top:2vw;display:inline-block;font:800 2.9vw/1.35 Unbounded,sans-serif;color:var(--ink);background:var(--cyan);padding:1.8vw 3.2vw;border-radius:2.4vw;box-shadow:0 0 3vw rgba(94,242,255,.7)}
+#likes{top:30vh;left:9vw;right:9vw}
+#likes .t{font:800 3vw Unbounded,sans-serif;margin-bottom:1vw;text-shadow:0 .3vw 0 var(--ink)}
+#likes .b{height:2.2vw;border-radius:2vw;background:rgba(255,255,255,.15);overflow:hidden;box-shadow:0 0 2vw rgba(255,61,127,.4)}
+#likes .b i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--pink),var(--gold));transition:width .6s}
+#ban{top:40vh;left:6vw;right:6vw;opacity:0;transform:scale(.6)}
+#ban .k{display:inline-block;font:800 3.4vw Unbounded,sans-serif;color:var(--ink);background:var(--gold);padding:1.2vw 2.6vw;border-radius:2vw;box-shadow:0 0 3vw rgba(255,210,63,.8)}
+#ban .n{margin-top:2vw;font:800 7.4vw/1.1 Unbounded,sans-serif;word-break:break-all;text-shadow:0 0 1.2vw var(--pink),0 0 3.2vw rgba(255,61,127,.7),0 .6vw 0 var(--ink)}
+#ban .a{margin-top:2vw;display:inline-block;white-space:pre-line;font:700 3.4vw/1.35 Inter,sans-serif;background:rgba(12,8,36,.82);padding:1.6vw 3vw;border-radius:2.4vw;border:.3vw solid rgba(160,150,255,.4)}
+#chat{top:22.5vh;left:5vw;right:5vw;opacity:0;transition:opacity .5s}
+#chat span{display:inline-block;max-width:100%;font:600 3.2vw/1.35 Inter,sans-serif;background:rgba(42,171,238,.92);padding:1.4vw 2.6vw;border-radius:2.4vw;box-shadow:0 .8vw 3vw rgba(0,0,0,.4);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#chat b{font-weight:800}
+#toast{top:62vh;left:6vw;right:6vw;opacity:0;transition:opacity .4s}
+#toast span{display:inline-block;font:700 3.4vw/1.35 Inter,sans-serif;background:rgba(12,8,36,.88);padding:1.6vw 3vw;border-radius:2.4vw;border:.3vw solid var(--pink)}
+#off{position:fixed;right:2vw;bottom:2vw;font:600 2vw Inter,sans-serif;color:rgba(255,255,255,.35)}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas><canvas id="lbl"></canvas><div id="vign"></div><canvas id="fx"></canvas>
+<div class="hud" id="head"><h1>ГОРОД <b>ПОДПИСЧИКОВ</b><span id="live">LIVE</span></h1>
+  <div id="cnt">🏠 <b>0</b> домов</div>
+  <div id="cta">✍️ Напиши свой ник — покажу твой дом<br>➕ Подпишись — дом вырастет в эфире!</div></div>
+<div class="hud" id="chat"><span></span></div>
+<div class="hud" id="likes"><div class="t">❤️ ЛАЙКИ: <span>0</span></div><div class="b"><i></i></div></div>
+<div class="hud" id="ban"><div class="k"></div><div class="n"></div><div class="a"></div></div>
+<div class="hud" id="toast"><span></span></div>
+<div id="off"></div>
+<script src="houses.js"></script>
+<script type="importmap">{"imports":{"three":"./vendor/three.module.min.js","three/addons/":"./vendor/addons/"}}</script>
+<script type="module" src="stream.js"></script>
+</body>
+</html>

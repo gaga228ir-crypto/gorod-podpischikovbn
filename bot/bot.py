@@ -316,7 +316,13 @@ async def sync_subscribers_once():
     fresh_list = await tiktok.followers(owner, TIKTOK_SESSIONID, log)
     text, sha = await gh_get("subscribers.json")
     current = [str(x) for x in json.loads(text or "[]")]
-    merged, new, gone, back = tiktok.merge(current, fresh_list)
+    mf = Path(__file__).parent / "follow_misses.json"
+    try:
+        misses = json.loads(mf.read_text(encoding="utf-8")) if mf.exists() else {}
+    except ValueError:
+        misses = {}
+    merged, new, gone, back = tiktok.merge(current, fresh_list, tiktok.LAST.get("expected", 0), misses)
+    mf.write_text(json.dumps(misses, ensure_ascii=False), encoding="utf-8")
     if merged != current:
         await gh_put("subscribers.json", json.dumps(merged, ensure_ascii=False, separators=(",", ":")),
                      f"Подписчики: +{new}" + (f", отписались {gone}" if gone else "") + (f", вернулись {back}" if back else ""), sha)

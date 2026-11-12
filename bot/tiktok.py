@@ -21,8 +21,10 @@ async def _profile_http(nick):
 
 def _user(d):
     try:
-        u = d["__DEFAULT_SCOPE__"]["webapp.user-detail"]["userInfo"]["user"]
-        return {"uniqueId": u.get("uniqueId", ""), "signature": u.get("signature", ""), "secUid": u.get("secUid", "")}
+        ui = d["__DEFAULT_SCOPE__"]["webapp.user-detail"]["userInfo"]
+        u = ui["user"]
+        return {"uniqueId": u.get("uniqueId", ""), "signature": u.get("signature", ""), "secUid": u.get("secUid", ""),
+                "followers": int((ui.get("stats") or ui.get("statsV2") or {}).get("followerCount") or 0)}
     except (TypeError, KeyError):
         return None
 
@@ -101,6 +103,9 @@ def bio_has_code(signature: str, code: str) -> bool:
     return bool(re.search(CODE_RE.format(code=re.escape(code)), signature or ""))
 
 
+LAST = {"expected": 0}  # сколько подписчиков показывает профиль — чтобы понять, целиком ли TikTok отдал список
+
+
 async def followers(owner: str, sessionid: str, log=None) -> list[str]:
     """Все подписчики owner, новые первыми — через невидимый Chrome с твоим sessionid."""
     ctx = None
@@ -110,6 +115,7 @@ async def followers(owner: str, sessionid: str, log=None) -> list[str]:
         u = _user(json.loads(raw)) if raw else None
         if not u or not u["secUid"]:
             raise RuntimeError("не открылся профиль TikTok в Chrome")
+        LAST["expected"] = u.get("followers", 0)
         res = await page.evaluate(FOLLOWERS_JS, u["secUid"])
     finally:
         if ctx:
@@ -117,27 +123,35 @@ async def followers(owner: str, sessionid: str, log=None) -> list[str]:
     if res.get("err") and len(res.get("list") or []) < 30:
         raise RuntimeError(res["err"] + " — проверь, что sessionid свежий и это аккаунт-владелец")
     if log:
-        log.info("tiktok followers: %s%s", len(res["list"]), f" (оборвалось: {res['err']})" if res.get("err") else "")
+        log.info("tiktok followers: %s из %s%s", len(res["list"]), LAST["expected"] or "?", f" (оборвалось: {res['err']})" if res.get("err") else "")
     return res["list"]
 
 
-def merge(current: list[str], newest_first: list[str]) -> tuple[list[str], int, int, int]:
+def merge(current: list[str], newest_first: list[str], expected: int = 0, misses: dict | None = None) -> tuple[list[str], int, int, int]:
     """Как update.html: порядок домов не меняется; отписавшиеся → «~ник»; новые — в конец.
-    Возвращает (новый список, новых, отписались, вернулись)."""
+    TikTok часто отдаёт список не целиком, поэтому «отписался» ставим, только если
+    1) список полный (не меньше числа подписчиков в профиле минус 1%) и 2) человека нет ДВА обновления подряд.
+    misses — счётчик пропусков по никам (сохраняется между запусками). → (новый список, новых, отписались, вернулись)"""
     nk = lambda e: e.lstrip("~").lower()
+    misses = {} if misses is None else misses
     inc = set(newest_first)
     active = sum(1 for e in current if not e.startswith("~"))
-    full = len(newest_first) >= active * 0.8
+    full = len(newest_first) >= (expected * .99 - 2 if expected else active * .99)
     gone = back = 0
     kept = []
     for e in current:
         n, was = nk(e), e.startswith("~")
         if n in inc:
+            misses.pop(n, None)
             back += was
             kept.append(n)
-        elif full:
-            gone += not was
-            kept.append("~" + n)
+        elif full and not was:
+            misses[n] = misses.get(n, 0) + 1
+            if misses[n] >= 2:
+                gone += 1
+                kept.append("~" + n)
+            else:
+                kept.append(e)
         else:
             kept.append(e)
     have = {nk(e) for e in current}
