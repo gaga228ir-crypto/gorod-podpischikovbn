@@ -13,18 +13,18 @@
    "vote": "https://t.me/gorodpodpischikov_bot?start=vote_1"
   },
   {
+   "id": 2,
+   "nick": "off.night_eclipse.off",
+   "promise": "1.магазин с украшениями:под каждый праздник свои украшения. 2.мини-игры, для получения валюты, на которую можно будет покупать украшения. 3. \"Трейды\"или обмен вещами.",
+   "votes": 1,
+   "vote": "https://t.me/gorodpodpischikov_bot?start=vote_2"
+  },
+  {
    "id": 3,
    "nick": "tailerderden26",
    "promise": "Я построю фонтаны торговые центры и парки скейт парки площадки и также много этажки",
    "votes": 1,
    "vote": "https://t.me/gorodpodpischikov_bot?start=vote_3"
-  },
-  {
-   "id": 2,
-   "nick": "off.night_eclipse.off",
-   "promise": "1.магазин с украшениями:под каждый праздник свои украшения. 2.мини-игры, для получения валюты, на которую можно будет покупать украшения. 3. \"Трейды\"или обмен вещами.",
-   "votes": 0,
-   "vote": "https://t.me/gorodpodpischikov_bot?start=vote_2"
   }
  ],
  "stage": 2,
