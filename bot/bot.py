@@ -9,6 +9,7 @@ import asyncio, base64, datetime as dt, hashlib, json, logging, os, random, re, 
 from pathlib import Path
 
 import httpx
+from urllib.parse import quote
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.filters import Command, CommandStart
@@ -48,6 +49,8 @@ SUBS_URL = E("SUBS_URL", "") or SITE_BASE + "subscribers.json"
 ELECTION_URL = E("ELECTION_URL", "") or SITE_BASE + "election.json"
 POCHTA_URL = E("POCHTA_URL", "")
 CHANNEL_URL = E("CHANNEL_URL", "")
+CHAT_URL = E("CHAT_URL", "https://t.me/+URDD6hcKo4ZlOTMy")
+REF_GOAL = int(E("REF_GOAL", "3"))           # столько приглашённых = бесплатный дом по описанию
 TIKTOK_URL = E("TIKTOK_URL", "https://www.tiktok.com/@eben51041")
 PRICE = int(E("CUSTOM_PRICE", "0"))          # конструктор: 0 = бесплатно
 AI_PRICE = int(E("AI_PRICE", "15"))           # дом по описанию (нейросеть)
@@ -224,6 +227,29 @@ class DB:
     async def payments_recent(self):
         return await self.q("GET", "payments?select=nick,stars&order=id.desc&limit=5") or []
 
+    async def ref_set(self, tg_id, ref_by):
+        if tg_id == ref_by or await self.q("GET", f"refs?tg_id=eq.{tg_id}&select=tg_id"):
+            return
+        await self.q("POST", "refs", {"tg_id": tg_id, "ref_by": ref_by}, "return=minimal")
+
+    async def ref_reward(self, tg_id):
+        rows = await self.q("GET", f"refs?tg_id=eq.{tg_id}&rewarded=eq.false&select=ref_by")
+        if not rows:
+            return None
+        await self.q("PATCH", f"refs?tg_id=eq.{tg_id}", {"rewarded": True}, "return=minimal")
+        return rows[0]["ref_by"]
+
+    async def ref_count(self, uid):
+        n = await self.count(f"refs?ref_by=eq.{uid}&rewarded=eq.true")
+        return n + (1 if await self.q("GET", f"refs?tg_id=eq.{uid}&rewarded=eq.true&select=tg_id") else 0)
+
+    async def ref_top(self, k=10):
+        rows = await self.q("GET", "refs?rewarded=eq.true&select=ref_by") or []
+        cnt = {}
+        for r_ in rows:
+            cnt[r_["ref_by"]] = cnt.get(r_["ref_by"], 0) + 1
+        return sorted(cnt.items(), key=lambda x: -x[1])[:k]
+
     async def ai_gift(self, tg_id):
         rows = await self.q("GET", f"ai_orders?tg_id=eq.{tg_id}&status=eq.gift&select=*&limit=1")
         return rows[0] if rows else None
@@ -358,7 +384,10 @@ def city_keyboard(nick="", gift=False):
 
 
 def main_menu():
-    rows = [[IB(text="🏠 Мой дом", callback_data="home")], [IB(text="🗳 Выборы мэра", callback_data="elect")]]
+    rows = [[IB(text="🏠 Мой дом", callback_data="home")], [IB(text="👥 Пригласить друга · бонус", callback_data="ref")],
+            [IB(text="🗳 Выборы мэра", callback_data="elect")]]
+    if CHAT_URL:
+        rows.append([IB(text="💬 Чат жителей", url=CHAT_URL)])
     links = []
     if CHANNEL_URL:
         links.append(IB(text="📢 Канал", url=CHANNEL_URL))
@@ -386,12 +415,15 @@ async def start(m: Message, state: FSMContext):
     if arg[0].startswith("klad") and arg[0][4:].isdigit():
         await claim_klad(m, m.from_user.id, arg[0][4:])
         return
+    if arg[0].startswith("ref") and arg[0][3:].isdigit():
+        await db.ref_set(m.from_user.id, int(arg[0][3:]))
     s = await subscribers()
     me = await db.linked(m.from_user.id)
     await m.answer_photo(photo(cards.welcome(len(s["list"]))), reply_markup=main_menu(), caption=(
         "<b>Добро пожаловать в Город подписчиков!</b> 🏙\n\n"
         "Каждый подписчик TikTok получает дом со своим ником.\n"
-        f"🏠 <b>Мой дом</b> — привяжи ник и выбери, каким будет дом: 5 вариантов бесплатно или конструктор за {PRICE} ⭐\n"
+        "🏠 <b>Мой дом</b> — привяжи ник и выбери, каким будет дом: готовые варианты и конструктор бесплатно, ✨ дом по описанию — нейросеть построит любую идею\n"
+        f"👥 <b>Пригласи друзей</b> — за {REF_GOAL} друзей дом по описанию в подарок\n"
         "🗳 <b>Выборы мэра</b> — кто станет главным в городе"))
     await m.answer("Город всегда под рукой — кнопка внизу 👇", reply_markup=city_keyboard(me["nick"] if me else ""))
 
@@ -936,11 +968,66 @@ async def admin_nav(c: CallbackQuery):
                                    reply_markup=application_kb(row))
 
 
+# ---------- рефералы ----------
+async def ref_text(uid):
+    me = await bot_username()
+    n = await db.ref_count(uid)
+    left = REF_GOAL - n % REF_GOAL
+    link = f"https://t.me/{me}?start=ref{uid}"
+    return link, n, (f"👥 <b>Пригласи друзей в город</b>\n\n"
+                     f"Твоя ссылка:\n<code>{link}</code>\n\n"
+                     f"Друг считается, когда <b>подпишется на TikTok и получит дом</b> через бота.\n"
+                     f"🎁 За каждых <b>{REF_GOAL}</b> друзей — <b>дом по описанию бесплатно</b> (нейросеть построит любую идею).\n"
+                     f"🎁 Другу — тоже бонус: <b>+1 к его счёту</b>, ему останется пригласить на одного меньше.\n\n"
+                     f"Приглашено: <b>{n}</b> · до подарка: <b>{left}</b>")
+
+
+_me = {}
+_bot = None
+
+
+async def bot_username():
+    if "u" not in _me:
+        _me["u"] = (await _bot.get_me()).username
+    return _me["u"]
+
+
+@r.callback_query(F.data == "ref")
+async def ref_cb(c: CallbackQuery):
+    await c.answer()
+    link, n, text = await ref_text(c.from_user.id)
+    share = "https://t.me/share/url?url=" + quote(link) + "&text=" + quote("🏙 Залетай в Город подписчиков — у каждого свой дом с ником в 3D-городе!")
+    await c.message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[IB(text="📤 Отправить друзьям", url=share)]]))
+
+
+async def ref_reward(bot, invitee_id):
+    """Друг получил дом: +1 пригласившему (и стартовый +1 самому другу). Каждые REF_GOAL — подарок."""
+    by = await db.ref_reward(invitee_id)
+    if not by:
+        return
+    for uid, who in ((by, "пригласившему"), (invitee_id, "другу")):
+        n = await db.ref_count(uid)
+        me = await db.linked(uid)
+        try:
+            if n and n % REF_GOAL == 0 and me:
+                await add_ai_gift(uid, me["nick"])
+                await bot.send_message(uid, f"🎉 У тебя уже {n} приглашённых! Держи подарок: <b>дом по описанию бесплатно</b> ✨\nОткрой город → «🎨 Мой дом» → «✨ По описанию».",
+                                       reply_markup=city_keyboard(me["nick"], gift=True))
+            elif uid == by:
+                await bot.send_message(uid, f"👥 Твой друг заселился в город! Приглашено: <b>{n}</b>, до подарка: <b>{REF_GOAL - n % REF_GOAL}</b>.")
+        except Exception:
+            pass
+
+
 async def approve_row(bot, row) -> bool:
     try:
         await db.patch(row["id"], {"status": "approved", "approved_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
     except RuntimeError:
         return False
+    try:
+        await ref_reward(bot, row["tg_id"])
+    except Exception as e:
+        log.warning("ref: %s", e)
     try:
         await bot.send_photo(row["tg_id"], photo(cards.built_card(row["nick"], await house_no(row["nick"]), False)), caption=(
             f"Готово! Ник <b>@{row['nick']}</b> подтверждён 🎉\n\nТеперь открой город кнопкой «🏙 Открыть город» → «🎨 Мой дом» и выбери, каким будет твой дом. Код из описания профиля можно удалить."),
@@ -1005,7 +1092,9 @@ async def main():
     missing = [k for k, v in {"BOT_TOKEN": BOT_TOKEN, "SITE_URL": SITE_URL.strip("/"), "ADMIN_IDS": ADMIN_IDS}.items() if not v]
     if missing:
         raise SystemExit("Заполни в .env: " + ", ".join(missing))
+    global _bot
     bot = Bot(BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
+    _bot = bot
     dp = Dispatcher()
     dp.include_router(r)
 

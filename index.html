@@ -120,6 +120,7 @@ const AI_PRICE = 15;   // дом по описанию (нейросеть)
 const SUPABASE_URL = 'https://gqfipqimnhwiludpepbc.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_gj1pBQtVG9rFw3zbvu_2NA_e4I0TLiD';
 const FALLBACK = ['@твой_ник'];
+const CHAT_URL = 'https://t.me/+URDD6hcKo4ZlOTMy';
 const KLAD_SALT = 'gorod-klad-v1'; // такой же KLAD_SALT в bot/.env
 const CHECK_TIME = 'каждые 2 часа';
 const MILESTONES_DEFAULT = [
@@ -231,6 +232,7 @@ const kladFound = () => { try { return localStorage.getItem('klad') === KLAD.day
 let kladChip = null;
 function renderKlad() {
   kladChip = document.createElement('button'); kladChip.className = 'chip klad'; $('chips').appendChild(kladChip);
+  if (CHAT_URL) { const ch = document.createElement('a'); ch.className = 'chip'; ch.href = CHAT_URL; ch.target = '_blank'; ch.rel = 'noopener'; ch.textContent = '💬 ЧАТ ЖИТЕЛЕЙ'; ch.onclick = e => { if (TG && tg.openTelegramLink) { e.preventDefault(); tg.openTelegramLink(CHAT_URL); } }; $('chips').appendChild(ch); }
   kladChip.onclick = () => { if (kladFound()) return openKlad(); sheet.innerHTML = `<h2>💎 Клад дня</h2><p>Каждый день в городе прячется сундук. Найди его между домами — подсказка вверху: <b>холодно → тепло → горячо</b>. Подойди поближе (приблизь камеру) и нажми на сундук.</p><p>Приз — <b>дом по описанию бесплатно</b>: нейросеть построит любую твою идею в 3D. Новый клад — каждый день в 00:00 МСК.</p><button class="ghost" id="mclose">ИСКАТЬ</button>`; modal.classList.add('show'); closeBtn(); };
   setInterval(updKlad, 250); updKlad();
 }

@@ -90,3 +90,8 @@ create table if not exists public.ai_orders (
   status text not null default 'new', recipe jsonb, charge_id text, created_at timestamptz not null default now());
 alter table public.ai_orders enable row level security;
 revoke all on public.ai_orders from anon, authenticated;
+
+-- ===== Рефералы =====
+create table if not exists public.refs (tg_id bigint primary key, ref_by bigint not null, rewarded boolean not null default false, created_at timestamptz not null default now());
+alter table public.refs enable row level security;
+revoke all on public.refs from anon, authenticated;

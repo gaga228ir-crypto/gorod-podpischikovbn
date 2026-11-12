@@ -21,6 +21,9 @@ class LocalDB:
         create table if not exists klad (
           id integer primary key autoincrement, tg_id integer not null, nick text not null, day text not null,
           used integer not null default 0, created_at text not null default (strftime('%Y-%m-%dT%H:%M:%SZ','now')), unique (tg_id, day));
+        create table if not exists refs (
+          tg_id integer primary key, ref_by integer not null, rewarded integer not null default 0,
+          created_at text not null default (strftime('%Y-%m-%dT%H:%M:%SZ','now')));
         create table if not exists ai_orders (
           id integer primary key autoincrement, tg_id integer not null, nick text not null, text text not null,
           status text not null default 'new', recipe text, charge_id text, created_at text not null default (strftime('%Y-%m-%dT%H:%M:%SZ','now')));
@@ -133,3 +136,25 @@ class LocalDB:
 
     async def payments_recent(self):
         return [dict(r) for r in self.c.execute("select nick, stars from payments order by id desc limit 5")]
+
+    # ---- рефералы ----
+    async def ref_set(self, tg_id, ref_by):
+        if tg_id == ref_by:
+            return
+        self.c.execute("insert or ignore into refs (tg_id, ref_by) values (?,?)", (tg_id, ref_by))
+        self.c.commit()
+
+    async def ref_reward(self, tg_id):
+        r = self.c.execute("select ref_by from refs where tg_id=? and rewarded=0", (tg_id,)).fetchone()
+        if not r:
+            return None
+        self.c.execute("update refs set rewarded=1 where tg_id=?", (tg_id,))
+        self.c.commit()
+        return r[0]
+
+    async def ref_count(self, uid):
+        n = self.c.execute("select count(*) from refs where ref_by=? and rewarded=1", (uid,)).fetchone()[0]
+        return n + self.c.execute("select count(*) from refs where tg_id=? and rewarded=1", (uid,)).fetchone()[0]
+
+    async def ref_top(self, k=10):
+        return [tuple(r) for r in self.c.execute("select ref_by, count(*) c from refs where rewarded=1 group by ref_by order by c desc limit ?", (k,))]
