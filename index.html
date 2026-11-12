@@ -206,7 +206,7 @@ requestAnimationFrame(loop);
 
 // ---------- карточка, поиск, поделиться ----------
 const card = $('card'), msg = $('msg');
-function pick(x, y) { const h = city.pick(x, y); if (h && h.chest) return openKlad(); if (h) focus(h, false); }
+function pick(x, y) { const h = city.pick(x, y); if (h && h.chest) return kladOver() ? kladChip.onclick() : openKlad(); if (h) focus(h, false); }
 function focus(h, fly = true) {
   city.focus(h, fly);
   $('cnick').textContent = h.label;
@@ -234,16 +234,22 @@ $('f').addEventListener('submit', e => {
 const fnv = s => { let h = 2166136261; for (const c of s) { h ^= c.codePointAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
 const mskDay = () => new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10);
 const KLAD = (d => ({ day: d, code: String(1000 + fnv(KLAD_SALT + ':code:' + d) % 9000), seed: fnv(KLAD_SALT + ':pos:' + d) }))(mskDay());
+let kladState = null; // klad.json от бота: {day, taken, limit}
+const kladOver = () => !!(kladState && kladState.day === KLAD.day && kladState.taken >= kladState.limit);
+const kladLeft = () => kladState && kladState.day === KLAD.day ? Math.max(0, kladState.limit - kladState.taken) : null;
+async function loadKladState() { const j = await getJSON('klad.json'); if (j && j.day) kladState = j; if (city.chest) city.chest.visible = !kladOver(); }
 const kladFound = () => { try { return localStorage.getItem('klad') === KLAD.day; } catch (e) { return false; } };
 let kladChip = null;
 function renderKlad() {
   kladChip = document.createElement('button'); kladChip.className = 'chip klad'; $('chips').appendChild(kladChip);
   if (CHAT_URL) { const ch = document.createElement('a'); ch.className = 'chip'; ch.href = CHAT_URL; ch.target = '_blank'; ch.rel = 'noopener'; ch.textContent = '💬 ЧАТ ЖИТЕЛЕЙ'; ch.onclick = e => { if (TG && tg.openTelegramLink) { e.preventDefault(); tg.openTelegramLink(CHAT_URL); } }; $('chips').appendChild(ch); }
-  kladChip.onclick = () => { if (kladFound()) return openKlad(); sheet.innerHTML = `<h2>💎 Клад дня</h2><p>Каждый день в городе прячется сундук. Найди его между домами — подсказка вверху: <b>холодно → тепло → горячо</b>. Подойди поближе (приблизь камеру) и нажми на сундук.</p><p>Приз — <b>дом по описанию бесплатно</b>: нейросеть построит любую твою идею в 3D. Новый клад — каждый день в 00:00 МСК.</p><button class="ghost" id="mclose">ИСКАТЬ</button>`; modal.classList.add('show'); closeBtn(); };
-  setInterval(updKlad, 250); updKlad();
+  kladChip.onclick = () => { if (kladOver()) { sheet.innerHTML = `<h2>💎 Клад на сегодня разобран</h2><p>Все ${kladState.limit} призов уже забрали 🎉 Новый сундук спрячется в городе в <b>00:00 МСК</b> — приходи пораньше!</p><button class="ghost" id="mclose">ПОНЯЛ</button>`; modal.classList.add('show'); return closeBtn(); } if (kladFound()) return openKlad(); sheet.innerHTML = `<h2>💎 Клад дня</h2><p>Каждый день в городе прячется сундук. Найди его между домами — подсказка вверху: <b>холодно → тепло → горячо</b>. Подойди поближе (приблизь камеру) и нажми на сундук.</p><p>Приз — <b>дом по описанию бесплатно</b>: нейросеть построит любую твою идею в 3D. Новый клад — каждый день в 00:00 МСК.</p><button class="ghost" id="mclose">ИСКАТЬ</button>`; modal.classList.add('show'); closeBtn(); };
+  setInterval(updKlad, 250); updKlad(); loadKladState(); setInterval(loadKladState, 120000);
 }
 function updKlad() {
   if (!kladChip) return;
+  if (city.chest) city.chest.visible = !kladOver();
+  if (kladOver()) { kladChip.className = 'chip klad'; kladChip.textContent = '💎 КЛАД РАЗОБРАН · НОВЫЙ В 00:00'; return; }
   if (kladFound()) { kladChip.className = 'chip klad'; kladChip.textContent = '💎 КЛАД НАЙДЕН · КОД'; return; }
   const d = city.treasureDist(), t = d < 2.5 ? ['🔥 ГОРЯЧО!', 1] : d < 6 ? ['♨️ ОЧЕНЬ ТЕПЛО', 1] : d < 14 ? ['🌤 ТЕПЛО', 0] : d < 30 ? ['❄️ ПРОХЛАДНО', 0] : ['🧊 ХОЛОДНО', 0];
   kladChip.textContent = '💎 КЛАД ДНЯ · ' + t[0]; kladChip.className = 'chip klad' + (t[1] ? ' hot' : '');
@@ -253,7 +259,7 @@ function openKlad() {
   updKlad();
   const deep = BOT_URL ? BOT_URL.replace(/\/$/, '') + '?start=klad' + KLAD.code : '';
   sheet.innerHTML = `<h2>💎 Ты нашёл клад!</h2><p>Твой код на сегодня:</p><div class="code">КЛАД-${KLAD.code}</div>
-    <p>Приз — <b>дом по описанию бесплатно</b> (нейросеть построит твою идею в 3D). Код действует до конца дня (по МСК), призов на день ограниченно — кто первый.</p>
+    <p>Приз — <b>дом по описанию бесплатно</b> (нейросеть построит твою идею в 3D). Код действует до конца дня (по МСК), призов на день ограниченно — кто первый.${kladLeft() != null ? ` <b>Осталось: ${kladLeft()} из ${kladState.limit}</b>.` : ''}</p>
     <div class="err" id="kerr"></div>
     <div class="btns"><button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button>${TG ? '<button id="kgo" type="button">ЗАБРАТЬ ПРИЗ</button>' : deep ? `<a class="btn" href="${esc(deep)}">ЗАБРАТЬ В БОТЕ</a>` : ''}</div>
     ${!TG && !deep ? '<p>Напиши этот код боту города в Telegram.</p>' : ''}`;

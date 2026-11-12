@@ -913,6 +913,20 @@ async def chat_feed(m: Message):
 
 
 # ---------- клад дня ----------
+async def klad_publish(day: str):
+    """klad.json на сайт: сколько призов разобрали сегодня — сайт прячет сундук, когда лимит исчерпан."""
+    if not GITHUB_TOKEN:
+        return
+    try:
+        taken = await db.klad_today(day)
+        body = json.dumps({"day": day, "taken": taken, "limit": KLAD_LIMIT}, ensure_ascii=False)
+        old, sha = await gh_get("klad.json")
+        if old != body:
+            await gh_put("klad.json", body, f"Клад {day}: {taken}/{KLAD_LIMIT}", sha)
+    except Exception as e:
+        log.warning("klad_publish: %s", e)
+
+
 async def claim_klad(m: Message, uid: int, code: str):
     day = msk_day()
     if code != klad_code(day):
@@ -931,12 +945,14 @@ async def claim_klad(m: Message, uid: int, code: str):
         return
     if await db.klad_today(day) >= KLAD_LIMIT:
         await m.answer("Сегодня все призы уже разобрали 😔 Завтра будет новый клад — приходи пораньше!")
+        asyncio.create_task(klad_publish(day))
         return
     try:
         await db.klad_add(uid, me["nick"], day)
     except RuntimeError:
         await m.answer("Ты уже забрал сегодняшний клад 😉 Завтра — новый.")
         return
+    asyncio.create_task(klad_publish(day))
     k = await db.klad_gift(uid)
     if k:
         await db.klad_use(k)
