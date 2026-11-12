@@ -1245,6 +1245,47 @@ async def ai_decide(c: CallbackQuery, bot: Bot):
             log.warning("ai send: %s", e)
 
 
+async def handmade_loop(bot):
+    """Дома, собранные вручную (handmade.json на сайте, пометка "publish") — ставим в город сами и пишем жителю.
+    Каждый ручной вариант ставится один раз (помним в kv: hand_<номер> = название)."""
+    await asyncio.sleep(60)
+    while True:
+        try:
+            async with httpx.AsyncClient(timeout=20) as c:
+                hand = (await c.get(SITE_BASE + "handmade.json", params={"v": int(time.time())})).json()
+            for k, rec in hand.items():
+                if not (k.isdigit() and isinstance(rec, dict) and rec.get("publish")):
+                    continue
+                rec = {x: v for x, v in rec.items() if x != "publish"}
+                mark = f"{rec.get('name')}:{len(rec.get('parts', []))}"
+                if await db.kv_get(f"hand_{k}") == mark:
+                    continue
+                o = await db.ai_get(int(k))
+                if not o or o["status"] in ("refunded", "new"):
+                    continue
+                me = await db.linked(o["tg_id"])
+                if not me:
+                    continue
+                await db.patch(me["id"], {"recipe": rec})
+                await db.ai_patch(o["id"], {"status": "done", "recipe": rec})
+                await db.kv_set(f"hand_{k}", mark)
+                log.info("ручной дом #%s поставлен: @%s", k, me["nick"])
+                try:
+                    png = await ai.preview(rec, SITE_BASE)
+                    await bot.send_photo(o["tg_id"], photo(png, "house.png"), reply_markup=city_keyboard(me["nick"]), caption=(
+                        f"✨ Твой дом «{rec.get('name', 'по описанию')}» готов и уже стоит в городе! Открой город и найди @{me['nick']} 🏙"))
+                except Exception as e:
+                    log.warning("hand send: %s", e)
+                for a in ADMIN_IDS:
+                    try:
+                        await bot.send_message(a, f"🛠 Ручной дом #{k} «{rec.get('name')}» поставлен @{me['nick']} и отправлен жителю ✅")
+                    except Exception:
+                        pass
+        except Exception as e:
+            log.warning("handmade: %s", e)
+        await asyncio.sleep(300)
+
+
 async def ai_resume(bot):
     """При старте: сразу загрузить модель и достроить оплаченные дома."""
     await asyncio.sleep(5)
@@ -1471,6 +1512,7 @@ async def main():
     _bot_username = (await bot.get_me()).username
     asyncio.create_task(export_loop())
     asyncio.create_task(mayor_loop(bot))
+    asyncio.create_task(handmade_loop(bot))
     asyncio.create_task(sync_loop(bot))
     asyncio.create_task(ai_resume(bot))
     asyncio.create_task(restart_later())
