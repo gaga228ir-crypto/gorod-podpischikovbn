@@ -32,11 +32,14 @@ button,.btn{border:0;border-radius:999px;padding:12px 18px;font:800 13px Unbound
 button:active,.btn:active{transform:scale(.96)}
 button.ghost{background:rgba(255,255,255,.12)}
 .msg{font:600 13px Inter,sans-serif;color:var(--gold);min-height:1em}
-.card{position:fixed;left:50%;bottom:18px;transform:translate(-50%,160%);transition:transform .35s cubic-bezier(.2,1.4,.4,1);background:var(--panel);backdrop-filter:blur(8px);border:1px solid rgba(160,150,255,.35);border-radius:22px;padding:16px 18px;width:min(92vw,420px);z-index:3;display:flex;align-items:center;gap:14px}
+.card{position:fixed;left:50%;bottom:18px;transform:translate(-50%,160%);transition:transform .35s cubic-bezier(.2,1.4,.4,1);background:var(--panel);backdrop-filter:blur(8px);border:1px solid rgba(160,150,255,.35);border-radius:22px;padding:16px 18px;width:min(92vw,420px);z-index:3;display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;max-height:62vh;overflow-y:auto}
+.card .grow{flex:1 1 100%;min-width:0;order:0}
+.card>button{order:1}.card #cclose{position:absolute;top:10px;right:10px;width:34px;height:34px;padding:0;border-radius:50%}
+.card .nick{padding-right:40px;word-break:break-word}
 .card.show{transform:translate(-50%,0)}
 .card .nick{font:800 18px Unbounded,sans-serif;color:var(--gold);word-break:break-all}
 .card .sub{font:500 13px Inter,sans-serif;color:var(--muted);margin-top:4px}
-.card .grow{flex:1;min-width:0}
+
 .vbar{height:6px;border-radius:3px;background:rgba(255,255,255,.12);margin:6px 0 2px;overflow:hidden}.vbar i{display:block;height:100%;background:linear-gradient(90deg,#ff3d7f,#ffd23f)}
 .vbtn{padding:8px 14px!important;font-size:13px!important;align-self:center;flex:none}
 .card .nb button{font:700 13px Inter,sans-serif;color:var(--gold);background:none;border:0;padding:0 2px;cursor:pointer;text-decoration:underline dotted}
