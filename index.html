@@ -410,11 +410,12 @@ function renderElection() {
     const cands = (E.candidates || []).map((c, i) => { const pc = tot ? Math.round((c.votes || 0) / tot * 100) : 0;
       return `<div class="cand"><b>${i + 1}</b><div style="flex:1;min-width:0"><div class="n">@${esc(norm(c.nick))}${E.winner && norm(E.winner) === norm(c.nick) ? ' 👑' : ''}</div><div class="p">${esc(c.promise || '')}</div>`
         + (c.votes != null ? `<div class="vbar"><i style="width:${pc}%"></i></div><div class="p">🗳 ${c.votes} · ${pc}%</div>` : '')
-        + `</div>${open2 && c.vote ? `<a class="btn vbtn tglink" href="${esc(c.vote)}" target="_blank" rel="noopener">ЗА</a>` : ''}</div>`; }).join('')
+        + `</div><div style="display:flex;flex-direction:column;gap:6px;align-self:center">${city.byKey.get(norm(c.nick)) ? `<button class="vbtn ghost" type="button" data-home="${esc(norm(c.nick))}">🏠 ДОМ</button>` : ''}${open2 && c.vote ? `<a class="btn vbtn tglink" href="${esc(c.vote)}" target="_blank" rel="noopener">ЗА</a>` : ''}</div></div>`; }).join('')
       || (open2 ? '<p>Кандидатов пока нет — стань первым! 🙋</p>' : '');
     sheet.innerHTML = `<h2>${esc(E.title || 'Выборы мэра')}</h2><p>${esc(E.text || '')}</p>${cands}${E.until ? `<p>⏳ До: <b>${esc(E.until)}</b></p>` : ''}
       <div class="btns">${open2 && E.apply ? `<a class="btn tglink" href="${esc(E.apply)}" target="_blank" rel="noopener">🙋 СТАТЬ КАНДИДАТОМ</a>` : ''}${E.link && !open2 ? `<a class="btn" href="${esc(E.link)}" target="_blank" rel="noopener">${esc(E.button || 'УЧАСТВОВАТЬ')}</a>` : ''}<button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button></div>`;
     sheet.querySelectorAll('.tglink').forEach(a => a.onclick = e => { if (TG && tg.openTelegramLink) { e.preventDefault(); tg.openTelegramLink(a.href); } });
+    sheet.querySelectorAll('[data-home]').forEach(b => b.onclick = () => { const h = city.byKey.get(b.dataset.home); if (h) { modal.classList.remove('show'); focus(h); } });
     modal.classList.add('show'); closeBtn();
   };
 }
