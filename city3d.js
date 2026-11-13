@@ -12,6 +12,12 @@ const blockOf = (x, y) => [Math.floor((x - 1) / 3), Math.floor((y - 1) / 3)];
 export const LANDMARK_BLOCKS = [[0, 0], [1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, -1]];
 const RES = new Set(LANDMARK_BLOCKS.map(b => b.join(',')));
 export const blockCenter = ([bx, by]) => [3 * bx + 2, 3 * by + 2];
+let _estOrder = null;
+// участок №N → квартал. №1 уже занят и остаётся в углу; новые выдаются от центра посёлка
+export function estateBlock(i) {
+  if (!_estOrder) { const cs = ESTATE_BLOCKS.map(blockCenter), mx = cs.reduce((a, c) => a + c[0], 0) / cs.length, mz = cs.reduce((a, c) => a + c[1], 0) / cs.length;
+    _estOrder = [ESTATE_BLOCKS[0], ...ESTATE_BLOCKS.slice(1).sort((a, b) => { const [ax, az] = blockCenter(a), [bx, bz] = blockCenter(b); return Math.hypot(ax - mx, az - mz) - Math.hypot(bx - mx, bz - mz); })]; }
+  return _estOrder[i]; }
 // ---------- река ----------
 // извилистая неоновая река через весь город (южнее центральной площади); riverZ(x) — середина русла
 export const riverZ = x => -13 + 5 * Math.sin(x / 17) + 2 * Math.sin(x / 7.3 + 1);
@@ -388,7 +394,7 @@ export class City3D {
     const add = o => { this.scene.add(o); this.dyn.push(o); return o; };
     const N = Math.min(list.length, CELLS.length - 20), r = rnd(7);
     this.houses = list.slice(0, N).map((it, i) => ({ ...it, n: i + 1, x: CELLS[i][0] + .5, z: CELLS[i][1] + .5 }));
-    for (const h of this.houses) if (h.estate != null && ESTATE_BLOCKS[h.estate] && !h.gone) { const [cx, cz] = blockCenter(ESTATE_BLOCKS[h.estate]); h.oldX = h.x; h.oldZ = h.z; h.x = cx; h.z = cz; h.isEstate = true;
+    for (const h of this.houses) if (h.estate != null && estateBlock(h.estate) && !h.gone) { const [cx, cz] = blockCenter(estateBlock(h.estate)); h.oldX = h.x; h.oldZ = h.z; h.x = cx; h.z = cz; h.isEstate = true;
       if (!h.recipe) h.recipe = { shape: 'house', floors: 2, wall: WALLS[hash(h.key) % WALLS.length], roof: ROOFS[hash(h.key + 'r') % ROOFS.length], decor: ['garland', 'tree'] }; }
     this.byKey = new Map(this.houses.map(h => [h.key, h]));
     const span = Math.ceil(Math.sqrt((N + 60) * 2.25 / Math.PI) / 3) + 4; this.span = span;
@@ -499,10 +505,20 @@ export class City3D {
         const fence = flat('#e8dcc4'), Y = new THREE.Group(); Y.position.set(h.x, .06, h.z);
         for (const [w, d, x, z] of [[2, .04, 0, 1], [2, .04, 0, -1], [.04, 2, 1, 0], [.04, 2, -1, 0]]) { const f = new THREE.Mesh(new THREE.BoxGeometry(w, .12, d), fence); f.position.set(x, .06, z); Y.add(f); }
         for (const [x, z] of [[-.75, .75], [.75, -.75], [.75, .75]]) { const t = new THREE.Mesh(new THREE.ConeGeometry(.16, .5, 8), flat('#2f9a55', '#0a5', .15)); t.position.set(x, .3, z); Y.add(t); }
-        const path = new THREE.Mesh(new THREE.BoxGeometry(.3, .01, .9), flat('#c9a46a')); path.position.set(0, .01, .55); Y.add(path); add(Y); }
+        const path = new THREE.Mesh(new THREE.BoxGeometry(.3, .01, .9), flat('#c9a46a')); path.position.set(0, .01, .55); Y.add(path);
+        for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { const post = new THREE.Mesh(new THREE.CylinderGeometry(.025, .03, .42, 6), flat('#3a3f6a')); post.position.set(x, .21, z); Y.add(post);
+          const lamp = new THREE.Mesh(new THREE.SphereGeometry(.06, 10, 8), new THREE.MeshBasicMaterial({ color: '#ffe3a0', toneMapped: false })); lamp.position.set(x, .45, z); Y.add(lamp); }
+        ['#ff3d7f', '#ffd23f', '#c084fc', '#5ef2ff'].forEach((c, i) => { for (let k = 0; k < 5; k++) { const fl = new THREE.Mesh(new THREE.SphereGeometry(.035, 6, 5), flat(c, c, .5));
+          fl.position.set(-.85 + k * .07, .05, -.3 + i * .09); Y.add(fl); const fr = fl.clone(); fr.position.x = .57 + k * .07; Y.add(fr); } });
+        const pond = new THREE.Mesh(new THREE.CircleGeometry(.2, 20), new THREE.MeshBasicMaterial({ color: '#3fb7ff', transparent: true, opacity: .85, toneMapped: false })); pond.rotation.x = -Math.PI / 2; pond.position.set(-.7, .015, -.72); Y.add(pond);
+        const bench = new THREE.Mesh(new THREE.BoxGeometry(.28, .05, .09), flat('#8a5a3a')); bench.position.set(.62, .1, .45); Y.add(bench);
+        add(Y); }
       add(g); this.specialG.push(g); }
     if (ESTATE_BLOCKS.length) { const xs = ESTATE_BLOCKS.map(b => blockCenter(b)); this.places.push({ kind: 'estate', name: 'Посёлок Усадеб', x: xs.reduce((a, c) => a + c[0], 0) / xs.length, z: xs.reduce((a, c) => a + c[1], 0) / xs.length });
-      this.estateCenter = this.places[this.places.length - 1]; }
+      this.estateCenter = this.places[this.places.length - 1];
+      const taken = new Set(this.houses.filter(h => h.isEstate).map(h => h.estate));
+      for (let i = 1, shown = 0; i < ESTATE_BLOCKS.length && shown < 6; i++) { if (taken.has(i)) continue; const [cx, cz] = blockCenter(estateBlock(i));
+        const sg = textSprite('🏡 Свободно · 100 звёзд', { color: '#1a1238', bg: 'rgba(166,255,143,.9)', scale: .0042, size: 44 }); sg.position.set(cx, 1.1, cz); add(sg); shown++; } }
     // на старом месте дома, переехавшего в усадьбу, — указатель, чтобы его не искали в городе
     for (const h of this.houses) if (h.isEstate && h.oldX != null) { const sg = textSprite('🏡 ' + h.label + ' → Посёлок Усадеб', { color: '#1a1238', bg: 'rgba(166,255,143,.92)', scale: .0016, size: 46 });
       sg.position.set(h.oldX, 1.15, h.oldZ); add(sg); }
@@ -678,7 +694,8 @@ export class City3D {
     for (const g of this.specialG || []) { const s = sc(g.userData.house); g.visible = s > 0; g.scale.setScalar(Math.max(s, 1e-4) * (g.userData.k || 1)); }
   }
   // «Неоновая улица, 45 · Пиксельный квартал»
-  address(h) { const cx = Math.floor(h.x), cy = Math.floor(h.z), a = addressOf(cx, cy); return { ...a, district: h.district || districtOf(h.x, h.z), text: `${a.street}, ${a.num}` }; }
+  address(h) { if (h.isEstate) return { street: 'Посёлок Усадеб', num: h.estate + 1, district: 'за рекой', text: `Посёлок Усадеб, участок №${h.estate + 1}` };
+    const cx = Math.floor(h.x), cy = Math.floor(h.z), a = addressOf(cx, cy); return { ...a, district: h.district || districtOf(h.x, h.z), text: `${a.street}, ${a.num}` }; }
   // соседи по улице слева/справа и дом напротив (через дорогу)
   neighbors(h) {
     const cx = Math.floor(h.x), cy = Math.floor(h.z), get = (x, y) => this.cellMap?.get(x + ',' + y), out = [];
