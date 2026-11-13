@@ -1772,6 +1772,45 @@ from urllib.parse import parse_qsl
 from aiohttp import web
 
 API_PORT = int(E("API_PORT", "8787"))
+PIXEL_URL = E("PIXEL_URL", "http://127.0.0.1:8090")  # пиксель-баттл (Desktop/pixel) — отдаём наружу через тот же туннель, путь /px/...
+
+
+async def pixel_proxy(req):
+    """Прокси /px/* → сервер пиксель-баттла (HTTP GET и WebSocket)."""
+    import aiohttp
+    tail = req.match_info.get("tail", "")
+    fwd = {"X-Forwarded-For": req.headers.get("X-Forwarded-For", req.remote or "")}
+    try:
+        if req.headers.get("Upgrade", "").lower() == "websocket":
+            ws = web.WebSocketResponse(heartbeat=25, max_msg_size=8192)
+            await ws.prepare(req)
+            async with aiohttp.ClientSession() as ses, ses.ws_connect(PIXEL_URL + "/ws", headers=fwd, heartbeat=25) as up:
+                async def down_to_up():
+                    async for m in ws:
+                        if m.type == web.WSMsgType.TEXT:
+                            await up.send_str(m.data)
+                async def up_to_down():
+                    async for m in up:
+                        if m.type == aiohttp.WSMsgType.TEXT:
+                            await ws.send_str(m.data)
+                tasks = [asyncio.create_task(down_to_up()), asyncio.create_task(up_to_down())]
+                await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+                for t in tasks:
+                    t.cancel()
+            await ws.close()
+            return ws
+        if req.method != "GET":
+            return web.Response(status=405)
+        async with aiohttp.ClientSession() as ses:
+            async with ses.get(f"{PIXEL_URL}/{tail}", params=req.query, headers=fwd, timeout=aiohttp.ClientTimeout(total=15)) as r:
+                body = await r.read()
+                return web.Response(body=body, status=r.status, content_type=r.content_type,
+                                    headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "no-store"})
+    except Exception as e:
+        log.warning("pixel proxy: %s", e)
+        return web.Response(status=502, text="пиксель-баттл не запущен", headers={"Access-Control-Allow-Origin": "*"})
+
+
 API_STATE = {}  # держим ссылки на задачу и процесс туннеля, чтобы их не собрал сборщик мусора
 
 
@@ -1840,6 +1879,7 @@ async def api_serve(bot):
     app = web.Application()
     app["bot"] = bot
     app.router.add_route("*", "/api", api_handler)
+    app.router.add_route("*", "/px/{tail:.*}", pixel_proxy)
     runner = web.AppRunner(app)
     await runner.setup()
     await web.TCPSite(runner, "127.0.0.1", API_PORT).start()
