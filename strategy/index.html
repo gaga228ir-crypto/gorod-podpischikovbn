@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Эпоха указов</title>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;800&family=Manrope:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0d0a24;--card:#1a1440;--card2:#231b55;--line:rgba(255,255,255,.1);--txt:#f2efff;--mut:#a59fd0;--pink:#ff3d7f;--gold:#ffd23f;--cyan:#5ef2ff;--vio:#8b5cff;--green:#3dff8e}
+*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.4 Manrope,system-ui,sans-serif}
+body{background:radial-gradient(1200px 600px at 20% -10%,#2a1a6a 0,transparent 60%),radial-gradient(900px 500px at 110% 10%,#4a1240 0,transparent 55%),var(--bg);min-height:100vh}
+h1,h2,h3,.uf{font-family:Unbounded,sans-serif;margin:0}
+button{font:inherit;cursor:pointer;border:0;border-radius:12px;padding:9px 13px;background:var(--card2);color:var(--txt);font-weight:800;transition:transform .1s,filter .15s}
+button:hover{filter:brightness(1.2)}button:active{transform:scale(.96)}button:disabled{opacity:.4;cursor:not-allowed;filter:none}
+.pri{background:linear-gradient(135deg,var(--pink),var(--vio));box-shadow:0 6px 24px rgba(255,61,127,.35)}
+.gold{background:var(--gold);color:#1a1238}
+input,textarea{font:inherit;width:100%;border-radius:12px;border:1px solid var(--line);background:#120e33;color:var(--txt);padding:11px 12px;outline:none}
+input:focus,textarea:focus{border-color:var(--cyan)}
+.wrap{max-width:1180px;margin:0 auto;padding:14px 16px 40px}
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.logo{display:flex;align-items:center;gap:10px}.logo .ic{font-size:28px;filter:drop-shadow(0 0 12px rgba(255,210,63,.6))}
+.logo h1{font-size:20px;letter-spacing:.5px;background:linear-gradient(90deg,var(--gold),var(--pink));-webkit-background-clip:text;background-clip:text;color:transparent}
+.world{color:var(--mut);font-size:13px}.world b{color:var(--cyan)}
+.sp{flex:1}
+.res{display:flex;gap:8px;flex-wrap:wrap}
+.r{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:6px 10px;min-width:82px}
+.r b{font-size:16px}.r small{display:block;color:var(--mut);font-size:11px}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:14px}
+@media(max-width:900px){.grid{grid-template-columns:1fr}}
+.card{background:linear-gradient(180deg,var(--card),#150f38);border:1px solid var(--line);border-radius:18px;padding:14px}
+.card h3{font-size:13px;letter-spacing:.6px;color:var(--mut);margin-bottom:10px;text-transform:uppercase}
+#mapBox{position:relative;padding:10px;border-radius:20px;background:#0a0820;border:1px solid rgba(94,242,255,.25);box-shadow:0 0 40px rgba(139,92,255,.25),inset 0 0 30px rgba(0,0,0,.5)}
+canvas{display:block;width:100%;height:auto;border-radius:12px;touch-action:manipulation;image-rendering:auto}
+#fx{position:absolute;inset:10px;pointer-events:none;border-radius:12px;overflow:hidden}
+.banner{display:flex;gap:12px;align-items:center;border-radius:16px;padding:12px 14px;margin-bottom:12px;background:linear-gradient(90deg,rgba(255,210,63,.18),rgba(255,61,127,.12));border:1px solid rgba(255,210,63,.35)}
+.banner .crown{font-size:30px;filter:drop-shadow(0 0 10px rgba(255,210,63,.8))}
+.banner small{color:var(--mut)}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.chip{font-size:12px;padding:4px 9px;border-radius:999px;background:rgba(94,242,255,.12);border:1px solid rgba(94,242,255,.3)}
+.chip.law{background:rgba(166,255,143,.1);border-color:rgba(166,255,143,.35)}
+#sel .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+#sel .info{color:var(--mut);font-size:13px}
+.cost{font-size:11px;color:var(--mut);display:block;font-weight:700}
+.bbtn{display:flex;flex-direction:column;align-items:flex-start;text-align:left;min-width:120px}
+.log{max-height:300px;overflow:auto;font-size:13px;display:flex;flex-direction:column;gap:6px}
+.log div{padding:6px 9px;border-radius:10px;background:rgba(255,255,255,.04)}
+.log .war{border-left:3px solid var(--pink)}.log .decree{border-left:3px solid var(--gold)}.log .ruler{border-left:3px solid var(--cyan)}
+.top li{display:flex;gap:8px;align-items:center;padding:4px 0}.top ol{margin:0;padding-left:22px}
+.dot{width:12px;height:12px;border-radius:4px;display:inline-block;flex:none}
+.modal{position:fixed;inset:0;background:rgba(6,4,20,.75);backdrop-filter:blur(6px);display:none;align-items:center;justify-content:center;z-index:9;padding:16px}
+.modal.show{display:flex}.modal .card{max-width:460px;width:100%;max-height:90vh;overflow:auto}
+.modal h2{font-size:20px;margin-bottom:8px}
+.mut{color:var(--mut);font-size:13px}
+#toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(30px);opacity:0;transition:.25s;background:#2a1f66;border:1px solid var(--line);padding:10px 16px;border-radius:12px;z-index:10;font-weight:700;max-width:90vw;text-align:center}
+#toast.show{opacity:1;transform:translateX(-50%)}
+.dec{border-radius:14px;padding:10px 12px;background:rgba(255,210,63,.08);border:1px solid rgba(255,210,63,.3)}
+.dec b{font-family:Unbounded;font-size:14px;color:var(--gold)}
+.legend{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--mut);margin-top:8px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+.flake{position:absolute;top:-10px;color:#fff;opacity:.8;animation:fall linear infinite}
+@keyframes fall{to{transform:translateY(110vh)}}
+.drop{position:absolute;top:-20px;width:1px;height:14px;background:rgba(150,200,255,.6);animation:fall linear infinite}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo"><span class="ic">📜</span><div><h1>ЭПОХА УКАЗОВ</h1><div class="world">мир <b id="wname">…</b> · держав: <b id="pcount">0</b></div></div></div>
+    <div class="sp"></div>
+    <div class="res" id="res"></div>
+    <button id="helpBtn">❔ Правила</button>
+  </header>
+
+  <div class="banner" id="banner"><span class="crown">👑</span><div style="flex:1"><div id="rulerTxt" class="uf" style="font-size:14px">Подключаюсь…</div><small id="rulerSub"></small><div class="chips" id="effects"></div></div><button class="gold" id="decreeBtn" style="display:none">📜 Издать указ</button></div>
+
+  <div class="grid">
+    <div>
+      <div id="mapBox"><canvas id="cv" width="900" height="900"></canvas><div id="fx"></div></div>
+      <div class="legend"><span><i style="background:#79c15a"></i>поле → еда</span><span><i style="background:#2f7a45"></i>лес → дерево</span><span><i style="background:#8d8aa8"></i>горы → золото</span><span><i style="background:#2f6fd6"></i>вода</span><span>🏰 столица · 🗿 памятник</span></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="card" id="sel"><h3>Клетка</h3><div class="info">Нажми на клетку карты. Свои земли подсвечены твоим цветом — занимай соседние, строй, воюй.</div></div>
+      <div class="card" id="decCard" style="display:none"><h3>Последний указ</h3><div id="lastDec"></div></div>
+      <div class="card"><h3>Державы</h3><div class="top"><ol id="top"></ol></div></div>
+      <div class="card"><h3>Летопись</h3><div class="log" id="log"></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="joinM"><div class="card">
+  <h2>🏰 Основать державу</h2>
+  <p class="mut">Ты получишь столицу на свободной земле и 6 часов защиты новичка. Раз в сутки жребий выбирает Правителя дня — он пишет указ, и мир меняется.</p>
+  <input id="nick" maxlength="20" placeholder="Название державы или твой ник" autocomplete="off">
+  <div style="display:flex;gap:8px;margin-top:10px"><button class="pri" id="joinBtn" style="flex:1">Основать</button><button id="watchBtn">Смотреть</button></div>
+  <p class="mut" id="joinErr" style="color:var(--pink)"></p>
+</div></div>
+
+<div class="modal" id="decM"><div class="card">
+  <h2>👑 Твой указ</h2>
+  <p class="mut">Пиши как правитель: «Объявляю неделю урожая и мир между державами», «Переименовать мир в Северное царство», «Поставить мне памятник». Писарь-нейросеть переведёт указ в законы игры, летописец проверит — и он вступит в силу на сутки.</p>
+  <textarea id="decText" rows="5" maxlength="500" placeholder="Я, Правитель дня, повелеваю…"></textarea>
+  <div style="display:flex;gap:8px;margin-top:10px"><button class="gold" id="decSend" style="flex:1">Отдать писарю</button><button id="decClose">Позже</button></div>
+  <div id="decRes" class="mut" style="margin-top:10px"></div>
+</div></div>
+
+<div class="modal" id="helpM"><div class="card">
+  <h2>📖 Правила</h2>
+  <p class="mut"><b>Ресурсы</b> идут каждую минуту: поле даёт 🌾, лес 🪵, горы 🪙. Постройка на подходящей земле утраивает добычу. Склад — до 600 каждого.</p>
+  <p class="mut"><b>Земли</b>: занимай свободные клетки рядом со своими. Каждая новая дороже.</p>
+  <p class="mut"><b>Война</b>: атакуй соседнюю чужую клетку войсками. Защита клетки = 2 + башня 8 + столица 10 + войска владельца. Нападая, ты теряешь защиту новичка.</p>
+  <p class="mut"><b>👑 Правитель дня</b>: раз в сутки жребий среди тех, кто заходил за 2 дня. Правитель пишет указ своими словами — урожай, налоги, мир, погода, памятник, имя мира. Нейросеть переводит его в эффекты с лимитами, летописец (админ) утверждает.</p>
+  <button class="pri" onclick="hide('helpM')" style="width:100%">Понятно</button>
+</div></div>
+<div id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id), show = id => $(id).classList.add('show'), hide = id => $(id).classList.remove('show');
+const SELF = /^(127\.0\.0\.1|localhost)$/.test(location.hostname) && location.port === '8090';
+let BASE = SELF ? '' : null, S = null, TOK = '', sel = null, seq = -1, fails = 0;
+try { TOK = localStorage.getItem('epTok') || ''; } catch (e) {}
+const TC = { p: '#79c15a', f: '#2f7a45', m: '#8d8aa8', w: '#2f6fd6' }, TN = { p: 'поле', f: 'лес', m: 'горы', w: 'вода' };
+const RI = { gold: '🪙', food: '🌾', wood: '🪵', troops: '⚔️' }, RN = { gold: 'золото', food: 'еда', wood: 'дерево', troops: 'войска' };
+const cv = $('cv'), ctx = cv.getContext('2d');
+function toast(t) { const el = $('toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('show'), 3200); }
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const costTxt = c => Object.entries(c).map(([k, v]) => RI[k] + v).join(' ');
+const hm = s => { s = Math.max(0, Math.round(s)); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h ? `${h} ч ${m} мин` : `${m} мин`; };
+
+async function resolveBase() { if (SELF) return BASE;
+  const j = await Promise.all(['../api.json', 'https://raw.githubusercontent.com/gaga228ir-crypto/gorod-podpischikovbn/main/api.json']
+    .map(u => fetch(u + '?v=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null)));
+  const b = j.filter(x => x && x.url).sort((a, c) => (c.ts || 0) - (a.ts || 0))[0]; if (b) BASE = b.url.replace(/\/api$/, '/px'); return BASE; }
+async function post(d) { // text/plain — без CORS-preflight, туннель так надёжнее
+  const r = await fetch(BASE + '/act', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ ...d, tok: TOK }) }); return r.json(); }
+async function act(d) { try { const r = await post(d); if (r.err) { toast(r.err); if (r.relogin) { TOK = ''; show('joinM'); } return null; }
+    if (r.me && S) S.me = r.me; seq = -1; await poll(true); return r; } catch (e) { toast('Нет связи с сервером'); return null; } }
+
+// ---------- отрисовка ----------
+let N = 30, CS = 30;
+function shade(hex, k) { const n = parseInt(hex.slice(1), 16); let r = n >> 16, g = n >> 8 & 255, b = n & 255; r = Math.min(255, r * k) | 0; g = Math.min(255, g * k) | 0; b = Math.min(255, b * k) | 0; return `rgb(${r},${g},${b})`; }
+function draw() { if (!S || !S.cells) return; N = S.w; CS = cv.width / N; const P = {}; S.players.forEach(p => P[p.id] = p);
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { const t = S.cells[y][x], v = ((x * 7 + y * 13) % 5) * .03 + .92;
+    ctx.fillStyle = shade(TC[t], v); ctx.fillRect(x * CS, y * CS, CS + .5, CS + .5);
+    if (t === 'f') { ctx.fillStyle = 'rgba(0,40,10,.35)'; ctx.beginPath(); ctx.arc(x * CS + CS * .35, y * CS + CS * .45, CS * .18, 0, 7); ctx.arc(x * CS + CS * .65, y * CS + CS * .6, CS * .16, 0, 7); ctx.fill(); }
+    if (t === 'm') { ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.beginPath(); ctx.moveTo(x * CS + CS * .2, y * CS + CS * .8); ctx.lineTo(x * CS + CS * .5, y * CS + CS * .25); ctx.lineTo(x * CS + CS * .8, y * CS + CS * .8); ctx.fill(); }
+    if (t === 'w') { ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.beginPath(); ctx.moveTo(x * CS + CS * .2, y * CS + CS * .5); ctx.quadraticCurveTo(x * CS + CS * .5, y * CS + CS * .3, x * CS + CS * .8, y * CS + CS * .5); ctx.stroke(); }
+    const o = S.own[y][x]; if (o && P[o]) { ctx.fillStyle = P[o].color + '66'; ctx.fillRect(x * CS, y * CS, CS, CS); } }
+  // границы держав
+  ctx.lineWidth = 2.2;
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { const o = S.own[y][x]; if (!o || !P[o]) continue; ctx.strokeStyle = P[o].color;
+    const e = (dx, dy) => { const a = x + dx, b = y + dy; return a < 0 || b < 0 || a >= N || b >= N || S.own[b][a] !== o; };
+    ctx.beginPath(); if (e(0, -1)) { ctx.moveTo(x * CS, y * CS); ctx.lineTo((x + 1) * CS, y * CS); } if (e(0, 1)) { ctx.moveTo(x * CS, (y + 1) * CS); ctx.lineTo((x + 1) * CS, (y + 1) * CS); }
+    if (e(-1, 0)) { ctx.moveTo(x * CS, y * CS); ctx.lineTo(x * CS, (y + 1) * CS); } if (e(1, 0)) { ctx.moveTo((x + 1) * CS, y * CS); ctx.lineTo((x + 1) * CS, (y + 1) * CS); } ctx.stroke(); }
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = `${CS * .62}px "Segoe UI Emoji",sans-serif`;
+  for (const [k, b] of Object.entries(S.bld || {})) { const [x, y] = k.split(',').map(Number); ctx.fillText(S.build[b]?.ic || '?', x * CS + CS / 2, y * CS + CS / 2 + 1); }
+  (S.monuments || []).forEach(m => { ctx.font = `${CS * .5}px "Segoe UI Emoji",sans-serif`; ctx.fillText('🗿', m.x * CS + CS * .78, m.y * CS + CS * .25); });
+  S.players.forEach(p => { if (!p.cap) return; const [x, y] = p.cap; ctx.font = `${CS * .7}px "Segoe UI Emoji",sans-serif`; ctx.fillText('🏰', x * CS + CS / 2, y * CS + CS / 2);
+    ctx.font = `800 ${Math.max(10, CS * .38)}px Manrope,sans-serif`; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(10,8,30,.9)'; const ty = y < 1 ? (y + 1.35) * CS : (y - .25) * CS;
+    ctx.strokeText(p.nick, x * CS + CS / 2, ty); ctx.fillStyle = '#fff'; ctx.fillText(p.nick, x * CS + CS / 2, ty); });
+  if (S.weather === 'night' || S.weather === 'storm') { ctx.fillStyle = S.weather === 'night' ? 'rgba(10,10,60,.42)' : 'rgba(20,20,40,.3)'; ctx.fillRect(0, 0, cv.width, cv.height); }
+  if (sel) { ctx.lineWidth = 3; ctx.strokeStyle = '#fff'; ctx.shadowColor = '#5ef2ff'; ctx.shadowBlur = 12; ctx.strokeRect(sel[0] * CS + 1.5, sel[1] * CS + 1.5, CS - 3, CS - 3); ctx.shadowBlur = 0; } }
+let fxKind = '';
+function weatherFx(k) { if (k === fxKind) return; fxKind = k; const f = $('fx'); f.innerHTML = '';
+  if (k === 'snow') for (let i = 0; i < 50; i++) f.insertAdjacentHTML('beforeend', `<span class="flake" style="left:${Math.random() * 100}%;font-size:${8 + Math.random() * 8}px;animation-duration:${6 + Math.random() * 8}s;animation-delay:-${Math.random() * 10}s">❄</span>`);
+  if (k === 'rain' || k === 'storm') for (let i = 0; i < 70; i++) f.insertAdjacentHTML('beforeend', `<span class="drop" style="left:${Math.random() * 100}%;animation-duration:${.6 + Math.random() * .5}s;animation-delay:-${Math.random()}s"></span>`); }
+
+// ---------- интерфейс ----------
+function mine(x, y) { return S.me && S.own[y][x] === S.me.id; }
+function nearMine(x, y) { return S.me && [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([a, b]) => { const X = x + a, Y = y + b; return X >= 0 && Y >= 0 && X < N && Y < N && S.own[Y][X] === S.me.id; }); }
+function renderSel() { const box = $('sel'); if (!sel || !S || !S.cells) return; const [x, y] = sel, t = S.cells[y][x], o = S.own[y][x], p = S.players.find(q => q.id === o), b = S.bld[x + ',' + y], me = S.me;
+  let h = `<h3>Клетка ${x + 1}:${y + 1}</h3><div><b>${TN[t]}</b>${b ? ' · ' + S.build[b].ic + ' ' + S.build[b].name : ''}${p ? ` · <span class="dot" style="background:${p.color}"></span> ${esc(p.nick)}${p.cap && p.cap[0] === x && p.cap[1] === y ? ' (столица)' : ''}` : ' · ничья'}</div>`;
+  const mon = (S.monuments || []).filter(m => m.x === x && m.y === y); if (mon.length) h += `<div class="info">🗿 ${mon.map(m => esc(m.text) + ' — ' + esc(m.by)).join('<br>🗿 ')}</div>`;
+  h += '<div class="row">';
+  if (!me) h += `<button class="pri" onclick="show('joinM')">Основать державу</button>`;
+  else if (t === 'w') h += `<span class="info">По воде не пройти.</span>`;
+  else if (!o) h += nearMine(x, y) ? `<button class="pri bbtn" onclick="act({a:'expand',x:${x},y:${y}})">🚩 Занять<span class="cost">${costTxt(me.expand)}</span></button>` : `<span class="info">Занять можно только клетку рядом со своими землями.</span>`;
+  else if (o === me.id) { if (!b) for (const [k, B] of Object.entries(S.build)) if (B.on.includes(t)) h += `<button class="bbtn" onclick="act({a:'build',b:'${k}',x:${x},y:${y}})">${B.ic} ${B.name}<span class="cost">${costTxt(me.build[k])}</span></button>`;
+    if (b) h += `<button onclick="if(confirm('Снести постройку?'))act({a:'demolish',x:${x},y:${y}})">🧨 Снести</button>`; }
+  else h += nearMine(x, y) ? `<button class="pri bbtn" onclick="attack(${x},${y})">⚔️ Атаковать<span class="cost">всеми войсками: ${Math.floor(me.troops)}</span></button>` + (p && p.shield ? `<span class="info">🛡 защита новичка ещё ${hm(p.shield)}</span>` : '') : `<span class="info">Атаковать можно только соседние клетки.</span>`;
+  h += '</div>'; box.innerHTML = h; }
+function attack(x, y) { const m = S.me; if (m.troops < 1) return toast('Нет войск — найми их'); const n = prompt(`Сколько войск отправить? (есть ${Math.floor(m.troops)})`, Math.floor(m.troops)); if (n) act({ a: 'attack', x, y, n: +n }); }
+function renderRes() { const m = S.me; if (!m) { $('res').innerHTML = `<button class="pri" onclick="show('joinM')">🏰 Основать державу</button>`; return; }
+  $('res').innerHTML = ['gold', 'food', 'wood', 'troops'].map(k => `<div class="r">${RI[k]} <b>${Math.floor(m[k])}</b><small>${RN[k]} ${m.rates[k] >= 0 ? '+' : ''}${m.rates[k]}/мин</small></div>`).join('') +
+    `<button class="bbtn" onclick="hire()">⚔️ Нанять 5<span class="cost">🌾${Math.round(40 * costK())} 🪙${Math.round(20 * costK())}</span></button>` +
+    (m.cap ? '' : `<button class="pri" onclick="act({a:'respawn'})">🏰 Новая столица</button>`); }
+const costK = () => (S.effects || []).filter(e => e.type === 'cost').reduce((a, e) => a * e.k, 1);
+function hire() { act({ a: 'hire', n: 5 }); }
+const effTxt = e => ({ mult: () => `${RI[e.res] || '✨'} ×${e.k}`, cost: () => `🏗 цены ×${e.k}`, attack: () => `⚔️ атака ×${e.k}`, peace: () => '🕊 мир', weather: () => ({ sun: '☀️', rain: '🌧', snow: '❄️ снег', night: '🌙 ночь', storm: '⛈ гроза' })[e.kind], law: () => '📜 ' + e.text })[e.type]?.() || e.type;
+function renderTop() { const P = [...S.players].sort((a, b) => b.cells - a.cells).slice(0, 10);
+  $('top').innerHTML = P.map(p => `<li><span class="dot" style="background:${p.color}"></span><b>${esc(p.nick)}</b><span class="mut">· ${p.cells} кл. · ⚔️${p.troops}</span></li>`).join('') || '<li class="mut">Пока никого — стань первым!</li>';
+  $('pcount').textContent = S.players.length; $('wname').textContent = S.name;
+  $('log').innerHTML = [...S.log].reverse().map(l => `<div class="${l.k}">${esc(l.t)}<div class="mut" style="font-size:11px">${new Date(l.ts * 1000).toLocaleString('ru', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</div></div>`).join('') || '<div class="mut">Летопись пуста.</div>';
+  const d = S.decree; $('decCard').style.display = d ? '' : 'none';
+  if (d) $('lastDec').innerHTML = `<div class="dec"><b>${esc(d.title)}</b><div class="mut">от ${esc(d.nick)}</div><div style="margin-top:6px">${esc(d.summary || '')}</div><div class="mut" style="margin-top:6px">«${esc(d.text)}»</div></div>`; }
+function renderBanner() { const r = S.ruler, now = Date.now() / 1000, me = S.me;
+  if (r) { $('rulerTxt').innerHTML = `Правитель дня: <span style="color:var(--gold)">${esc(r.nick)}</span>`;
+    $('rulerSub').textContent = (r.state === 'done' ? 'Указ издан. ' : r.state === 'review' ? 'Указ у летописца на проверке. ' : 'Пишет указ… ') + 'Новый жребий через ' + hm(r.until - now); }
+  else { $('rulerTxt').textContent = 'Трон пуст'; $('rulerSub').textContent = 'Жребий среди активных игроков через ' + hm((S.next_pick || now) - now); }
+  $('effects').innerHTML = (S.effects || []).map(e => `<span class="chip ${e.type === 'law' ? 'law' : ''}" title="${esc(e.title || '')}">${esc(effTxt(e))}</span>`).join('');
+  const can = me && me.ruler && me.decree_state === 'write'; $('decreeBtn').style.display = can ? '' : 'none';
+  if (can && !renderBanner.asked) { renderBanner.asked = 1; toast('👑 Ты — Правитель дня! Издай указ.'); if (me.decree_note) $('decRes').textContent = me.decree_note; }
+  weatherFx(S.weather); }
+
+async function poll(force) { if (BASE === null) await resolveBase(); if (BASE === null) return;
+  try { const r = await fetch(`${BASE}/state?seq=${force ? -1 : seq}&tok=${encodeURIComponent(TOK)}`, { cache: 'no-store' }); const d = await r.json(); fails = 0;
+    if (d.cells) S = d; else S = { ...S, ...d }; seq = d.seq; if (!d.me && TOK && S) S.me = null;
+    renderRes(); renderTop(); renderBanner(); draw(); renderSel(); if (!S.me && !poll.asked) { poll.asked = 1; show('joinM'); } }
+  catch (e) { if (++fails % 3 === 0) { BASE = SELF ? '' : null; await resolveBase(); } $('rulerTxt').textContent = 'Нет связи с сервером, переподключаюсь…'; } }
+(async function loop() { await poll(); setTimeout(loop, 3000); })();
+
+cv.addEventListener('click', e => { if (!S) return; const r = cv.getBoundingClientRect(), x = Math.floor((e.clientX - r.left) / r.width * N), y = Math.floor((e.clientY - r.top) / r.height * N);
+  if (x < 0 || y < 0 || x >= N || y >= N) return; sel = [x, y]; draw(); renderSel(); if (innerWidth < 900) $('sel').scrollIntoView({ behavior: 'smooth', block: 'nearest' }); });
+$('joinBtn').onclick = async () => { const nick = $('nick').value.trim(); if (!nick) return; try { const r = await post({ a: 'join', nick });
+    if (r.err) { $('joinErr').textContent = r.err; return; } TOK = r.token; try { localStorage.setItem('epTok', TOK); } catch (e) {} hide('joinM'); toast('🏰 Держава основана! Твоя столица подсвечена.'); seq = -1; await poll(true);
+    if (S.me && S.me.cap) { sel = S.me.cap; draw(); renderSel(); } } catch (e) { $('joinErr').textContent = 'Нет связи с сервером'; } };
+$('nick').onkeydown = e => { if (e.key === 'Enter') $('joinBtn').click(); };
+$('watchBtn').onclick = () => hide('joinM');
+$('helpBtn').onclick = () => show('helpM');
+$('decreeBtn').onclick = () => show('decM'); $('decClose').onclick = () => hide('decM');
+$('decSend').onclick = async () => { const text = $('decText').value.trim(); if (text.length < 5) return toast('Напиши указ подробнее');
+  $('decSend').disabled = true; $('decRes').textContent = '✍️ Писарь переписывает указ… (до минуты)';
+  try { const r = await post({ a: 'decree', text }); if (r.err) $('decRes').textContent = r.err;
+    else { $('decRes').innerHTML = `<div class="dec"><b>${esc(r.decree.title)}</b><div style="margin:6px 0">${esc(r.decree.summary)}</div>${r.human.map(h => '• ' + esc(h)).join('<br>')}${r.decree.rejected ? `<div class="mut" style="margin-top:6px">Не вошло: ${esc(r.decree.rejected)}</div>` : ''}</div><p>Указ отправлен летописцу. Как только он утвердит — указ вступит в силу.</p>`; seq = -1; poll(true); } }
+  catch (e) { $('decRes').textContent = 'Нет связи с сервером'; } $('decSend').disabled = false; };
+</script>
+</body>
+</html>

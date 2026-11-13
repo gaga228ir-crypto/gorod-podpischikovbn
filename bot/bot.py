@@ -1838,14 +1838,16 @@ from urllib.parse import parse_qsl
 from aiohttp import web
 
 API_PORT = int(E("API_PORT", "8787"))
-PIXEL_URL = E("PIXEL_URL", "http://127.0.0.1:8090")  # пиксель-баттл (Desktop/pixel) — отдаём наружу через тот же туннель, путь /px/...
+PIXEL_URL = E("PIXEL_URL", "http://127.0.0.1:8090")  # игра «Эпоха указов» (Desktop/strategy; раньше пиксель-баттл) — наружу через туннель, путь /px/...
 
 
 async def pixel_proxy(req):
     """Прокси /px/* → сервер пиксель-баттла (HTTP GET и WebSocket)."""
     import aiohttp
     tail = req.match_info.get("tail", "")
-    fwd = {"X-Forwarded-For": req.headers.get("X-Forwarded-For", req.remote or "")}
+    if tail.lstrip("/").startswith("admin"):
+        return web.Response(status=403)      # модерация указов — только бот изнутри ПК
+    fwd = {"X-Forwarded-For": req.headers.get("X-Forwarded-For", req.remote or "127.0.0.1") or "127.0.0.1"}
     try:
         if req.headers.get("Upgrade", "").lower() == "websocket":
             ws = web.WebSocketResponse(heartbeat=25, max_msg_size=8192)
@@ -1880,6 +1882,60 @@ async def pixel_proxy(req):
     except Exception as e:
         log.warning("pixel proxy: %s", e)
         return web.Response(status=502, text="пиксель-баттл не запущен", headers={"Access-Control-Allow-Origin": "*"})
+
+
+DECREE_SENT = Path(__file__).parent / "decree_sent.json"
+
+
+def _effects_ic(h):
+    return "\n".join("• " + x for x in h)
+
+
+async def decree_loop(bot: Bot):
+    """«Эпоха указов»: новые указы Правителя дня → админу с кнопками «Принять / Отклонить»."""
+    try:
+        sent = set(json.loads(DECREE_SENT.read_text(encoding="utf-8")))
+    except Exception:
+        sent = set()
+    while True:
+        try:
+            async with httpx.AsyncClient(timeout=10) as cl:
+                pend = (await cl.get(PIXEL_URL + "/admin/pending")).json().get("pending", [])
+            for d in pend:
+                if d["id"] in sent:
+                    continue
+                txt = (f"📜 Указ Правителя дня — {d['nick']}\n\n«{d['text']}»\n\n"
+                       f"Писарь понял так: {d['title']}\n{d.get('summary', '')}\n{_effects_ic(d.get('human', []))}"
+                       + (f"\n\nНе вошло: {d['rejected']}" if d.get("rejected") else ""))
+                kb = InlineKeyboardMarkup(inline_keyboard=[[IB(text="✅ Принять", callback_data=f"dk:{d['id']}"),
+                                                            IB(text="🚫 Отклонить", callback_data=f"dr:{d['id']}")]])
+                for a in ADMIN_IDS:
+                    try:
+                        await bot.send_message(a, txt[:4000], reply_markup=kb)
+                    except Exception as e:
+                        log.warning("decree send: %s", e)
+                sent.add(d["id"])
+                DECREE_SENT.write_text(json.dumps(sorted(sent)[-300:]), encoding="utf-8")
+        except Exception:
+            pass   # игра выключена — тихо ждём
+        await asyncio.sleep(20)
+
+
+@r.callback_query(F.data.startswith("dk:") | F.data.startswith("dr:"))
+async def decree_moderate(c: CallbackQuery):
+    if not is_admin(c.from_user.id):
+        return await c.answer()
+    ok = c.data.startswith("dk:")
+    try:
+        async with httpx.AsyncClient(timeout=15) as cl:
+            res = (await cl.post(PIXEL_URL + "/admin/decide", content=json.dumps({"id": c.data[3:], "ok": ok}))).json()
+    except Exception:
+        return await c.answer("Игра не отвечает", show_alert=True)
+    if res.get("err"):
+        await c.answer("Уже решено", show_alert=True)
+        return await c.message.edit_reply_markup(reply_markup=None)
+    await c.answer("Принят ✅" if ok else "Отклонён 🚫")
+    await c.message.edit_text((c.message.text or "") + ("\n\n✅ Принят — указ вступил в силу" if ok else "\n\n🚫 Отклонён — правитель может переписать"), reply_markup=None)
 
 
 API_STATE = {}  # держим ссылки на задачу и процесс туннеля, чтобы их не собрал сборщик мусора
@@ -2741,6 +2797,7 @@ async def main():
     asyncio.create_task(program_notice(bot))
     API_STATE["task"] = asyncio.create_task(api_serve(bot))
     asyncio.create_task(sync_loop(bot))
+    asyncio.create_task(decree_loop(bot))
     asyncio.create_task(ai_resume(bot))
     asyncio.create_task(restart_later())
     await dp.start_polling(bot)
