@@ -149,7 +149,7 @@ window.city = city;
 let houses = [], milestones = MILESTONES_DEFAULT, election = null;
 const loadStep = (p, t) => { $('lbarI').style.width = p + '%'; if (t) $('ltxt').textContent = t; };
 const hideLoad = () => { loadStep(100); setTimeout(() => $('load').classList.add('hide'), 250); setTimeout(() => $('load').remove(), 900); };
-let baseList = [], hallInfo = null, specialRows = [], fxMap = {};
+let baseList = [], hallInfo = null, specialRows = [], fxMap = {}, titles = {};
 async function loadCity() {
   loadStep(20, 'Загружаем жителей…');
   const [base, ms, el] = await Promise.all([getJSON('subscribers.json'), getJSON('milestones.json'), getJSON('election.json')]);
@@ -179,6 +179,7 @@ async function loadSpecial(byKey) {
   if (SUPABASE_URL) { try { n += apply(await (await api('residents?select=nick,recipe&status=eq.approved&recipe=not.is.null')).json()); } catch (e) {} }
   if (n) buildCity();
   fxMap = (await getJSON('fx.json')) || {}; city.setFx(fxMap);
+  titles = (await getJSON('titles.json')) || {}; city.setTitles(titles);
   updateHonor();
 }
 function renderProgress() {
@@ -221,7 +222,7 @@ function focus(h, fly = true) {
   $('cnb').querySelectorAll('button').forEach(b => b.onclick = () => focus(nb[+b.dataset.i].h));
   $('cedit').style.display = (TG && h.key === ME) ? '' : 'none';
   const fx = fxMap[h.key] || {}, mine = TG && h.key === ME;
-  $('cfx').innerHTML = h.gone ? '' : (fx.k ? `<span class="k">❤ ${fx.k}</span>` : '') + (fx.s ? `<span class="k" style="color:#fff">💬 ${esc(fx.s)}</span>` : '')
+  $('cfx').innerHTML = h.gone ? '' : (titles[h.key] ? `<span class="k" style="color:var(--gold)">🏅 ${esc(titles[h.key].t)}</span>` : '') + (fx.k ? `<span class="k">❤ ${fx.k}</span>` : '') + (fx.s ? `<span class="k" style="color:#fff">💬 ${esc(fx.s)}</span>` : '')
     + (mine ? '<button type="button" id="bfx">✏️ ТАБЛИЧКА</button><button type="button" id="bshop">⭐ УКРАСИТЬ</button>' : TG && ME ? '<button type="button" id="bknock">🚪 ПОСТУЧАТЬ</button>' : '');
   if ($('bfx')) $('bfx').onclick = () => openFx(h); if ($('bshop')) $('bshop').onclick = () => openShop(h); if ($('bknock')) $('bknock').onclick = () => sendTG({ t: 'knock', n: h.key });
   card.classList.add('show'); history.replaceState(null, '', location.search + '#' + encodeURIComponent(h.key));
@@ -292,7 +293,9 @@ function honorData() {
   const kw = kladState && kladState.day === KLAD.day ? (kladState.winners || []) : [];
   const day = fnv(mskDay()), sp = [...specialRows].sort((a, b) => (fnv(a.nick) ^ day) - (fnv(b.nick) ^ day));
   const pop = Object.entries(fxMap).filter(([k, f]) => f.k && city.byKey.get(k)).sort((a, b) => b[1].k - a[1].k), tops = Object.entries(fxMap).filter(([k, f]) => f.top && city.byKey.get(k));
-  return { cands, kw, sp, pop, tops, sections: [
+  const tit = Object.entries(titles).filter(([k]) => city.byKey.get(k));
+  return { cands, kw, sp, pop, tops, tit, sections: [
+    tit.length && { title: '🏅 ТИТУЛЫ', lines: tit.map(([k, T]) => `@${k} — ${T.t}`), max: 3 },
     tops.length && { title: '🔦 ДОМ ДНЯ', lines: tops.map(([k]) => '@' + k), max: 2 },
     cands.length && { title: '🗳 ЛИДЕРЫ ВЫБОРОВ', lines: cands.map(c => `@${norm(c.nick)} — ${c.votes || 0} 🗳`), max: 3 },
     kw.length && { title: '💎 НАШЛИ КЛАД СЕГОДНЯ', lines: kw.map(n => '@' + n), max: 3 },
@@ -308,6 +311,7 @@ function openHonor() {
   const d = honorData(), li = (nick, t) => `<div class="cand"><div style="flex:1;min-width:0"><div class="n"><button class="opt hn" data-n="${esc(norm(nick))}" type="button">@${esc(norm(nick))}</button></div>${t ? `<div class="p">${esc(t)}</div>` : ''}</div></div>`;
   sheet.innerHTML = `<h2>🏆 Доска почёта</h2><p>Стоит у ратуши в центре города. Нажми на ник — покажу дом.</p>
     ${d.cands.length ? '<p><b>🗳 Кандидаты в мэры</b></p>' + d.cands.map(c => li(c.nick, `${c.votes || 0} голосов`)).join('') : ''}
+    ${d.tit.length ? '<p><b>🏅 Титулы жителей</b></p>' + d.tit.map(([k, T]) => li(k, T.t + (T.why ? ' — ' + T.why : ''))).join('') : ''}
     ${d.tops.length ? '<p><b>🔦 Дом дня</b></p>' + d.tops.map(([k]) => li(k)).join('') : ''}
     ${d.pop.length ? '<p><b>❤ Популярные дома</b></p>' + d.pop.slice(0, 10).map(([k, f]) => li(k, `❤ ${f.k} стуков`)).join('') : ''}
     ${d.kw.length ? '<p><b>💎 Нашли клад сегодня</b></p>' + d.kw.map(n => li(n)).join('') : ''}

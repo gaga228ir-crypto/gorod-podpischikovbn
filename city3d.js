@@ -668,6 +668,7 @@ export class City3D {
   setHonor(data) { this.honorData = data; this._extrasDirty = true; }
   setCandidates(list) { this.candList = list || []; this._extrasDirty = true; }
   setFx(map) { this.fxMap = map || {}; this._extrasDirty = true; }
+  setTitles(map) { this.titles = map || {}; this._extrasDirty = true; }
   houseTop(h) {
     const r = h.recipe; if (r && Array.isArray(r.parts) && r.parts.length) return Math.max(...r.parts.map(q => (q.p?.[1] || 0) + (q.s?.[1] || 0)));
     return (r && r.shape === 'skyscraper' ? 2 : 1) * (h.top || (h.floors || 2) * FH + .35);
@@ -728,6 +729,8 @@ export class City3D {
       if (!G.children.length) continue;
       G.position.set(h.x, 0, h.z); add(G);
     }
+    for (const [nick, T] of Object.entries(this.titles || {})) { const h = this.byKey.get(nick); if (!h || h.gone || !T || !T.t) continue;
+      const sg = textSprite('🏅 ' + T.t, { color: '#1a1238', bg: 'rgba(255,210,63,.95)', scale: .0015, size: 48 }); sg.position.set(h.x, this.houseTop(h) + (this.fxMap?.[nick]?.s ? 1.0 : .62), h.z); add(sg); }
     const SUIT = ['#1f4fd8', '#d81f2a', '#2f9a55', '#7b2cbf', '#ff7a1a', '#14141c', '#0fb5b5'];
     (this.candList || []).forEach((c, i) => {
       const h = this.byKey.get(c.nick); if (!h || h.gone) return;
