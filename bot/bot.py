@@ -482,7 +482,7 @@ async def menu_backfill(bot):
 
 def main_menu():
     rows = [[IB(text="🏠 Мой дом", callback_data="home")], [IB(text="👥 Пригласить друга · бонус", callback_data="ref")],
-            [IB(text="🗳 Выборы мэра", callback_data="elect")], [IB(text="🐞 Нашёл баг / идея", callback_data="bug")]]
+            [IB(text="🗳 Выборы мэра", callback_data="elect")], [IB(text="🐞 Нашёл баг", callback_data="bug"), IB(text="💡 Идея для города", callback_data="idea")]]
     if CHAT_URL:
         rows.append([IB(text="💬 Чат жителей", url=CHAT_URL)])
     links = []
@@ -674,11 +674,26 @@ class Bug(StatesGroup):
     text = State()
 
 
+@r.callback_query(F.data == "idea")
+async def idea_start(c: CallbackQuery, state: FSMContext):
+    await c.answer()
+    await state.set_state(Bug.text)
+    await state.update_data(kind="idea")
+    await c.message.answer("💡 <b>Идея для города</b>\n\nЧто добавить или улучшить? Новые места, ивенты, фишки для домов, игры — пиши одним сообщением, можно с картинкой 🖼\n\nЛучшие идеи сделаем, а автора отметим в посте и дадим титул 🏅\n\nОтмена — /start")
+
+
+@r.message(Command("idea"))
+async def idea_cmd(m: Message, state: FSMContext):
+    await state.set_state(Bug.text)
+    await state.update_data(kind="idea")
+    await m.answer("💡 Напиши свою идею для города одним сообщением — можно с картинкой 🖼\n\nОтмена — /start")
+
+
 @r.callback_query(F.data == "bug")
 async def bug_start(c: CallbackQuery, state: FSMContext):
     await c.answer()
     await state.set_state(Bug.text)
-    await c.message.answer("🐞 <b>Нашёл баг или есть идея?</b>\n\nОпиши одним сообщением, что случилось (что нажимал, что увидел). Можно прикрепить скриншот 📸 — это очень помогает.\n\nОтмена — /start")
+    await c.message.answer("🐞 <b>Нашёл баг?</b>\n\nОпиши одним сообщением, что случилось (что нажимал, что увидел). Можно прикрепить скриншот 📸 — это очень помогает.\n\nОтмена — /start")
 
 
 @r.message(Command("bug"))
@@ -689,17 +704,18 @@ async def bug_cmd(m: Message, state: FSMContext):
 
 @r.message(Bug.text)
 async def bug_text(m: Message, state: FSMContext):
+    idea = (await state.get_data()).get("kind") == "idea"
     await state.clear()
     me = await db.linked(m.from_user.id)
     who = f"@{me['nick']}" if me else "без привязки"
     tg = f"@{m.from_user.username}" if m.from_user.username else f"id {m.from_user.id}"
     for a in ADMIN_IDS:
         try:
-            await m.bot.send_message(a, f"🐞 <b>Сообщение о баге / идея</b>\nОт: {tg} · дом {who}")
+            await m.bot.send_message(a, ("💡 <b>Идея для города</b>" if idea else "🐞 <b>Баг</b>") + f"\nОт: {tg} · дом {who}")
             await m.bot.copy_message(a, m.chat.id, m.message_id)
         except Exception as e:
             log.warning("bug fwd: %s", e)
-    await m.answer("Спасибо! 🙏 Передал в мэрию. Самым внимательным — титул 🏅", reply_markup=main_menu())
+    await m.answer("Спасибо за идею! 💡 Передал в мэрию — лучшие сделаем и отметим автора 🏅" if idea else "Спасибо! 🙏 Передал в мэрию. Самым внимательным — титул 🏅", reply_markup=main_menu())
 
 
 async def program_notice(bot):
