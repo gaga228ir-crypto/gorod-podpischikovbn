@@ -43,6 +43,8 @@ button.ghost{background:rgba(255,255,255,.12)}
 .cta{position:fixed;right:16px;bottom:18px;z-index:2}
 .card.show ~ .cta{display:none}
 .chips{display:flex;gap:8px;flex-wrap:wrap}
+.fxb{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.fxb:empty{display:none}.fxb button{padding:7px 11px;font-size:10px;background:rgba(255,255,255,.12)}.fxb .k{font:800 12px Inter,sans-serif;color:#ff8fb8;align-self:center}
+.shop{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.06);border-radius:14px;padding:10px 12px}.shop span{flex:1;font:600 14px Inter,sans-serif}.shop button{padding:8px 12px;font-size:12px}
 .klad{background:rgba(12,8,36,.8);color:#fff;border:1px solid rgba(255,210,63,.5);animation:none}
 .klad.hot{background:var(--gold);color:#1a1238;animation:pulse 1s infinite}
 .chip{border:0;border-radius:999px;padding:7px 12px;font:800 11px Unbounded,sans-serif;cursor:pointer;background:var(--gold);color:#1a1238;animation:pulse 2s infinite;text-decoration:none;display:inline-block}
@@ -104,7 +106,7 @@ button.ghost{background:rgba(255,255,255,.12)}
   <div class="chips" id="chips"></div>
   <div class="msg" id="msg"></div>
 </div>
-<div class="card" id="card"><div class="grow"><div class="nick" id="cnick"></div><div class="sub" id="csub"></div><div class="sub nb" id="cnb"></div></div><button class="share" id="cedit" style="display:none;background:var(--pink);color:#fff">🎨 ИЗМЕНИТЬ</button><button class="share" id="cshare">ПОДЕЛИТЬСЯ</button><button id="cclose" aria-label="Закрыть">✕</button></div>
+<div class="card" id="card"><div class="grow"><div class="nick" id="cnick"></div><div class="sub" id="csub"></div><div class="sub nb" id="cnb"></div><div class="fxb" id="cfx"></div></div><button class="share" id="cedit" style="display:none;background:var(--pink);color:#fff">🎨 ИЗМЕНИТЬ</button><button class="share" id="cshare">ПОДЕЛИТЬСЯ</button><button id="cclose" aria-label="Закрыть">✕</button></div>
 <button class="btn cta" id="cta">🏠 ПОЛУЧИТЬ ДОМ</button>
 <div class="hint">Тяни — двигать · колесо/щипок — зум · правая кнопка/два пальца — поворот</div>
 
@@ -147,7 +149,7 @@ window.city = city;
 let houses = [], milestones = MILESTONES_DEFAULT, election = null;
 const loadStep = (p, t) => { $('lbarI').style.width = p + '%'; if (t) $('ltxt').textContent = t; };
 const hideLoad = () => { loadStep(100); setTimeout(() => $('load').classList.add('hide'), 250); setTimeout(() => $('load').remove(), 900); };
-let baseList = [], hallInfo = null, specialRows = [];
+let baseList = [], hallInfo = null, specialRows = [], fxMap = {};
 async function loadCity() {
   loadStep(20, 'Загружаем жителей…');
   const [base, ms, el] = await Promise.all([getJSON('subscribers.json'), getJSON('milestones.json'), getJSON('election.json')]);
@@ -176,6 +178,7 @@ async function loadSpecial(byKey) {
   let n = apply(await getJSON('special.json')) + apply(rec); // special.json — дома по пожеланиям из комментов
   if (SUPABASE_URL) { try { n += apply(await (await api('residents?select=nick,recipe&status=eq.approved&recipe=not.is.null')).json()); } catch (e) {} }
   if (n) buildCity();
+  fxMap = (await getJSON('fx.json')) || {}; city.setFx(fxMap);
   updateHonor();
 }
 function renderProgress() {
@@ -217,6 +220,10 @@ function focus(h, fly = true) {
   const nb = city.neighbors(h).filter(o => !o.h.gone); $('cnb').innerHTML = nb.length ? 'Соседи: ' + nb.map((o, i) => `${o.rel} <button data-i="${i}">${esc(o.h.label)}</button>`).join(' · ') : '';
   $('cnb').querySelectorAll('button').forEach(b => b.onclick = () => focus(nb[+b.dataset.i].h));
   $('cedit').style.display = (TG && h.key === ME) ? '' : 'none';
+  const fx = fxMap[h.key] || {}, mine = TG && h.key === ME;
+  $('cfx').innerHTML = h.gone ? '' : (fx.k ? `<span class="k">❤ ${fx.k}</span>` : '') + (fx.s ? `<span class="k" style="color:#fff">💬 ${esc(fx.s)}</span>` : '')
+    + (mine ? '<button type="button" id="bfx">✏️ ТАБЛИЧКА</button><button type="button" id="bshop">⭐ УКРАСИТЬ</button>' : TG && ME ? '<button type="button" id="bknock">🚪 ПОСТУЧАТЬ</button>' : '');
+  if ($('bfx')) $('bfx').onclick = () => openFx(h); if ($('bshop')) $('bshop').onclick = () => openShop(h); if ($('bknock')) $('bknock').onclick = () => sendTG({ t: 'knock', n: h.key });
   card.classList.add('show'); history.replaceState(null, '', location.search + '#' + encodeURIComponent(h.key));
 }
 $('cedit').onclick = () => openStudio();
@@ -232,14 +239,40 @@ $('f').addEventListener('submit', e => {
   else msg.textContent = `Такого дома пока нет. Новые жители заселяются ${CHECK_TIME}.`;
 });
 
+// ---------- взаимодействие с домом ----------
+function sendTG(data) { try { tg.sendData(JSON.stringify(data)); } catch (e) { msg.textContent = 'Открой город кнопкой «🏙 Открыть город» в чате с ботом.'; } }
+const FX_COLS = ['', '#ff3d7f', '#ffd23f', '#5ef2ff', '#a6ff8f', '#c084fc', '#ff7a1a'];
+function openFx(h) {
+  const fx = fxMap[h.key] || {}; let col = fx.c || '';
+  sheet.innerHTML = `<h2>✏️ Табличка и подсветка</h2><p>Табличка висит над домом — её видят все жители. Бесплатно.</p>
+    <input id="fxs" maxlength="24" placeholder="Например: Заходите в гости!" value="${esc(fx.s || '')}">
+    <div class="srow"><span>Подсветка вокруг дома</span><div class="opts">${FX_COLS.map(c => `<button class="opt sw${c === col ? ' on' : ''}" data-c="${c}" type="button" style="background:${c || 'rgba(255,255,255,.08)'}">${c ? '' : '🚫'}</button>`).join('')}</div></div>
+    <div class="btns"><button class="ghost" id="mclose" type="button">ОТМЕНА</button><button id="fxgo" type="button">СОХРАНИТЬ</button></div>`;
+  sheet.querySelectorAll('[data-c]').forEach(b => b.onclick = () => { col = b.dataset.c; sheet.querySelectorAll('[data-c]').forEach(x => x.classList.toggle('on', x === b)); });
+  $('fxgo').onclick = () => sendTG({ t: 'fx', s: $('fxs').value.trim().slice(0, 24), c: col });
+  modal.classList.add('show'); closeBtn();
+}
+const SHOP = [['fireworks', '🎆 Салют над домом', 15], ['ufo', '🛸 НЛО над домом', 20], ['rainbow', '🌈 Радужная подсветка', 15], ['xmas', '🎄 Новогодняя ёлка', 10], ['snowman', '⛄ Снеговик во дворе', 10], ['top', '🔦 Дом дня: прожектор и доска почёта на 24 ч', 25]];
+function openShop(h) {
+  const have = new Set((fxMap[h.key] || {}).d || []);
+  sheet.innerHTML = `<h2>⭐ Украсить дом</h2><p>Украшения остаются у дома навсегда (кроме «Дома дня» — он на сутки). Оплата звёздами Telegram.</p>
+    ${SHOP.map(([k, t, p]) => `<div class="shop"><span>${t}</span>${have.has(k) ? '<b style="color:var(--gold)">✓ есть</b>' : `<button type="button" data-buy="${k}">${p} ⭐</button>`}</div>`).join('')}
+    <button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button>`;
+  sheet.querySelectorAll('[data-buy]').forEach(b => b.onclick = () => sendTG({ t: 'buy', i: b.dataset.buy }));
+  modal.classList.add('show'); closeBtn();
+}
+
 // ---------- доска почёта и кандидаты ----------
 function honorData() {
   const cands = [...(election?.candidates || [])].sort((a, b) => (b.votes || 0) - (a.votes || 0));
   const kw = kladState && kladState.day === KLAD.day ? (kladState.winners || []) : [];
   const day = fnv(mskDay()), sp = [...specialRows].sort((a, b) => (fnv(a.nick) ^ day) - (fnv(b.nick) ^ day));
-  return { cands, kw, sp, sections: [
+  const pop = Object.entries(fxMap).filter(([k, f]) => f.k && city.byKey.get(k)).sort((a, b) => b[1].k - a[1].k), tops = Object.entries(fxMap).filter(([k, f]) => f.top && city.byKey.get(k));
+  return { cands, kw, sp, pop, tops, sections: [
+    tops.length && { title: '🔦 ДОМ ДНЯ', lines: tops.map(([k]) => '@' + k), max: 2 },
     cands.length && { title: '🗳 ЛИДЕРЫ ВЫБОРОВ', lines: cands.map(c => `@${norm(c.nick)} — ${c.votes || 0} 🗳`), max: 3 },
     kw.length && { title: '💎 НАШЛИ КЛАД СЕГОДНЯ', lines: kw.map(n => '@' + n), max: 3 },
+    pop.length && { title: '❤ ПОПУЛЯРНЫЕ ДОМА', lines: pop.map(([k, f]) => `@${k} — ❤ ${f.k}`), max: 3 },
     sp.length && { title: '✨ КРЕАТИВНЫЕ ДОМА', lines: sp.map(r => `@${norm(r.nick)} — ${r.recipe.name}`), max: 3 },
   ].filter(Boolean) };
 }
@@ -251,6 +284,8 @@ function openHonor() {
   const d = honorData(), li = (nick, t) => `<div class="cand"><div style="flex:1;min-width:0"><div class="n"><button class="opt hn" data-n="${esc(norm(nick))}" type="button">@${esc(norm(nick))}</button></div>${t ? `<div class="p">${esc(t)}</div>` : ''}</div></div>`;
   sheet.innerHTML = `<h2>🏆 Доска почёта</h2><p>Стоит у ратуши в центре города. Нажми на ник — покажу дом.</p>
     ${d.cands.length ? '<p><b>🗳 Кандидаты в мэры</b></p>' + d.cands.map(c => li(c.nick, `${c.votes || 0} голосов`)).join('') : ''}
+    ${d.tops.length ? '<p><b>🔦 Дом дня</b></p>' + d.tops.map(([k]) => li(k)).join('') : ''}
+    ${d.pop.length ? '<p><b>❤ Популярные дома</b></p>' + d.pop.slice(0, 10).map(([k, f]) => li(k, `❤ ${f.k} стуков`)).join('') : ''}
     ${d.kw.length ? '<p><b>💎 Нашли клад сегодня</b></p>' + d.kw.map(n => li(n)).join('') : ''}
     ${d.sp.length ? '<p><b>✨ Креативные дома</b></p>' + d.sp.slice(0, 12).map(r => li(r.nick, r.recipe.name)).join('') : ''}
     <button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button>`;

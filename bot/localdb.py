@@ -182,6 +182,10 @@ class LocalDB:
         r = self.c.execute("select v from kv where k=?", (k,)).fetchone()
         return r[0] if r else None
 
+    async def kv_prefix(self, prefix):
+        self._mayor_tables()
+        return [(k, v) for k, v in self.c.execute("select k, v from kv").fetchall() if k.startswith(prefix)]
+
     async def kv_set(self, k, v):
         self._mayor_tables()
         if v is None:

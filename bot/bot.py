@@ -290,6 +290,50 @@ async def gh_put(path, text, message, sha=None):
     r.raise_for_status()
 
 
+# ---------- взаимодействие с домом: табличка, подсветка, стуки, украшения за ⭐ ----------
+FX_ITEMS = {
+    "fireworks": ("🎆 Салют над домом", 15), "snowman": ("⛄ Снеговик во дворе", 10), "xmas": ("🎄 Новогодняя ёлка", 10),
+    "ufo": ("🛸 НЛО над домом", 20), "rainbow": ("🌈 Радужная подсветка", 15), "top": ("🔦 Дом дня на 24 часа", 25),
+}
+FX_COLORS = {"", "#ff3d7f", "#ffd23f", "#5ef2ff", "#a6ff8f", "#c084fc", "#ff7a1a"}
+KNOCK_DAY_LIMIT = 15
+_fx_dirty = asyncio.Event()
+
+
+async def fx_get(nick):
+    try:
+        return json.loads(await db.kv_get("fx:" + nick) or "{}")
+    except ValueError:
+        return {}
+
+
+async def fx_set(nick, fx):
+    await db.kv_set("fx:" + nick, json.dumps(fx, ensure_ascii=False))
+    _fx_dirty.set()
+
+
+async def fx_publish():
+    """fx.json на сайт: таблички, подсветка, стуки ❤, купленные украшения, «дом дня»."""
+    if not hasattr(db, "kv_prefix") or not GITHUB_TOKEN:
+        return
+    now = int(time.time())
+    out = {}
+    for k, v in await db.kv_prefix("fx:"):
+        try:
+            fx = json.loads(v)
+        except ValueError:
+            continue
+        if fx.get("top", 0) < now:
+            fx.pop("top", None)
+        fx = {a: b for a, b in fx.items() if b not in ("", [], None, 0)}
+        if fx:
+            out[k[3:]] = fx
+    body = json.dumps(out, ensure_ascii=False, separators=(",", ":"))
+    old, sha = await gh_get("fx.json")
+    if old != body:
+        await gh_put("fx.json", body, f"Дома жителей: {len(out)} с табличками/украшениями", sha)
+
+
 async def export_loop():
     """Особые дома → recipes.json."""
     if not GITHUB_TOKEN:
@@ -309,7 +353,15 @@ async def export_loop():
                 last = digest
         except Exception as e:
             log.warning("export: %s", e)
-        await asyncio.sleep(120)
+        try:
+            await fx_publish()
+        except Exception as e:
+            log.warning("fx: %s", e)
+        try:
+            await asyncio.wait_for(_fx_dirty.wait(), timeout=120)
+        except asyncio.TimeoutError:
+            pass
+        _fx_dirty.clear()
 
 
 SYNC = {"at": None, "msg": "ещё не запускалось" if TIKTOK_SESSIONID else "выключено (нет TIKTOK_SESSIONID)"}
@@ -1022,6 +1074,57 @@ async def web_app(m: Message, bot: Bot):
     if data.get("t") == "klad":
         await claim_klad(m, m.from_user.id, str(data.get("c", "")))
         return
+    if data.get("t") == "fx":
+        st = re.sub(r"\s+", " ", str(data.get("s") or "")).strip()[:24]
+        col = str(data.get("c") or "")
+        if st and BAD.search(st):
+            await m.answer("Такую табличку повесить нельзя 🙅 Придумай другую.", reply_markup=city_keyboard(me["nick"]))
+            return
+        fx = await fx_get(me["nick"])
+        fx["s"] = st
+        fx["c"] = col if col in FX_COLORS else ""
+        await fx_set(me["nick"], fx)
+        what = f"Табличка: «{st}»" if st else "Табличку сняли"
+        await m.answer(f"Готово! ✨ {what}{' · подсветка включена' if fx['c'] else ''}.\nНа сайте появится через пару минут.",
+                       reply_markup=city_keyboard(me["nick"]))
+        return
+    if data.get("t") == "knock":
+        target = norm_nick(str(data.get("n") or "").strip().lstrip("@"))
+        subs = await subscribers()
+        if not target or target == me["nick"] or target not in subs["set"]:
+            await m.answer("Не нашёл такой дом 🤔", reply_markup=city_keyboard(me["nick"]))
+            return
+        day = msk_day()
+        if await db.kv_get(f"kn:{day}:{m.from_user.id}:{target}"):
+            await m.answer(f"Ты сегодня уже стучал к @{target} 😉 Завтра можно снова.", reply_markup=city_keyboard(me["nick"]))
+            return
+        cnt = int(await db.kv_get(f"knd:{day}:{m.from_user.id}") or 0)
+        if cnt >= KNOCK_DAY_LIMIT:
+            await m.answer(f"На сегодня хватит — максимум {KNOCK_DAY_LIMIT} стуков в день 🚪", reply_markup=city_keyboard(me["nick"]))
+            return
+        await db.kv_set(f"kn:{day}:{m.from_user.id}:{target}", 1)
+        await db.kv_set(f"knd:{day}:{m.from_user.id}", cnt + 1)
+        fx = await fx_get(target)
+        fx["k"] = int(fx.get("k", 0)) + 1
+        await fx_set(target, fx)
+        await m.answer(f"🚪 Тук-тук! Ты постучал к @{target}. У дома уже ❤ {fx['k']}.", reply_markup=city_keyboard(me["nick"]))
+        owners = await db.by_nick(target)
+        owner = owners[0] if owners else None
+        if owner and owner.get("tg_id"):
+            try:
+                await bot.send_message(owner["tg_id"], f"🚪 Тук-тук! @{me['nick']} постучал(а) к тебе в дом. Всего стуков: ❤ {fx['k']}",
+                                       reply_markup=city_keyboard(target))
+            except Exception:
+                pass
+        return
+    if data.get("t") == "buy":
+        item = str(data.get("i") or "")
+        if item not in FX_ITEMS:
+            return
+        name, price = FX_ITEMS[item]
+        await bot.send_invoice(m.chat.id, title=name[:32], description=f"{name} для дома @{me['nick']}. Появится в городе через пару минут после оплаты.",
+                               payload=f"f|{item}", currency="XTR", prices=[LabeledPrice(label=name[:32], amount=price)])
+        return
     if data.get("t") == "preset":
         i = int(data.get("i", -1))
         if not 0 <= i < len(PRESETS):
@@ -1083,6 +1186,8 @@ async def pre_checkout(q: PreCheckoutQuery):
     if parts[0] == "a":
         o = await db.ai_get(int(parts[1])) if len(parts) == 2 and parts[1].isdigit() else None
         ok = bool(o) and o["status"] == "new" and q.total_amount == AI_PRICE
+    elif parts[0] == "f":
+        ok = len(parts) == 2 and parts[1] in FX_ITEMS and q.total_amount == FX_ITEMS[parts[1]][1] and bool(await db.linked(q.from_user.id))
     else:
         ok = len(parts) == 3 and parts[0] == "c" and decode_recipe(parts[2]) is not None and q.total_amount == PRICE
     await q.answer(ok=ok, error_message=None if ok else "Счёт устарел, оформи заново.")
@@ -1101,6 +1206,25 @@ async def paid(m: Message, bot: Bot):
             log.warning("payment log: %s", e)
         await m.answer("Спасибо! ⭐ Нейросеть уже строит твой дом ✨\nЭто займёт несколько минут, потом его посмотрит мэрия — и пришлю результат сюда.")
         asyncio.create_task(build_ai(bot, oid))
+        return
+    if p.invoice_payload.startswith("f|"):
+        item = p.invoice_payload.split("|")[1]
+        me = await db.linked(m.from_user.id)
+        if not me or item not in FX_ITEMS:
+            await bot.refund_star_payment(m.from_user.id, p.telegram_payment_charge_id)
+            await m.answer("Не получилось — звёзды вернули.")
+            return
+        fx = await fx_get(me["nick"])
+        if item == "top":
+            fx["top"] = max(int(fx.get("top", 0)), int(time.time())) + 24 * 3600
+        else:
+            fx["d"] = sorted(set(fx.get("d", [])) | {item})
+        await fx_set(me["nick"], fx)
+        try:
+            await db.add_payment(m.from_user.id, me["nick"], p.total_amount, p.telegram_payment_charge_id, {"fx": item})
+        except RuntimeError as e:
+            log.warning("payment log: %s", e)
+        await m.answer(f"Спасибо! ⭐ {FX_ITEMS[item][0]} — уже у твоего дома (на сайте через пару минут).", reply_markup=city_keyboard(me["nick"]))
         return
     _, rid, code = p.invoice_payload.split("|")
     rec = decode_recipe(code)
