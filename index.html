@@ -159,7 +159,7 @@ async function loadCity() {
   election = el; hallInfo = election && election.winner ? { open: true, title: 'Ратуша · мэр @' + norm(election.winner) } : null;
   await new Promise(r => setTimeout(r, 30));
   buildCity();
-  renderProgress(); renderElection(); renderKlad();
+  renderProgress(); renderElection(); renderKlad(); initAmbience();
   requestAnimationFrame(() => requestAnimationFrame(hideLoad));
   loadSpecial(byKey); // особые дома — в фоне: если база недоступна, город всё равно уже на экране
 }
@@ -229,6 +229,43 @@ $('f').addEventListener('submit', e => {
   if (h) { msg.textContent = ''; focus(h); $('q').blur(); }
   else msg.textContent = `Такого дома пока нет. Новые жители заселяются ${CHECK_TIME}.`;
 });
+
+// ---------- день/ночь и погода ----------
+const GSET_DEF = { day: 'auto', tz: 'device', wx: 'auto' };
+let gset = { ...GSET_DEF }; try { Object.assign(gset, JSON.parse(localStorage.getItem('gset') || '{}')); } catch (e) {}
+const TZS = [['device', 'Как на телефоне'], ['2', 'UTC+2 · Калининград'], ['3', 'UTC+3 · Москва, СПб'], ['4', 'UTC+4 · Самара'], ['5', 'UTC+5 · Екатеринбург'], ['6', 'UTC+6 · Омск'], ['7', 'UTC+7 · Новосибирск'], ['8', 'UTC+8 · Иркутск'], ['9', 'UTC+9 · Якутск'], ['10', 'UTC+10 · Владивосток'], ['11', 'UTC+11 · Магадан'], ['12', 'UTC+12 · Камчатка']];
+const localHour = () => { const d = new Date(); if (gset.tz === 'device') return d.getHours() + d.getMinutes() / 60; const h = d.getUTCHours() + d.getUTCMinutes() / 60 + +gset.tz; return (h + 24) % 24; };
+const sstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+const daylight = () => gset.day === 'night' ? 0 : gset.day === 'day' ? 1 : (h => sstep(6.3, 8, h) * (1 - sstep(17, 18.7, h)))(localHour());
+function autoWeather() { // одна погода на всех: меняется каждые 3 часа, зависит от сезона
+  const d = new Date(), m = d.getUTCMonth(), r = fnv('wx:' + d.toISOString().slice(0, 10) + ':' + Math.floor(d.getUTCHours() / 3)) % 100;
+  const w = m === 11 || m <= 1 ? [['snow', 60], ['fog', 70]] : m === 10 || m === 2 ? [['snow', 30], ['rain', 50], ['fog', 60]] : [['rain', 22], ['fog', 28]];
+  for (const [k, p] of w) if (r < p) return k; return 'clear';
+}
+const curWeather = () => gset.wx === 'auto' ? autoWeather() : gset.wx === 'off' ? 'clear' : gset.wx;
+const WX_ICON = { clear: '', snow: '❄️', rain: '🌧', fog: '🌫' };
+let ambChip = null;
+function applyAmbience() {
+  city.setDaylight(daylight()); city.setWeather(curWeather());
+  if (ambChip) { const t = city.dayT; ambChip.textContent = (t > .6 ? '☀️' : t > .05 ? '🌇' : '🌙') + (WX_ICON[city.weather] ? ' ' + WX_ICON[city.weather] : ''); }
+}
+function initAmbience() {
+  if (ambChip) return; ambChip = document.createElement('button'); ambChip.className = 'chip klad'; ambChip.title = 'Время суток и погода'; $('chips').appendChild(ambChip);
+  ambChip.onclick = openAmbience; applyAmbience(); setInterval(applyAmbience, 20000);
+}
+function openAmbience() {
+  const opt = (k, v, t) => `<button class="opt${gset[k] === v ? ' on' : ''}" data-k="${k}" data-v="${v}" type="button">${t}</button>`;
+  sheet.innerHTML = `<h2>🌗 Время и погода</h2>
+    <div class="srow"><span>Время суток</span><div class="opts">${opt('day', 'auto', '🕒 Как в жизни')}${opt('day', 'night', '🌙 Всегда ночь')}${opt('day', 'day', '☀️ Всегда день')}</div></div>
+    <div class="srow"><span>Часовой пояс</span><select id="gtz" style="border-radius:12px;padding:10px;font:600 14px Inter,sans-serif">${TZS.map(([v, t]) => `<option value="${v}"${gset.tz === v ? ' selected' : ''}>${t}</option>`).join('')}</select></div>
+    <div class="srow"><span>Погода</span><div class="opts">${opt('wx', 'auto', '🔄 Авто')}${opt('wx', 'off', '🚫 Выкл')}${opt('wx', 'snow', '❄️ Снег')}${opt('wx', 'rain', '🌧 Дождь')}${opt('wx', 'fog', '🌫 Туман')}</div></div>
+    <p>«Авто» — погода общая для всех жителей и меняется каждые 3 часа: зимой чаще снег.</p>
+    <button class="ghost" id="mclose" type="button">ГОТОВО</button>`;
+  const save = () => { try { localStorage.setItem('gset', JSON.stringify(gset)); } catch (e) {} applyAmbience(); };
+  sheet.querySelectorAll('.opt').forEach(b => b.onclick = () => { gset[b.dataset.k] = b.dataset.v; sheet.querySelectorAll(`.opt[data-k="${b.dataset.k}"]`).forEach(x => x.classList.toggle('on', x === b)); save(); });
+  $('gtz').onchange = e => { gset.tz = e.target.value; save(); };
+  modal.classList.add('show'); closeBtn();
+}
 
 // ---------- клад дня ----------
 const fnv = s => { let h = 2166136261; for (const c of s) { h ^= c.codePointAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };

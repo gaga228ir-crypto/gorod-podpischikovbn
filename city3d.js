@@ -291,8 +291,9 @@ export class City3D {
     R.setPixelRatio(Math.min(devicePixelRatio || 1, 1.6)); R.outputColorSpace = THREE.SRGBColorSpace; R.toneMapping = THREE.ACESFilmicToneMapping; R.toneMappingExposure = 1.05;
     const S = this.scene = new THREE.Scene(); S.fog = new THREE.FogExp2('#1a1240', .0075);
     this.cam = new THREE.PerspectiveCamera(42, 1, .1, 600);
-    S.add(new THREE.HemisphereLight('#b3a6ff', '#2a1d55', 1.7));
-    const moon = new THREE.DirectionalLight('#b8c6ff', 1.5); moon.position.set(-30, 50, 20); S.add(moon);
+    const hemi = this.hemi = new THREE.HemisphereLight('#b3a6ff', '#2a1d55', 1.7); S.add(hemi);
+    const moon = this.moon = new THREE.DirectionalLight('#b8c6ff', 1.5); moon.position.set(-30, 50, 20); S.add(moon);
+    this.dayT = 0; this.weather = 'clear'; this.snowCover = 0; this.wx = null;
     this.ctl = { tx: 2, tz: 2, x: 2, z: 2, d: 26, td: 26, az: Math.PI / 4, taz: Math.PI / 4, pol: .95 };
     this.houses = []; this.byKey = new Map(); this.dyn = []; this.T = 0; this.hi = null; this.bloom = !/[?&]lq=1/.test(location.search);
     this.composer = new EffectComposer(R); this.composer.addPass(new RenderPass(S, this.cam));
@@ -308,7 +309,13 @@ export class City3D {
   }
   buildStatic() {
     const S = this.scene;
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: '#141832', roughness: 1 })); ground.rotation.x = -Math.PI / 2; S.add(ground);
+    const ground = this.ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: '#141832', roughness: 1 })); ground.rotation.x = -Math.PI / 2; S.add(ground);
+    // небо для дня: купол с градиентом, ночью прозрачный (видно ночной фон страницы)
+    { const cv = document.createElement('canvas'); cv.width = 4; cv.height = 256; const g = cv.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 256);
+      gr.addColorStop(0, '#3f8cff'); gr.addColorStop(.42, '#8fc3ff'); gr.addColorStop(.5, '#e3f1ff'); gr.addColorStop(1, '#e3f1ff'); g.fillStyle = gr; g.fillRect(0, 0, 4, 256);
+      const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
+      this.sky = new THREE.Mesh(new THREE.SphereGeometry(320, 24, 16), new THREE.MeshBasicMaterial({ map: t, side: THREE.BackSide, transparent: true, opacity: 0, fog: false, depthWrite: false }));
+      this.sky.renderOrder = -1; this.sky.visible = false; S.add(this.sky); }
     // река: вода с бегущими бликами, каменные набережные, неоновые бортики
     const X0 = -200, X1 = 200, W = RIVER_W;
     this.flow = FLOW_T.clone(); this.flow.repeat.set(1, 1); this.flow.needsUpdate = true;
@@ -327,6 +334,7 @@ export class City3D {
   }
   // list: [{nick, key, label, recipe, n}] в порядке заселения
   setCity(list, milestones = [], hallInfo = null) {
+    this._dayDirty = true;
     for (const o of this.dyn) { this.scene.remove(o); o.traverse?.(m => { m.geometry?.dispose?.(); }); } this.dyn = [];
     const add = o => { this.scene.add(o); this.dyn.push(o); return o; };
     const N = Math.min(list.length, CELLS.length - 20), r = rnd(7);
@@ -620,8 +628,53 @@ export class City3D {
     }
     return null;
   }
+  // ---- день/ночь: t = 0 (ночь) … 1 (день) ----
+  setDaylight(t) { t = Math.max(0, Math.min(1, t)); if (Math.abs(t - this.dayT) < .004 && !this._dayDirty) return; this.dayT = t; this.applyDay(); }
+  applyDay() {
+    this._dayDirty = false; const t = this.dayT, C = (a, b) => new THREE.Color(a).lerp(new THREE.Color(b), t), dusk = Math.max(0, 1 - Math.abs(t - .5) * 2.4);
+    this.hemi.color.copy(C('#b3a6ff', '#f2f6ff')).lerp(new THREE.Color('#ffb48a'), dusk * .5); this.hemi.groundColor.copy(C('#2a1d55', '#6f7c66')); this.hemi.intensity = 1.7 + t * .7;
+    this.moon.color.copy(C('#b8c6ff', '#fff1d6')).lerp(new THREE.Color('#ff9a5c'), dusk * .6); this.moon.intensity = 1.5 + t * 1.3;
+    this.moon.position.set(-30 + t * 50, 50, 20 - t * 30);
+    const fogDay = this.weather === 'fog' ? '#c9d2dc' : this.weather === 'rain' ? '#9aa8b8' : this.weather === 'snow' ? '#d5e1ee' : '#b9d4f2';
+    this.scene.fog.color.copy(C('#1a1240', fogDay)).lerp(new THREE.Color('#ff9f7a'), dusk * .35);
+    this.scene.fog.density = (.0075 - t * .003) * (this.weather === 'fog' ? 3.2 : this.weather === 'rain' ? 1.7 : this.weather === 'snow' ? 1.5 : 1);
+    this.sky.visible = t > .01; this.sky.material.opacity = t; this.sky.material.color.copy(new THREE.Color('#ffffff').lerp(new THREE.Color(this.weather === 'clear' ? '#ffffff' : '#b8c2cc'), .8)).lerp(new THREE.Color('#ffc09a'), dusk * .7);
+    this.ground.material.color.copy(C('#141832', '#3a4660')).lerp(new THREE.Color('#e8eef6'), this.snowCover * (.25 + t * .55));
+    this.renderer.toneMappingExposure = 1.05 - t * .1; this.bloomPass.strength = .5 - t * .32;
+    const k = 1 - t * .72; // окна и неон днём тусклее
+    this.scene.traverse(o => { const ms = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : []; for (const m of ms) { if (m.emissiveIntensity == null || m === this.sky.material) continue;
+      if (m.userData.ei0 == null) m.userData.ei0 = m.emissiveIntensity; m.emissiveIntensity = m.userData.ei0 * k; } });
+  }
+  // ---- погода: 'clear' | 'snow' | 'rain' | 'fog' ----
+  setWeather(w) {
+    if (!['clear', 'snow', 'rain', 'fog'].includes(w)) w = 'clear'; if (w === this.weather && this.wx !== null) return; this.weather = w;
+    if (this.wx) { this.scene.remove(this.wx); this.wx.geometry.dispose(); this.wx = null; }
+    if (w === 'snow' || w === 'rain') {
+      const N = w === 'snow' ? 2600 : 3200, g = new THREE.BufferGeometry(), pos = new Float32Array(N * (w === 'rain' ? 6 : 3)), seed = new Float32Array(N);
+      for (let i = 0; i < N; i++) { const x = (Math.random() - .5) * 50, y = Math.random() * 22, z = (Math.random() - .5) * 50; seed[i] = Math.random();
+        if (w === 'rain') pos.set([x, y, z, x + .03, y + .45, z], i * 6); else pos.set([x, y, z], i * 3); }
+      g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); this.wxSeed = seed; this.wxN = N;
+      this.wx = w === 'rain' ? new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: '#a9c8ff', transparent: true, opacity: .45, fog: false }))
+        : new THREE.Points(g, new THREE.PointsMaterial({ size: .22, map: GLOW_T, color: '#ffffff', transparent: true, opacity: .95, depthWrite: false, fog: false }));
+      this.wx.frustumCulled = false; this.scene.add(this.wx);
+    } else this.wx = false;
+    this._dayDirty = true; this.applyDay();
+  }
+  tickWeather(dt) {
+    const target = this.weather === 'snow' ? 1 : 0, prev = this.snowCover; this.snowCover += (target - this.snowCover) * Math.min(1, dt / 40);
+    if (Math.abs(this.snowCover - prev) > .002 || (this._snowT = (this._snowT || 0) + dt) > 2) { this._snowT = 0; if (Math.abs(this.snowCover - (this._snowApplied || 0)) > .01) { this._snowApplied = this.snowCover; this.applyDay(); } }
+    if (!this.wx) return; const a = this.wx.geometry.attributes.position.array, cx = this.ctl.x, cz = this.ctl.z, T = this.T, rain = this.weather === 'rain';
+    this.wx.position.set(0, 0, 0);
+    for (let i = 0; i < this.wxN; i++) { const s = this.wxSeed[i], j = rain ? i * 6 : i * 3; let x = a[j], y = a[j + 1], z = a[j + 2];
+      y -= dt * (rain ? 16 + s * 6 : .9 + s * .7); if (!rain) { x += Math.sin(T * .8 + s * 40) * dt * .35; z += Math.cos(T * .6 + s * 30) * dt * .25; }
+      if (y < 0) { y = 20 + s * 2; x = cx + (Math.random() - .5) * 50; z = cz + (Math.random() - .5) * 50; }
+      if (x < cx - 25) x += 50; else if (x > cx + 25) x -= 50; if (z < cz - 25) z += 50; else if (z > cz + 25) z -= 50;
+      a[j] = x; a[j + 1] = y; a[j + 2] = z; if (rain) { a[j + 3] = x + .03; a[j + 4] = y + .45; a[j + 5] = z; } }
+    this.wx.geometry.attributes.position.needsUpdate = true;
+  }
   // ---- кадр ----
   frame(dt) {
+    if (this._dayDirty) this.applyDay(); this.tickWeather(dt);
     this.T += dt; const T = this.T, c = this.ctl, k = 1 - Math.pow(.002, dt);
     c.x += (c.tx - c.x) * k; c.z += (c.tz - c.z) * k; c.d += (c.td - c.d) * k; c.az += (c.taz - c.az) * k;
     const pol = 1.12 - Math.min(1, c.d / 90) * .42; // угол от вертикали: ближе — ниже камера
