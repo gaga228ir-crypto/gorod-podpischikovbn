@@ -1069,7 +1069,14 @@ async def giftai_cmd(m: Message, bot: Bot):
         return
     me = rows[0]
     if await db.ai_gift(me["tg_id"]):
-        await m.answer(f"У @{nick} уже есть неиспользованный подарок.")
+        await ensure_menu(bot, me["tg_id"], nick)
+        try:
+            await bot.send_message(me["tg_id"], "🙏 <b>Извини за ошибку!</b> Кнопка меню открывала город без твоего ника — поэтому подарок не открывался. Уже починили.\n\n"
+                                   "🎁 Твой бесплатный <b>дом по описанию</b> ждёт тебя: нажми «🏙 Открыть город» внизу → «🎨 Мой дом» → «✨ По описанию».",
+                                   reply_markup=city_keyboard(nick, gift=True))
+            await m.answer(f"У @{nick} подарок уже был — отправил ему извинение и рабочую кнопку 🎁")
+        except Exception as e:
+            await m.answer(f"Не смог написать ему: {e}")
         return
     await add_ai_gift(me["tg_id"], nick)
     await m.answer(f"🎁 @{nick} получил бесплатный дом по описанию.")
