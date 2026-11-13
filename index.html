@@ -255,14 +255,31 @@ $('f').addEventListener('submit', e => {
 });
 
 // ---------- взаимодействие с домом ----------
-function sendTG(data, errEl) {
-  // sendData работает только если город открыт кнопкой «🏙 Открыть город» над клавиатурой (у меню/ссылок есть query_id)
+let API = null; getJSON('api.json').then(j => { if (j && j.url) API = j.url; });
+function toastMsg(t) { let el = document.getElementById('toastM'); if (!el) { el = document.createElement('div'); el.id = 'toastM';
+    el.style.cssText = 'position:fixed;left:50%;top:18%;transform:translateX(-50%);z-index:20;max-width:88vw;background:rgba(20,12,58,.96);border:1px solid #ffd23f;color:#fff;font:600 14px/1.4 Inter,sans-serif;padding:12px 16px;border-radius:16px;box-shadow:0 10px 40px rgba(0,0,0,.5);transition:opacity .3s';
+    document.body.appendChild(el); } el.textContent = t; el.style.opacity = 1; clearTimeout(el._t); el._t = setTimeout(() => el.style.opacity = 0, 4200); }
+function optimistic(d) { const me = fxMap[ME] = fxMap[ME] || {};
+  if (d.t === 'knock') { const f = fxMap[d.n] = fxMap[d.n] || {}; f.k = (f.k || 0) + 1; }
+  if (d.t === 'fx') { me.s = d.s; me.c = d.c; } if (d.t === 'place') { me.p = me.p || {}; me.p[d.i] = d.p; } if (d.t === 'roof') me.rf = d.p;
+  city.setFx(fxMap); if (city.hi) focus(city.hi, false); }
+async function sendTG(data, errEl) {
+  if (API && TG && tg.initData) {
+    try { const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ initData: tg.initData, data }) });
+      const j = await r.json();
+      if (j.ok) { modal.classList.remove('show');
+        if (j.invoice) { tg.openInvoice(j.invoice, st => { if (st === 'paid') toastMsg('Спасибо! ⭐ Уже ставим — в городе через пару минут.'); }); return; }
+        const t = (j.msgs || []).filter(Boolean).join('\n\n'); if (t) toastMsg(t); optimistic(data); return; }
+    } catch (e) {}
+  }
+  // запасной путь: sendData работает только если город открыт кнопкой «🏙 Открыть город» над клавиатурой
   if (TG && !(tg.initDataUnsafe && tg.initDataUnsafe.query_id)) { try { tg.sendData(JSON.stringify(data)); return; } catch (e) {} }
   sheet.innerHTML = `<h2>Почти готово 🙂</h2><p>Город открыт через меню — отсюда Telegram не даёт сохранять. Нажми кнопку: бот пришлёт правильную «🏙 Открыть город» — через неё всё работает.</p>
     <div class="btns"><button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button><button id="reopen" type="button">🏙 ОТКРЫТЬ ПРАВИЛЬНО</button></div>`;
   modal.classList.add('show'); closeBtn();
   $('reopen').onclick = () => { const u = BOT_URL.replace(/\/$/, '') + '?start=city'; try { tg.openTelegramLink(u); tg.close(); } catch (e) { location.href = u; } };
 }
+
 const FX_COLS = ['', '#ff3d7f', '#ffd23f', '#5ef2ff', '#a6ff8f', '#c084fc', '#ff7a1a'];
 function openFx(h) {
   const fx = fxMap[h.key] || {}; let col = fx.c || '';

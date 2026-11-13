@@ -1705,6 +1705,101 @@ async def klad_text(m: Message):
 
 
 # ---------- мини-приложение: выбор дома ----------
+# ---------- API для мини-приложения: действия без закрытия окна (через туннель Cloudflare) ----------
+import hmac
+import subprocess
+from types import SimpleNamespace
+from urllib.parse import parse_qsl
+from aiohttp import web
+
+API_PORT = int(E("API_PORT", "8787"))
+
+
+def check_init_data(init_data: str):
+    """Проверка подписи Telegram WebApp initData → id пользователя или None."""
+    try:
+        pairs = dict(parse_qsl(init_data, keep_blank_values=True))
+        h = pairs.pop("hash", "")
+        check = "\n".join(f"{k}={v}" for k, v in sorted(pairs.items()))
+        secret = hmac.new(b"WebAppData", BOT_TOKEN.encode(), hashlib.sha256).digest()
+        if not hmac.compare_digest(hmac.new(secret, check.encode(), hashlib.sha256).hexdigest(), h):
+            return None
+        if time.time() - int(pairs.get("auth_date", "0")) > 2 * 86400:
+            return None
+        return int(json.loads(pairs["user"])["id"])
+    except Exception:
+        return None
+
+
+class ApiMsg:
+    """Подмена Message: ответы бота собираются и возвращаются в мини-приложение."""
+    api = True
+
+    def __init__(self, uid, raw):
+        self.from_user = SimpleNamespace(id=uid, username=None)
+        self.chat = SimpleNamespace(id=uid)
+        self.web_app_data = SimpleNamespace(data=raw)
+        self.out, self.invoice = [], None
+
+    async def answer(self, text="", **kw):
+        self.out.append(text)
+
+    async def answer_photo(self, photo=None, caption=None, **kw):
+        self.out.append(caption or "")
+
+
+async def api_handler(req):
+    cors = {"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "Content-Type", "Access-Control-Allow-Methods": "POST, OPTIONS"}
+    if req.method == "OPTIONS":
+        return web.Response(headers=cors)
+    try:
+        body = await req.json()
+    except Exception:
+        return web.json_response({"ok": False, "err": "bad json"}, headers=cors)
+    uid = check_init_data(str(body.get("initData") or ""))
+    if not uid:
+        return web.json_response({"ok": False, "err": "auth"}, headers=cors)
+    m = ApiMsg(uid, json.dumps(body.get("data") or {}, ensure_ascii=False))
+    try:
+        await web_app(m, req.app["bot"])
+    except Exception as e:
+        log.warning("api: %s", e)
+        return web.json_response({"ok": False, "err": "server"}, headers=cors)
+    clean = [re.sub(r"<[^>]+>", "", t) for t in m.out if t]
+    return web.json_response({"ok": True, "msgs": clean, "invoice": m.invoice}, headers=cors)
+
+
+async def api_serve(bot):
+    app = web.Application()
+    app["bot"] = bot
+    app.router.add_route("*", "/api", api_handler)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    await web.TCPSite(runner, "127.0.0.1", API_PORT).start()
+    log.info("API мини-приложения: http://127.0.0.1:%s/api", API_PORT)
+    exe = next((x for x in [r"C:\Program Files (x86)\cloudflared\cloudflared.exe", r"C:\Program Files\cloudflared\cloudflared.exe"] if os.path.exists(x)), None)
+    if not exe or not GITHUB_TOKEN:
+        log.info("cloudflared не найден — мини-приложение работает по-старому (sendData)")
+        return
+    subprocess.run(["taskkill", "/IM", "cloudflared.exe", "/F"], capture_output=True)
+    proc = await asyncio.create_subprocess_exec(exe, "tunnel", "--no-autoupdate", "--url", f"http://127.0.0.1:{API_PORT}",
+                                                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
+    url = None
+    while True:
+        line = await proc.stderr.readline()
+        if not line:
+            break
+        mt = re.search(r"https://[a-z0-9-]+\.trycloudflare\.com", line.decode("utf-8", "ignore"))
+        if mt and not url:
+            url = mt.group(0)
+            log.info("туннель: %s", url)
+            try:
+                old, sha = await gh_get("api.json")
+                await gh_put("api.json", json.dumps({"url": url + "/api", "ts": int(time.time())}), "API мини-приложения", sha)
+            except Exception as e:
+                log.warning("api.json: %s", e)
+
+
 @r.message(F.web_app_data)
 async def web_app(m: Message, bot: Bot):
     me = await db.linked(m.from_user.id)
@@ -1803,6 +1898,10 @@ async def web_app(m: Message, bot: Bot):
             await m.answer(f"⛲ Фонтан желаний откроется вместе с Неоновым парком — на {PARK_AT} подписчиков!", reply_markup=city_keyboard(me["nick"]))
             return
         await db.kv_set(f"wishp:{m.from_user.id}", text)
+        if getattr(m, "api", False):
+            m.invoice = await bot.create_invoice_link(title="Монетка в фонтан желаний", description=f"Желание «{text}» засветится над фонтаном в Неоновом парке.",
+                                                      payload="f|wish", currency="XTR", prices=[LabeledPrice(label="Монетка", amount=FX_ITEMS["wish"][1])])
+            return
         await bot.send_invoice(m.chat.id, title="Монетка в фонтан желаний", description=f"Желание «{text}» засветится над фонтаном в Неоновом парке — его увидят все жители.",
                                payload="f|wish", currency="XTR", prices=[LabeledPrice(label="Монетка", amount=FX_ITEMS["wish"][1])])
         return
@@ -1832,6 +1931,10 @@ async def web_app(m: Message, bot: Bot):
         if item not in FX_ITEMS:
             return
         name, price = FX_ITEMS[item]
+        if getattr(m, "api", False):
+            m.invoice = await bot.create_invoice_link(title=name[:32], description=f"{name} для дома @{me['nick']}. Появится в городе через пару минут после оплаты.",
+                                                      payload=f"f|{item}", currency="XTR", prices=[LabeledPrice(label=name[:32], amount=price)])
+            return
         await bot.send_invoice(m.chat.id, title=name[:32], description=f"{name} для дома @{me['nick']}. Появится в городе через пару минут после оплаты.",
                                payload=f"f|{item}", currency="XTR", prices=[LabeledPrice(label=name[:32], amount=price)])
         return
@@ -2425,6 +2528,7 @@ async def main():
     asyncio.create_task(handmade_loop(bot))
     asyncio.create_task(menu_backfill(bot))
     asyncio.create_task(program_notice(bot))
+    asyncio.create_task(api_serve(bot))
     asyncio.create_task(sync_loop(bot))
     asyncio.create_task(ai_resume(bot))
     asyncio.create_task(restart_later())
