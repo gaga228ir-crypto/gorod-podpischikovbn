@@ -334,7 +334,7 @@ export class City3D {
   }
   // list: [{nick, key, label, recipe, n}] в порядке заселения
   setCity(list, milestones = [], hallInfo = null) {
-    this._dayDirty = true;
+    this._dayDirty = true; this._extrasDirty = true;
     for (const o of this.dyn) { this.scene.remove(o); o.traverse?.(m => { m.geometry?.dispose?.(); }); } this.dyn = [];
     const add = o => { this.scene.add(o); this.dyn.push(o); return o; };
     const N = Math.min(list.length, CELLS.length - 20), r = rnd(7);
@@ -620,6 +620,7 @@ export class City3D {
   pick(x, y) {
     this.ray.setFromCamera(new THREE.Vector2(x / this.W * 2 - 1, -(y / this.H) * 2 + 1), this.cam);
     if (this.chest && this.ray.intersectObject(this.chest, true).length) return { chest: true };
+    if (this.honorG && this.ray.intersectObject(this.honorG, true).length) return { honor: true };
     if (this.chest && this.treasure && this.ctl.d < 14) { const p = this.project(this.treasure.x, .15, this.treasure.z); if (p && Math.hypot(p[0] - x, p[1] - y) < 26) return { chest: true }; }
     const hits = this.ray.intersectObjects([...this.pickables, ...this.specialG], true);
     for (const hit of hits) {
@@ -627,6 +628,44 @@ export class City3D {
       let o = hit.object; while (o && !o.userData.house) o = o.parent; if (o) return o.userData.house;
     }
     return null;
+  }
+  // ---- доска почёта у ратуши и фигурки кандидатов у их домов ----
+  setHonor(data) { this.honorData = data; this._extrasDirty = true; }
+  setCandidates(list) { this.candList = list || []; this._extrasDirty = true; }
+  buildExtras() {
+    this._extrasDirty = false; if (!this.houses.length) return;
+    for (const o of this.extras || []) { this.scene.remove(o); o.traverse(m => { m.geometry?.dispose?.(); if (m.material?.map) m.material.map.dispose(); }); } this.extras = [];
+    const add = o => { this.scene.add(o); this.extras.push(o); return o; };
+    if (this.honorData) {
+      const d = this.honorData, G = new THREE.Group(), [cx, cz] = blockCenter([0, 0]);
+      const tex = canvasTex(640, 480, (g, w, h) => {
+        const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#2a1a6e'); gr.addColorStop(1, '#120a3a'); g.fillStyle = gr; g.fillRect(0, 0, w, h);
+        g.strokeStyle = '#ffd23f'; g.lineWidth = 14; g.strokeRect(7, 7, w - 14, h - 14);
+        g.fillStyle = '#ffd23f'; g.font = '800 46px Unbounded, Inter, sans-serif'; g.textAlign = 'center'; g.fillText('🏆 ДОСКА ПОЧЁТА', w / 2, 70);
+        let y = 120; g.textAlign = 'left';
+        for (const sec of d.sections || []) { if (y > h - 40) break; g.fillStyle = '#5ef2ff'; g.font = '800 26px Unbounded, Inter, sans-serif'; g.fillText(sec.title, 30, y); y += 36;
+          g.font = '700 26px Inter, sans-serif'; for (const line of sec.lines.slice(0, sec.max || 3)) { g.fillStyle = '#ffffff'; g.fillText(line.length > 34 ? line.slice(0, 33) + '…' : line, 44, y); y += 32; } y += 10; }
+      });
+      const board = new THREE.Mesh(new THREE.PlaneGeometry(1.2, .9), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })); board.position.y = .78; G.add(board);
+      const back = new THREE.Mesh(new THREE.BoxGeometry(1.28, .98, .04), flat('#5a3a22')); back.position.set(0, .78, -.03); G.add(back);
+      for (const x of [-.58, .58]) { const post = new THREE.Mesh(new THREE.BoxGeometry(.06, 1.25, .06), flat('#5a3a22')); post.position.set(x, .62, -.03); G.add(post); }
+      const lamp = new THREE.Mesh(new THREE.BoxGeometry(1.1, .03, .08), flat('#ffd23f', '#ffd23f', 2)); lamp.position.set(0, 1.28, .06); G.add(lamp);
+      G.position.set(cx + .5, .06, cz + .85); G.scale.setScalar(.85); G.userData.honor = true; G.traverse(m => m.userData.honor = true); add(G); this.honorG = G;
+    }
+    const SUIT = ['#1f4fd8', '#d81f2a', '#2f9a55', '#7b2cbf', '#ff7a1a', '#14141c', '#0fb5b5'];
+    (this.candList || []).forEach((c, i) => {
+      const h = this.byKey.get(c.nick); if (!h || h.gone) return;
+      const G = new THREE.Group(), suit = flat(SUIT[i % SUIT.length]), skin = flat('#ffd2a8');
+      const legs = new THREE.Mesh(new THREE.BoxGeometry(.1, .14, .06), flat('#22223a')); legs.position.y = .07; G.add(legs);
+      const body = new THREE.Mesh(new THREE.BoxGeometry(.14, .16, .08), suit); body.position.y = .22; G.add(body);
+      const sash = new THREE.Mesh(new THREE.BoxGeometry(.03, .18, .085), flat('#ffd23f', '#ffb000', .8)); sash.position.y = .22; sash.rotation.z = .6; G.add(sash);
+      const head = new THREE.Mesh(new THREE.SphereGeometry(.06, 12, 10), skin); head.position.y = .36; G.add(head);
+      const armL = new THREE.Mesh(new THREE.BoxGeometry(.035, .14, .04), suit); armL.geometry.translate(0, -.06, 0); armL.position.set(-.09, .29, 0); G.add(armL);
+      const armR = armL.clone(); armR.position.x = .09; armR.userData.wave = true; G.add(armR);
+      const sign = textSprite('🗳 КАНДИДАТ' + (c.votes != null ? ` · ${c.votes}` : ''), { color: '#ffd23f', scale: .0013, size: 48 }); sign.position.y = .55; G.add(sign);
+      const fz = h.rot === Math.PI ? -1 : 1; G.position.set(h.x + .28, .02, h.z + fz * .5); G.rotation.y = fz > 0 ? 0 : Math.PI; G.scale.setScalar(1.15);
+      G.userData.cand = c.nick; add(G);
+    });
   }
   // ---- день/ночь: t = 0 (ночь) … 1 (день) ----
   setDaylight(t) { t = Math.max(0, Math.min(1, t)); if (Math.abs(t - this.dayT) < .004 && !this._dayDirty) return; this.dayT = t; this.applyDay(); }
@@ -674,7 +713,7 @@ export class City3D {
   }
   // ---- кадр ----
   frame(dt) {
-    if (this._dayDirty) this.applyDay(); this.tickWeather(dt);
+    if (this._extrasDirty) this.buildExtras(); if (this._dayDirty) this.applyDay(); this.tickWeather(dt);
     this.T += dt; const T = this.T, c = this.ctl, k = 1 - Math.pow(.002, dt);
     c.x += (c.tx - c.x) * k; c.z += (c.tz - c.z) * k; c.d += (c.td - c.d) * k; c.az += (c.taz - c.az) * k;
     const pol = 1.12 - Math.min(1, c.d / 90) * .42; // угол от вертикали: ближе — ниже камера
@@ -701,7 +740,7 @@ export class City3D {
       M.makeTranslation(x, b, z); this.pBody.setMatrixAt(i, M); this.pHead.setMatrixAt(i, M); o.x = x; o.z = z; o.y = b; });
     this.pBody.instanceMatrix.needsUpdate = this.pHead.instanceMatrix.needsUpdate = true;
     // анимации
-    this.scene.traverse(o => { if (o.userData.blink) o.visible = Math.sin(T * 4) > 0; if (o.userData.spin) o.rotation.y = T * .2; if (o.userData.twinkle) o.material.size = .08 + Math.sin(T * 5) * .02; if (o.userData.pet) o.position.y = Math.abs(Math.sin(T * 6)) * .03; });
+    this.scene.traverse(o => { if (o.userData.blink) o.visible = Math.sin(T * 4) > 0; if (o.userData.spin) o.rotation.y = T * .2; if (o.userData.twinkle) o.material.size = .08 + Math.sin(T * 5) * .02; if (o.userData.pet) o.position.y = Math.abs(Math.sin(T * 6)) * .03; if (o.userData.wave) o.rotation.z = Math.PI - .4 + Math.sin(T * 5) * .45; });
     if (this.chest) { const ch = this.chest, near = Math.max(0, 1 - this.treasureDist() / 7) * (c.d < 18 ? 1 : 0);
       ch.position.y = .07 + Math.abs(Math.sin(T * 2.2)) * .04; ch.userData.glow.material.opacity = near * (.55 + Math.sin(T * 3) * .25); ch.userData.spark.visible = near > .05; ch.userData.spark.rotation.y = T * 1.5; }
     if (this.bloom) this.composer.render(); else this.renderer.render(this.scene, this.cam);

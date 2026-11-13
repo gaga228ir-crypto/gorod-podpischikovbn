@@ -95,6 +95,9 @@ class LocalDB:
     async def klad_today(self, day):
         return self.c.execute("select count(*) from klad where day=?", (day,)).fetchone()[0]
 
+    async def klad_winners(self, day):
+        return [r[0] for r in self.c.execute("select nick from klad where day=? order by id", (day,))]
+
     async def klad_add(self, tg_id, nick, day):
         try:
             self.c.execute("insert into klad (tg_id, nick, day) values (?,?,?)", (tg_id, nick, day))

@@ -147,7 +147,7 @@ window.city = city;
 let houses = [], milestones = MILESTONES_DEFAULT, election = null;
 const loadStep = (p, t) => { $('lbarI').style.width = p + '%'; if (t) $('ltxt').textContent = t; };
 const hideLoad = () => { loadStep(100); setTimeout(() => $('load').classList.add('hide'), 250); setTimeout(() => $('load').remove(), 900); };
-let baseList = [], hallInfo = null;
+let baseList = [], hallInfo = null, specialRows = [];
 async function loadCity() {
   loadStep(20, 'Загружаем жителей…');
   const [base, ms, el] = await Promise.all([getJSON('subscribers.json'), getJSON('milestones.json'), getJSON('election.json')]);
@@ -172,9 +172,11 @@ function buildCity() {
 async function loadSpecial(byKey) {
   // 1) recipes.json рядом с сайтом — его выкладывает бот, открывается без VPN; 2) Supabase, если указан
   const apply = rows => { let n = 0; for (const r of rows || []) { const ex = byKey.get(norm(r.nick)), nr = r.recipe && CityHouse.normRecipe(r.recipe); if (ex && nr && !ex.gone) { ex.recipe = { ...r.recipe, ...nr }; n++; } } return n; };
-  let n = apply(await getJSON('special.json')) + apply(await getJSON('recipes.json')); // special.json — дома по пожеланиям из комментов
+  const rec = await getJSON('recipes.json'); specialRows = (rec || []).filter(r => r.recipe && r.recipe.name && byKey.has(norm(r.nick)));
+  let n = apply(await getJSON('special.json')) + apply(rec); // special.json — дома по пожеланиям из комментов
   if (SUPABASE_URL) { try { n += apply(await (await api('residents?select=nick,recipe&status=eq.approved&recipe=not.is.null')).json()); } catch (e) {} }
   if (n) buildCity();
+  updateHonor();
 }
 function renderProgress() {
   const N = houses.filter(h => !h.gone).length, next = milestones.find(m => N < m.at), el = $('prog');
@@ -206,7 +208,7 @@ requestAnimationFrame(loop);
 
 // ---------- карточка, поиск, поделиться ----------
 const card = $('card'), msg = $('msg');
-function pick(x, y) { const h = city.pick(x, y); if (h && h.chest) return kladOver() ? kladChip.onclick() : openKlad(); if (h) focus(h, false); }
+function pick(x, y) { const h = city.pick(x, y); if (h && h.honor) return openHonor(); if (h && h.chest) return kladOver() ? kladChip.onclick() : openKlad(); if (h) focus(h, false); }
 function focus(h, fly = true) {
   city.focus(h, fly);
   $('cnick').textContent = h.label;
@@ -230,6 +232,32 @@ $('f').addEventListener('submit', e => {
   else msg.textContent = `Такого дома пока нет. Новые жители заселяются ${CHECK_TIME}.`;
 });
 
+// ---------- доска почёта и кандидаты ----------
+function honorData() {
+  const cands = [...(election?.candidates || [])].sort((a, b) => (b.votes || 0) - (a.votes || 0));
+  const kw = kladState && kladState.day === KLAD.day ? (kladState.winners || []) : [];
+  const day = fnv(mskDay()), sp = [...specialRows].sort((a, b) => (fnv(a.nick) ^ day) - (fnv(b.nick) ^ day));
+  return { cands, kw, sp, sections: [
+    cands.length && { title: '🗳 ЛИДЕРЫ ВЫБОРОВ', lines: cands.map(c => `@${norm(c.nick)} — ${c.votes || 0} 🗳`), max: 3 },
+    kw.length && { title: '💎 НАШЛИ КЛАД СЕГОДНЯ', lines: kw.map(n => '@' + n), max: 3 },
+    sp.length && { title: '✨ КРЕАТИВНЫЕ ДОМА', lines: sp.map(r => `@${norm(r.nick)} — ${r.recipe.name}`), max: 3 },
+  ].filter(Boolean) };
+}
+function updateHonor() {
+  const d = honorData(); city.setHonor(d);
+  if (election && election.stage && !election.winner) city.setCandidates(d.cands.map(c => ({ nick: norm(c.nick), votes: c.votes })));
+}
+function openHonor() {
+  const d = honorData(), li = (nick, t) => `<div class="cand"><div style="flex:1;min-width:0"><div class="n"><button class="opt hn" data-n="${esc(norm(nick))}" type="button">@${esc(norm(nick))}</button></div>${t ? `<div class="p">${esc(t)}</div>` : ''}</div></div>`;
+  sheet.innerHTML = `<h2>🏆 Доска почёта</h2><p>Стоит у ратуши в центре города. Нажми на ник — покажу дом.</p>
+    ${d.cands.length ? '<p><b>🗳 Кандидаты в мэры</b></p>' + d.cands.map(c => li(c.nick, `${c.votes || 0} голосов`)).join('') : ''}
+    ${d.kw.length ? '<p><b>💎 Нашли клад сегодня</b></p>' + d.kw.map(n => li(n)).join('') : ''}
+    ${d.sp.length ? '<p><b>✨ Креативные дома</b></p>' + d.sp.slice(0, 12).map(r => li(r.nick, r.recipe.name)).join('') : ''}
+    <button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button>`;
+  sheet.querySelectorAll('.hn').forEach(b => b.onclick = () => { const h = city.byKey.get(b.dataset.n); if (h) { modal.classList.remove('show'); focus(h); } });
+  modal.classList.add('show'); closeBtn();
+}
+
 // ---------- день/ночь и погода ----------
 const GSET_DEF = { day: 'auto', tz: 'device', wx: 'auto' };
 let gset = { ...GSET_DEF }; try { Object.assign(gset, JSON.parse(localStorage.getItem('gset') || '{}')); } catch (e) {}
@@ -250,7 +278,7 @@ function applyAmbience() {
   if (ambChip) { const t = city.dayT; ambChip.textContent = (t > .6 ? '☀️' : t > .05 ? '🌇' : '🌙') + (WX_ICON[city.weather] ? ' ' + WX_ICON[city.weather] : ''); }
 }
 function initAmbience() {
-  if (ambChip) return; ambChip = document.createElement('button'); ambChip.className = 'chip klad'; ambChip.title = 'Время суток и погода'; $('chips').appendChild(ambChip);
+  if (ambChip) { if (!ambChip.isConnected) $('chips').appendChild(ambChip); return; } ambChip = document.createElement('button'); ambChip.className = 'chip klad'; ambChip.title = 'Время суток и погода'; $('chips').appendChild(ambChip);
   ambChip.onclick = openAmbience; applyAmbience(); setInterval(applyAmbience, 20000);
 }
 function openAmbience() {
@@ -274,7 +302,7 @@ const KLAD = (d => ({ day: d, code: String(1000 + fnv(KLAD_SALT + ':code:' + d) 
 let kladState = null; // klad.json от бота: {day, taken, limit}
 const kladOver = () => !!(kladState && kladState.day === KLAD.day && kladState.taken >= kladState.limit);
 const kladLeft = () => kladState && kladState.day === KLAD.day ? Math.max(0, kladState.limit - kladState.taken) : null;
-async function loadKladState() { const j = await getJSON('klad.json'); if (j && j.day) kladState = j; if (city.chest) city.chest.visible = !kladOver(); }
+async function loadKladState() { const j = await getJSON('klad.json'); if (j && j.day) kladState = j; if (city.chest) city.chest.visible = !kladOver(); updateHonor(); }
 const kladFound = () => { try { return localStorage.getItem('klad') === KLAD.day; } catch (e) { return false; } };
 let kladChip = null;
 function renderKlad() {

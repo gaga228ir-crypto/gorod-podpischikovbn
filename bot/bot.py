@@ -201,6 +201,10 @@ class DB:
     async def klad_today(self, day):
         return await self.count(f"klad?day=eq.{day}")
 
+    async def klad_winners(self, day):
+        rows = await self.q("GET", f"klad?day=eq.{day}&select=nick&order=id.asc")
+        return [r["nick"] for r in rows or []]
+
     async def klad_add(self, tg_id, nick, day):
         await self.q("POST", "klad", {"tg_id": tg_id, "nick": nick, "day": day}, "return=minimal")
 
@@ -919,7 +923,8 @@ async def klad_publish(day: str):
         return
     try:
         taken = await db.klad_today(day)
-        body = json.dumps({"day": day, "taken": taken, "limit": KLAD_LIMIT}, ensure_ascii=False)
+        winners = await db.klad_winners(day)
+        body = json.dumps({"day": day, "taken": taken, "limit": KLAD_LIMIT, "winners": winners}, ensure_ascii=False)
         old, sha = await gh_get("klad.json")
         if old != body:
             await gh_put("klad.json", body, f"Клад {day}: {taken}/{KLAD_LIMIT}", sha)
