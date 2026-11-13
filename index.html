@@ -263,10 +263,27 @@ const SHOP = [['fireworks', '🎆 Салют над домом', 15], ['ufo', '�
 function openShop(h) {
   const have = new Set((fxMap[h.key] || {}).d || []);
   sheet.innerHTML = `<h2>⭐ Украсить дом</h2><p>Украшения остаются у дома навсегда (кроме «Дома дня» — он на сутки). Оплата звёздами Telegram.</p>
-    ${SHOP.map(([k, t, p]) => `<div class="shop"><span>${t}</span>${have.has(k) ? '<b style="color:var(--gold)">✓ есть</b>' : `<button type="button" data-buy="${k}">${p} ⭐</button>`}</div>`).join('')}
+    ${SHOP.map(([k, t, p]) => `<div class="shop"><span>${t}</span>${have.has(k) ? (k === 'top' ? '<b style="color:var(--gold)">✓ есть</b>' : `<button type="button" class="ghost" data-place="${k}">⚙️ РАЗМЕСТИТЬ</button>`) : `<button type="button" data-buy="${k}">${p} ⭐</button>`}</div>`).join('')}
+    ${(fxMap[h.key] || {}).s ? '<div class="shop"><span>💬 Табличка над домом</span><button type="button" class="ghost" data-place="sign">⚙️ РАЗМЕСТИТЬ</button></div>' : ''}
     <button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button>`;
   sheet.querySelectorAll('[data-buy]').forEach(b => b.onclick = () => sendTG({ t: 'buy', i: b.dataset.buy }));
+  sheet.querySelectorAll('[data-place]').forEach(b => b.onclick = () => openPlace(h, b.dataset.place));
   modal.classList.add('show'); closeBtn();
+}
+
+const PLACE_NAME = { fireworks: '🎆 Салют', ufo: '🛸 НЛО', rainbow: '🌈 Радуга', xmas: '🎄 Ёлка', snowman: '⛄ Снеговик', sign: '💬 Табличка' };
+function openPlace(h, k) {
+  const fx = fxMap[h.key] = fxMap[h.key] || {}, old = JSON.stringify(fx.p || {}); fx.p = fx.p || {};
+  const v = (fx.p[k] || [0, 0, 1]).slice(); while (v.length < 3) v.push(v.length === 2 ? 1 : 0);
+  const row = (i, label, min, max, step) => `<div class="srow"><span>${label}: <b id="pv${i}">${(+v[i]).toFixed(2)}</b></span><input type="range" data-i="${i}" min="${min}" max="${max}" step="${step}" value="${v[i]}" style="padding:0;background:none"></div>`;
+  sheet.innerHTML = `<h2>⚙️ ${PLACE_NAME[k] || k}</h2><p>Двигай ползунки — украшение сразу двигается у твоего дома. Потом нажми «Сохранить».</p>
+    ${k === 'rainbow' ? '' : row(0, '↔️ Влево / вправо', -.7, .7, .05)}${k === 'rainbow' ? '' : row(1, '↕️ Ниже / выше', -1, 2.5, .05)}${row(2, '🔍 Размер', .4, 2.5, .1)}
+    <div class="btns"><button class="ghost" id="pcancel" type="button">ОТМЕНА</button><button id="pgo" type="button">СОХРАНИТЬ</button></div>`;
+  modal.classList.add('show'); city.focus(h, true); let tm = 0;
+  sheet.querySelectorAll('input[type=range]').forEach(r => r.oninput = () => { v[+r.dataset.i] = +r.value; $('pv' + r.dataset.i).textContent = (+r.value).toFixed(2); fx.p[k] = v.slice();
+    clearTimeout(tm); tm = setTimeout(() => city.setFx(fxMap), 60); });
+  $('pcancel').onclick = () => { fx.p = JSON.parse(old); city.setFx(fxMap); modal.classList.remove('show'); };
+  $('pgo').onclick = () => sendTG({ t: 'place', i: k, p: v.map(x => Math.round(x * 100) / 100) });
 }
 
 // ---------- доска почёта и кандидаты ----------
