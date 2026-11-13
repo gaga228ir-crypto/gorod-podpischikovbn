@@ -273,7 +273,9 @@ async function sendTG(data, errEl) {
     try { let j; try { j = await apiPost(data); } catch (e) { const was = API; if (await loadAPI() === was) throw e; j = await apiPost(data); }
       if (j.ok) { modal.classList.remove('show');
         if (j.invoice) { tg.openInvoice(j.invoice, st => { if (st === 'paid') toastMsg('Спасибо! ⭐ Уже ставим — в городе через пару минут.'); }); return; }
-        const t = (j.msgs || []).filter(Boolean).join('\n\n'); if (t) toastMsg(t); optimistic(data); return; }
+        const t = (j.msgs || []).filter(Boolean).join('\n\n'); if (t) toastMsg(t); optimistic(data);
+        if (j.me && j.me.fx) { fxMap[j.me.nick] = Object.assign(fxMap[j.me.nick] || {}, j.me.fx); city.setFx(fxMap); if (city.hi) focus(city.hi, false); }
+        return; }
     } catch (e) {}
   }
   // запасной путь: sendData работает только если город открыт кнопкой «🏙 Открыть город» над клавиатурой

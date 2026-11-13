@@ -1770,7 +1770,14 @@ async def api_handler(req):
         log.warning("api: %s", e)
         return web.json_response({"ok": False, "err": "server"}, headers=cors)
     clean = [re.sub(r"<[^>]+>", "", t) for t in m.out if t]
-    return web.json_response({"ok": True, "msgs": clean, "invoice": m.invoice}, headers=cors)
+    mine = None
+    try:  # свежее состояние своего дома (баланс неонок и т.п.) — fx.json на сайте обновляется с задержкой
+        me = await db.linked(uid)
+        if me:
+            mine = {"nick": me["nick"], "fx": await fx_get(me["nick"])}
+    except Exception:
+        pass
+    return web.json_response({"ok": True, "msgs": clean, "invoice": m.invoice, "me": mine}, headers=cors)
 
 
 async def api_serve(bot):
