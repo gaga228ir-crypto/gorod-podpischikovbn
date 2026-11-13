@@ -752,7 +752,16 @@ export class City3D {
       if (fx.c) { const ring = new THREE.Mesh(new THREE.RingGeometry(.5, .6, 40), new THREE.MeshBasicMaterial({ color: fx.c, transparent: true, opacity: .9, toneMapped: false, side: THREE.DoubleSide }));
         ring.rotation.x = -Math.PI / 2; ring.position.y = .035; G.add(ring); }
       if (fx.s) { const sg = textSprite('💬 ' + fx.s, { color: '#fff', bg: 'rgba(255,61,127,.9)', scale: .0016, size: 48 }); sg.position.y = top + .55; G.add(place(sg, 'sign')); }
-      const d = new Set(fx.d || []);
+      const d = new Set(fx.d || []), nowS = Date.now() / 1000;
+      if (fx.lent && fx.lent.u > nowS) d.delete(fx.lent.i);
+      if (fx.bor && fx.bor.u > nowS) d.add(fx.bor.i);
+      if (fx.rf && fx.rf.length === 64) { const PAL = ['', '#ffffff', '#1a1238', '#ff3d7f', '#ffd23f', '#5ef2ff', '#a6ff8f', '#c084fc', '#ff7a1a'];
+        const tex = canvasTex(64, 64, g => { for (let i = 0; i < 64; i++) { const c = PAL[+fx.rf[i]]; if (!c) continue; g.fillStyle = c; g.fillRect((i % 8) * 8, Math.floor(i / 8) * 8, 8, 8); } });
+        tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter;
+        const RF = new THREE.Group(); const pole = new THREE.Mesh(new THREE.CylinderGeometry(.008, .008, .62, 6), flat('#d0d0e0')); pole.position.y = .31; RF.add(pole);
+        const pan = new THREE.Mesh(new THREE.PlaneGeometry(.3, .3), new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide, toneMapped: false }));
+        pan.geometry.translate(.16, 0, 0); pan.position.y = .45; pan.userData.flagWave = true; RF.add(pan);
+        RF.position.set(-.18, top - .05, fz * .12); G.add(place(RF, 'roof')); }
       if (d.has('rainbow')) { const RB = new THREE.Group(); ['#ff3d7f', '#ffd23f', '#a6ff8f', '#5ef2ff', '#c084fc'].forEach((c, i) => { const r = new THREE.Mesh(new THREE.RingGeometry(.62 + i * .05, .66 + i * .05, 40), new THREE.MeshBasicMaterial({ color: c, toneMapped: false, side: THREE.DoubleSide }));
         r.rotation.x = -Math.PI / 2; r.position.y = .03 + i * .002; RB.add(r); }); G.add(place(RB, 'rainbow')); }
       if (d.has('snowman')) { const S0 = new THREE.Group(), w = flat('#ffffff', '#cfe6ff', .25);
@@ -824,6 +833,16 @@ export class City3D {
         const C = makeChest(); C.scale.setScalar(.75); C.position.set(h.x + (r0() < .5 ? -.47 : .47), .07, h.z + (r0() < .5 ? -.47 : .47)); C.rotation.y = r0() * 6;
         C.traverse(m => { m.userData.mini = i; if (m.material && m.material.color && m.material.metalness > .5) { m.material = m.material.clone(); m.material.color.set('#9fd8ff'); m.material.emissive.set('#3aa0ff'); } });
         C.userData.miniPos = [C.position.x, C.position.z]; add(C); } }
+    { const seen = new Set();
+      for (const [nick, fx] of Object.entries(this.fxMap || {})) for (const fr of fx.f || []) {
+        const key = [nick, fr].sort().join('|'); if (seen.has(key)) continue; seen.add(key);
+        const a = this.byKey.get(nick), b = this.byKey.get(fr); if (!a || !b || a.gone || b.gone) continue;
+        const dist = Math.hypot(a.x - b.x, a.z - b.z); if (dist > 60) continue;
+        const ta = this.houseTop(a) + .1, tb = this.houseTop(b) + .1, mid = new THREE.Vector3((a.x + b.x) / 2, Math.max(ta, tb) + Math.min(6, dist * .35), (a.z + b.z) / 2);
+        const cv = new THREE.QuadraticBezierCurve3(new THREE.Vector3(a.x, ta, a.z), mid, new THREE.Vector3(b.x, tb, b.z));
+        const tube = new THREE.Mesh(new THREE.TubeGeometry(cv, 40, .02, 5, false), new THREE.MeshBasicMaterial({ color: '#ff8fd0', transparent: true, opacity: .85, toneMapped: false }));
+        add(tube);
+        const hrt = textSprite('💗', { bg: 'rgba(0,0,0,0)', scale: .004, size: 64 }); hrt.position.copy(cv.getPoint(.5)); add(hrt); } }
     const SUIT = ['#1f4fd8', '#d81f2a', '#2f9a55', '#7b2cbf', '#ff7a1a', '#14141c', '#0fb5b5'];
     (this.candList || []).forEach((c, i) => {
       const h = this.byKey.get(c.nick); if (!h || h.gone) return;

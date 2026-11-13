@@ -82,6 +82,10 @@ PRESETS = [
     ("Башенка", {"shape": "tower", "floors": 3, "wall": "#86d4c8", "roof": "#2f7a6b", "emblem": "leaf", "lights": "green"}),
     ("Купол", {"shape": "dome", "floors": 2, "wall": "#f7a8d0", "roof": "#6b3fa0", "emblem": "heart", "lights": "pink"}),
     ("Высотка", {"shape": "skyscraper", "floors": 3, "wall": "#c9a0e8", "roof": "#3d5a99", "emblem": "none", "lights": "cool"}),
+    ("Дом-Бургер", {"shape": "custom", "name": "Дом-Бургер", "lights": "warm", "parts": [{"t": "cyl", "p": [0, 0, 0], "s": [0.86, 0.16, 0.86], "c": "#e0a052", "g": 0.0, "r": 0.0, "w": false}, {"t": "box", "p": [0, 0.02, 0.42], "s": [0.14, 0.14, 0.02], "c": "#6b3a1a", "g": 0.0, "r": 0.0, "w": false}, {"t": "cyl", "p": [0, 0.16, 0], "s": [0.9, 0.04, 0.9], "c": "#5aa832", "g": 0.1, "r": 0.0, "w": false}, {"t": "cyl", "p": [0, 0.2, 0], "s": [0.84, 0.12, 0.84], "c": "#6b3a22", "g": 0.05, "r": 0.0, "w": true}, {"t": "box", "p": [0, 0.32, 0], "s": [0.92, 0.025, 0.92], "c": "#ffd23f", "g": 0.2, "r": 45, "w": false}, {"t": "cyl", "p": [0, 0.345, 0], "s": [0.8, 0.05, 0.8], "c": "#e8343a", "g": 0.1, "r": 0.0, "w": false}, {"t": "dome", "p": [0, 0.395, 0], "s": [0.88, 0.4, 0.88], "c": "#e9a64f", "g": 0.05, "r": 0.0, "w": false}, {"t": "sphere", "p": [0.12, 0.77, 0.0], "s": [0.04, 0.02, 0.025], "c": "#fff6dc", "g": 0.2, "r": 0.0, "w": false}, {"t": "sphere", "p": [-0.147, 0.741, 0.135], "s": [0.04, 0.02, 0.025], "c": "#fff6dc", "g": 0.2, "r": 0.0, "w": false}, {"t": "sphere", "p": [0.024, 0.694, -0.279], "s": [0.04, 0.02, 0.025], "c": "#fff6dc", "g": 0.2, "r": 0.0, "w": false}, {"t": "sphere", "p": [0.219, 0.615, 0.286], "s": [0.04, 0.02, 0.025], "c": "#fff6dc", "g": 0.2, "r": 0.0, "w": false}, {"t": "sphere", "p": [-0.118, 0.77, -0.021], "s": [0.04, 0.02, 0.025], "c": "#fff6dc", "g": 0.2, "r": 0.0, "w": false}, {"t": "sphere", "p": [0.169, 0.741, -0.107], "s": [0.04, 0.02, 0.025], "c": "#fff6dc", "g": 0.2, "r": 0.0, "w": false}, {"t": "sphere", "p": [-0.073, 0.694, 0.27], "s": [0.04, 0.02, 0.025], "c": "#fff6dc", "g": 0.2, "r": 0.0, "w": false}, {"t": "sphere", "p": [-0.166, 0.615, -0.32], "s": [0.04, 0.02, 0.025], "c": "#fff6dc", "g": 0.2, "r": 0.0, "w": false}, {"t": "sphere", "p": [0.113, 0.77, 0.041], "s": [0.04, 0.02, 0.025], "c": "#fff6dc", "g": 0.2, "r": 0.0, "w": false}, {"t": "sphere", "p": [-0.185, 0.741, 0.076], "s": [0.04, 0.02, 0.025], "c": "#fff6dc", "g": 0.2, "r": 0.0, "w": false}, {"t": "sphere", "p": [0.119, 0.694, -0.254], "s": [0.04, 0.02, 0.025], "c": "#fff6dc", "g": 0.2, "r": 0.0, "w": false}, {"t": "sphere", "p": [0.108, 0.615, 0.344], "s": [0.04, 0.02, 0.025], "c": "#fff6dc", "g": 0.2, "r": 0.0, "w": false}, {"t": "sphere", "p": [-0.2, 0.5, 0.37], "s": [0.1, 0.1, 0.03], "c": "#ffe08a", "g": 0.9, "r": 0.0, "w": false}, {"t": "sphere", "p": [0.2, 0.5, 0.37], "s": [0.1, 0.1, 0.03], "c": "#ffe08a", "g": 0.9, "r": 0.0, "w": false}]}),
+    ("Дом-Ёлочная игрушка", {"shape": "custom", "name": "Дом-Ёлочная игрушка", "lights": "warm", "parts": [{"t": "cyl", "p": [0, 0, 0], "s": [0.5, 0.05, 0.5], "c": "#2a2f3a", "g": 0.0, "r": 0.0, "w": false}, {"t": "cone", "p": [-0.38, 0.02, 0.3], "s": [0.2, 0.26, 0.2], "c": "#1f7a4a", "g": 0.1, "r": 0.0, "w": false}, {"t": "cone", "p": [0.38, 0.02, 0.3], "s": [0.2, 0.26, 0.2], "c": "#1f7a4a", "g": 0.1, "r": 0.0, "w": false}, {"t": "cone", "p": [-0.36, 0.02, -0.32], "s": [0.2, 0.26, 0.2], "c": "#1f7a4a", "g": 0.1, "r": 0.0, "w": false}, {"t": "cone", "p": [0.36, 0.02, -0.34], "s": [0.2, 0.26, 0.2], "c": "#1f7a4a", "g": 0.1, "r": 0.0, "w": false}, {"t": "sphere", "p": [0, 0.05, 0], "s": [0.8, 0.8, 0.8], "c": "#d81f2a", "g": 0.25, "r": 0.0, "w": false}, {"t": "torus", "p": [0, 0.3, 0], "s": [0.71, 0.03, 0.71], "c": "#ffd23f", "g": 0.8, "r": 0.0, "w": false}, {"t": "torus", "p": [0, 0.5, 0], "s": [0.77, 0.03, 0.77], "c": "#ffd23f", "g": 0.8, "r": 0.0, "w": false}, {"t": "sphere", "p": [-0.18, 0.42, 0.33], "s": [0.11, 0.11, 0.03], "c": "#ffe08a", "g": 0.9, "r": 0.0, "w": false}, {"t": "sphere", "p": [0.18, 0.42, 0.33], "s": [0.11, 0.11, 0.03], "c": "#ffe08a", "g": 0.9, "r": 0.0, "w": false}, {"t": "box", "p": [0, 0.07, 0.38], "s": [0.12, 0.16, 0.03], "c": "#5a1010", "g": 0.0, "r": 0.0, "w": false}, {"t": "cyl", "p": [0, 0.83, 0], "s": [0.16, 0.1, 0.16], "c": "#e0b040", "g": 0.4, "r": 0.0, "w": false}, {"t": "torus", "p": [0, 0.96, 0], "s": [0.1, 0.02, 0.1], "c": "#e0b040", "g": 0.4, "r": 90, "w": false}, {"t": "sphere", "p": [0.4, 0.45, 0.0], "s": [0.04, 0.04, 0.04], "c": "#ffffff", "g": 1, "r": 0.0, "w": false}, {"t": "sphere", "p": [0.2, 0.485, 0.346], "s": [0.04, 0.04, 0.04], "c": "#ffffff", "g": 1, "r": 0.0, "w": false}, {"t": "sphere", "p": [-0.2, 0.415, 0.346], "s": [0.04, 0.04, 0.04], "c": "#ffffff", "g": 1, "r": 0.0, "w": false}, {"t": "sphere", "p": [-0.4, 0.45, 0.0], "s": [0.04, 0.04, 0.04], "c": "#ffffff", "g": 1, "r": 0.0, "w": false}, {"t": "sphere", "p": [-0.2, 0.485, -0.346], "s": [0.04, 0.04, 0.04], "c": "#ffffff", "g": 1, "r": 0.0, "w": false}, {"t": "sphere", "p": [0.2, 0.415, -0.346], "s": [0.04, 0.04, 0.04], "c": "#ffffff", "g": 1, "r": 0.0, "w": false}]}),
+    ("Дом-Коробка", {"shape": "custom", "name": "Дом-Коробка", "lights": "warm", "parts": [{"t": "box", "p": [0, 0, 0], "s": [0.74, 0.56, 0.6], "c": "#c8955a", "g": 0.0, "r": 0.0, "w": true}, {"t": "box", "p": [0, 0.275, 0.301], "s": [0.74, 0.05, 0.005], "c": "#b07a40", "g": 0.0, "r": 0.0, "w": false}, {"t": "box", "p": [0, 0, 0.301], "s": [0.1, 0.56, 0.006], "c": "#e8d9b8", "g": 0.1, "r": 0.0, "w": false}, {"t": "box", "p": [0, 0.56, 0], "s": [0.1, 0.006, 0.6], "c": "#e8d9b8", "g": 0.1, "r": 0.0, "w": false}, {"t": "box", "p": [-0.414, 0.56, 0], "s": [0.05, 0.24, 0.58], "c": "#b8854c", "g": 0.0, "r": 0.0, "w": false}, {"t": "box", "p": [0.414, 0.56, 0], "s": [0.05, 0.24, 0.58], "c": "#b8854c", "g": 0.0, "r": 0.0, "w": false}, {"t": "box", "p": [0.2, 0.38, 0.304], "s": [0.2, 0.08, 0.004], "c": "#e8343a", "g": 0.2, "r": 0.0, "w": false}, {"t": "box", "p": [-0.2, 0.12, 0.304], "s": [0.14, 0.14, 0.004], "c": "#1a1a1a", "g": 0.0, "r": 0.0, "w": false}, {"t": "box", "p": [-0.2, 0.02, 0.31], "s": [0.12, 0.2, 0.01], "c": "#6b3a1a", "g": 0.0, "r": 0.0, "w": false}, {"t": "sphere", "p": [0.25, 0.6, 0.1], "s": [0.14, 0.12, 0.14], "c": "#f4f4ff", "g": 0.3, "r": 0.0, "w": false}, {"t": "sphere", "p": [-0.1, 0.6, -0.1], "s": [0.12, 0.1, 0.12], "c": "#f4f4ff", "g": 0.3, "r": 0.0, "w": false}]}),
+    ("Дом-Мусорка", {"shape": "custom", "name": "Дом-Мусорка", "lights": "cool", "parts": [{"t": "cyl", "p": [0, 0, 0], "s": [0.66, 0.62, 0.66], "c": "#2f8a4a", "g": 0.05, "r": 0.0, "w": true}, {"t": "torus", "p": [0, 0.2, 0], "s": [0.67, 0.02, 0.67], "c": "#226b38", "g": 0.0, "r": 0.0, "w": false}, {"t": "torus", "p": [0, 0.45, 0], "s": [0.67, 0.02, 0.67], "c": "#226b38", "g": 0.0, "r": 0.0, "w": false}, {"t": "cyl", "p": [0.03, 0.62, -0.03], "s": [0.72, 0.06, 0.72], "c": "#1f5c30", "g": 0.0, "r": 8, "w": false}, {"t": "box", "p": [0, 0.69, 0], "s": [0.2, 0.04, 0.05], "c": "#174a26", "g": 0.0, "r": 0.0, "w": false}, {"t": "torus", "p": [0, 0.34, 0.34], "s": [0.16, 0.02, 0.16], "c": "#a6ff8f", "g": 0.9, "r": 0, "w": false}, {"t": "box", "p": [0, 0.02, 0.33], "s": [0.12, 0.16, 0.02], "c": "#123d20", "g": 0.0, "r": 0.0, "w": false}, {"t": "sphere", "p": [0.42, 0.0, 0.3], "s": [0.16, 0.176, 0.16], "c": "#1a1a22", "g": 0.05, "r": 0.0, "w": false}, {"t": "sphere", "p": [-0.42, 0.0, 0.32], "s": [0.14, 0.154, 0.14], "c": "#1a1a22", "g": 0.05, "r": 0.0, "w": false}, {"t": "sphere", "p": [0.38, 0.0, -0.36], "s": [0.13, 0.143, 0.13], "c": "#1a1a22", "g": 0.05, "r": 0.0, "w": false}, {"t": "sphere", "p": [-0.2, 0.85, 0.3], "s": [0.025, 0.02, 0.025], "c": "#111111", "g": 0.0, "r": 0.0, "w": false}, {"t": "sphere", "p": [0.22, 0.85, 0.1], "s": [0.025, 0.02, 0.025], "c": "#111111", "g": 0.0, "r": 0.0, "w": false}, {"t": "sphere", "p": [-0.12, 0.66, 0.25], "s": [0.12, 0.05, 0.1], "c": "#c8955a", "g": 0.0, "r": 0.0, "w": false}]}),
 ]
 NICK_RE = re.compile(r"^[a-z0-9_.]{2,24}$")
 
@@ -345,6 +349,305 @@ async def do_spin(m, uid):
     await m.answer(f"🎡 Колесо крутится… и выпадает:\n\n<b>{prize}</b>!\n\nНа сайте через пару минут. Завтра можно крутить снова 🍀", reply_markup=city_keyboard(me["nick"]))
 
 
+# ======== 🪙 Неонки (городская валюта) ========
+COIN_RATE = 5  # 1 ⭐ = 5 неонок по цене украшений
+COIN_NO = {"estate", "wish"}  # только за звёзды
+
+
+def coin_price(item):
+    return FX_ITEMS[item][1] * COIN_RATE
+
+
+async def coins_add(nick, n):
+    fx = await fx_get(nick)
+    fx["co"] = max(0, int(fx.get("co", 0)) + n)
+    await fx_set(nick, fx)
+    return fx["co"]
+
+
+@r.callback_query(F.data == "daily")
+async def daily_cb(c: CallbackQuery):
+    await c.answer()
+    me = await db.linked(c.from_user.id)
+    if not me:
+        await c.message.answer("Сначала привяжи ник — «🏠 Мой дом» 🪙", reply_markup=main_menu())
+        return
+    day = msk_day()
+    last = await db.kv_get(f"daily:{c.from_user.id}")
+    if last == day:
+        fx = await fx_get(me["nick"])
+        await c.message.answer(f"Сегодня бонус уже забран 😉 У тебя 🪙 {fx.get('co', 0)} неонок. Приходи завтра!", reply_markup=main_menu())
+        return
+    yest = (dt.datetime.strptime(day, "%Y-%m-%d") - dt.timedelta(days=1)).strftime("%Y-%m-%d")
+    streak = int(await db.kv_get(f"dstreak:{c.from_user.id}") or 0) + 1 if last == yest else 1
+    await db.kv_set(f"daily:{c.from_user.id}", day)
+    await db.kv_set(f"dstreak:{c.from_user.id}", streak)
+    gain = 10 + min(streak - 1, 6) * 2
+    total = await coins_add(me["nick"], gain)
+    await c.message.answer(f"🪙 +{gain} неонок! Серия: {streak} дн. подряд (каждый день подряд — больше).\nНа счету: <b>🪙 {total}</b>\n\nТрать в городе: нажми на свой дом → «⭐ Украсить» → кнопки с 🪙.",
+                           reply_markup=city_keyboard(me["nick"]))
+
+
+# ======== 🏛 Дума: идеи жителей и голосование ========
+async def duma_get():
+    try:
+        return json.loads(await db.kv_get("duma") or "[]")
+    except ValueError:
+        return []
+
+
+@r.callback_query(F.data == "duma")
+async def duma_cb(c: CallbackQuery):
+    await c.answer()
+    ideas = sorted(await duma_get(), key=lambda x: x.get("up", 0) - x.get("down", 0), reverse=True)[:8]
+    txt = "\n".join(f"{i + 1}. {x['text']} — 👍 {x.get('up', 0)} 👎 {x.get('down', 0)}" for i, x in enumerate(ideas)) or "Пока пусто — предложи первую идею кнопкой «💡 Идея для города»!"
+    await c.message.answer(f"🏛 <b>Городская дума</b>\n\nИдеи жителей. Голосуй в городе: кнопка «🏛 ДУМА» сверху. Идеи с лучшим счётом мэрия делает первыми!\n\n{txt}",
+                           reply_markup=main_menu())
+
+
+@r.callback_query(F.data.startswith("dumaok:"))
+async def duma_ok(c: CallbackQuery):
+    if not is_admin(c.from_user.id):
+        return
+    await c.answer("Добавлено в думу ✅")
+    i = int(c.data.split(":")[1])
+    rep_ = json.loads(await db.kv_get("reports") or "[]")
+    if not 0 <= i < len(rep_):
+        return
+    ideas = await duma_get()
+    nid = max([x["id"] for x in ideas] + [0]) + 1
+    ideas.append({"id": nid, "text": rep_[i]["text"][:200], "nick": rep_[i].get("nick", ""), "up": 0, "down": 0})
+    await db.kv_set("duma", json.dumps(ideas, ensure_ascii=False))
+    _fx_dirty.set()
+    await c.message.edit_reply_markup(reply_markup=None)
+
+
+@r.message(Command("duma_add", "duma_del"))
+async def duma_admin(m: Message):
+    """/duma_add текст — добавить идею в думу; /duma_del N — убрать."""
+    if not is_admin(m.from_user.id):
+        return
+    parts = (m.text or "").split(maxsplit=1)
+    ideas = await duma_get()
+    if parts[0].startswith("/duma_del"):
+        n = int(parts[1]) if len(parts) > 1 and parts[1].strip().isdigit() else -1
+        ideas = [x for x in ideas if x["id"] != n]
+        await m.answer(f"Идея #{n} убрана.")
+    else:
+        if len(parts) < 2:
+            await m.answer("<code>/duma_add текст идеи</code>")
+            return
+        nid = max([x["id"] for x in ideas] + [0]) + 1
+        ideas.append({"id": nid, "text": parts[1][:200], "nick": "мэрия", "up": 0, "down": 0})
+        await m.answer(f"🏛 Идея #{nid} в думе.")
+    await db.kv_set("duma", json.dumps(ideas, ensure_ascii=False))
+    _fx_dirty.set()
+
+
+# ======== 🏆 Конкурс «Самый красивый дом» ========
+@r.message(Command("contest_start", "contest_end"))
+async def contest_admin(m: Message, bot: Bot):
+    if not is_admin(m.from_user.id):
+        return
+    if m.text.startswith("/contest_start"):
+        arg = (m.text or "").split()[1:]
+        days = int(arg[0]) if arg and arg[0].isdigit() else 3
+        until = int(time.time()) + days * 86400
+        await db.kv_set("contest_until", until)
+        for k, v in await db.kv_prefix("cvu:"):
+            await db.kv_set(k, None)
+        for k, v in await db.kv_prefix("fx:"):
+            fx = json.loads(v)
+            if fx.pop("cv", None) is not None:
+                await db.kv_set(k, json.dumps(fx, ensure_ascii=False))
+        _fx_dirty.set()
+        await m.answer(f"🏆 Конкурс «Самый красивый дом» запущен на {days} дн. На сайте появилась кнопка «🏆 ГОЛОС» в карточке дома. Итоги: /contest_end")
+        return
+    rows = []
+    for k, v in await db.kv_prefix("fx:"):
+        fx = json.loads(v)
+        if fx.get("cv"):
+            rows.append((fx["cv"], k[3:]))
+    rows.sort(reverse=True)
+    prizes = [("🏆 Самый красивый дом", 7), ("🥈 Красивый дом", 2), ("🥉 Красивый дом", 1)]
+    for (cnt, nick), (title, days) in zip(rows, prizes):
+        fx = await fx_get(nick)
+        fx["tt"] = title
+        fx["top"] = max(int(fx.get("top", 0)), int(time.time())) + days * 86400
+        await fx_set(nick, fx)
+        owners = await db.by_nick(nick)
+        if owners and owners[0].get("tg_id"):
+            try:
+                await bot.send_message(owners[0]["tg_id"], f"{title}! 🎉 Твой дом победил в конкурсе ({cnt} голосов): титул над домом и «Дом дня» на {days} дн.")
+            except Exception:
+                pass
+    await db.kv_set("contest_until", None)
+    _fx_dirty.set()
+    await m.answer("🏆 Итоги конкурса:\n" + ("\n".join(f"{i + 1}. @{n} — {c}" for i, (c, n) in enumerate(rows[:10])) or "голосов не было"))
+
+
+async def social_action(m, bot, me, data):
+    t, uid = data.get("t"), m.from_user.id
+    kb = city_keyboard(me["nick"])
+
+    async def notify(nick, text):
+        ow = await db.by_nick(nick)
+        if ow and ow[0].get("tg_id"):
+            try:
+                await bot.send_message(ow[0]["tg_id"], text, reply_markup=city_keyboard(nick))
+            except Exception:
+                pass
+
+    if t == "cvote":
+        target = norm_nick(str(data.get("n") or ""))
+        if int(await db.kv_get("contest_until") or 0) < time.time():
+            await m.answer("Конкурс сейчас не идёт 🏆", reply_markup=kb)
+            return
+        if not target or target == me["nick"] or target not in (await subscribers())["set"]:
+            await m.answer("За свой дом голосовать нельзя 🙂", reply_markup=kb)
+            return
+        if await db.kv_get(f"cvu:{uid}"):
+            await m.answer("Ты уже проголосовал в этом конкурсе 🏆", reply_markup=kb)
+            return
+        await db.kv_set(f"cvu:{uid}", target)
+        fx = await fx_get(target)
+        fx["cv"] = int(fx.get("cv", 0)) + 1
+        await fx_set(target, fx)
+        await coins_add(me["nick"], 3)
+        await m.answer(f"🏆 Голос за дом @{target} принят! Тебе 🪙 +3.", reply_markup=kb)
+    elif t == "ivote":
+        iid, v = int(data.get("i", -1)), 1 if int(data.get("v", 1)) > 0 else -1
+        ideas = await duma_get()
+        idea = next((x for x in ideas if x["id"] == iid), None)
+        if not idea:
+            return
+        if await db.kv_get(f"iv:{iid}:{uid}"):
+            await m.answer("Ты уже голосовал за эту идею 🏛", reply_markup=kb)
+            return
+        await db.kv_set(f"iv:{iid}:{uid}", v)
+        idea["up" if v > 0 else "down"] = int(idea.get("up" if v > 0 else "down", 0)) + 1
+        await db.kv_set("duma", json.dumps(ideas, ensure_ascii=False))
+        _fx_dirty.set()
+        await coins_add(me["nick"], 1)
+        await m.answer(f"🏛 Голос учтён: «{idea['text'][:60]}» {'👍' if v > 0 else '👎'}. Тебе 🪙 +1.", reply_markup=kb)
+    elif t == "friend":
+        target = norm_nick(str(data.get("n") or ""))
+        if not target or target == me["nick"]:
+            return
+        mine = await fx_get(me["nick"])
+        if target in mine.get("f", []):
+            await m.answer(f"Вы с @{target} уже друзья 👫", reply_markup=kb)
+            return
+        ow = await db.by_nick(target)
+        if not ow or not ow[0].get("tg_id"):
+            await m.answer(f"@{target} ещё не привязал дом в боте — позови его сюда 🙂", reply_markup=kb)
+            return
+        await m.answer(f"👫 Запрос дружбы отправлен @{target}!", reply_markup=kb)
+        try:
+            await bot.send_message(ow[0]["tg_id"], f"👫 @{me['nick']} хочет дружить домами! Между вашими домами загорится неоновая нить, и вы сможете дарить друг другу украшения.",
+                                   reply_markup=InlineKeyboardMarkup(inline_keyboard=[[IB(text="✅ Дружить", callback_data=f"fr:{me['nick']}"), IB(text="❌ Нет", callback_data="frno")]]))
+        except Exception:
+            pass
+    elif t == "gift":
+        target, item = norm_nick(str(data.get("n") or "")), str(data.get("i") or "")
+        mine = await fx_get(me["nick"])
+        if target not in mine.get("f", []) or item not in FX_ITEMS or item in COIN_NO or item == "top":
+            await m.answer("Дарить украшения можно только друзьям 👫", reply_markup=kb)
+            return
+        price = coin_price(item)
+        if int(mine.get("co", 0)) < price:
+            await m.answer(f"Не хватает неонок: нужно 🪙 {price}, у тебя {mine.get('co', 0)}.", reply_markup=kb)
+            return
+        fx = await fx_get(target)
+        if item in fx.get("d", []):
+            await m.answer(f"У @{target} это украшение уже есть 🙂", reply_markup=kb)
+            return
+        mine["co"] = int(mine["co"]) - price
+        await fx_set(me["nick"], mine)
+        fx["d"] = sorted(set(fx.get("d", [])) | {item})
+        await fx_set(target, fx)
+        await m.answer(f"🎁 Подарил @{target}: {FX_ITEMS[item][0]}! Осталось 🪙 {mine['co']}.", reply_markup=kb)
+        await notify(target, f"🎁 Твой друг @{me['nick']} подарил тебе {FX_ITEMS[item][0]}! Уже у твоего дома.")
+    elif t == "roof":
+        px = re.sub(r"[^0-8]", "", str(data.get("p") or ""))[:64]
+        if len(px) != 64:
+            return
+        fx = await fx_get(me["nick"])
+        fx["rf"] = px if px.strip("0") else ""
+        await fx_set(me["nick"], fx)
+        await m.answer("🎨 Флаг-рисунок над домом готов! На сайте через пару минут.", reply_markup=kb)
+        for a in ADMIN_IDS:
+            try:
+                await bot.send_message(a, f"🎨 @{me['nick']} нарисовал флаг. Если там что-то плохое: /roof_clear {me['nick']}")
+            except Exception:
+                pass
+    elif t == "borrow":
+        target = norm_nick(str(data.get("n") or ""))
+        now = int(time.time())
+        last = int(await db.kv_get(f"borrow:{uid}") or 0)
+        if now - last < 6 * 3600:
+            await m.answer(f"🦝 Одалживать можно раз в 6 часов — ещё {((6 * 3600 - (now - last)) // 60) + 1} мин.", reply_markup=kb)
+            return
+        mine, fx = await fx_get(me["nick"]), await fx_get(target)
+        if target == me["nick"] or (isinstance(mine.get("bor"), dict) and mine["bor"].get("u", 0) > now):
+            await m.answer("У тебя уже есть одолженное украшение — подожди, пока вернётся 🦝", reply_markup=kb)
+            return
+        lent = fx.get("lent") if isinstance(fx.get("lent"), dict) and fx["lent"].get("u", 0) > now else None
+        pool = [x for x in fx.get("d", []) if not lent]
+        if not pool:
+            await m.answer(f"У @{target} нечего одолжить 🦝", reply_markup=kb)
+            return
+        item = random.choice(pool)
+        fx["lent"] = {"i": item, "to": me["nick"], "u": now + 3600}
+        mine["bor"] = {"i": item, "from": target, "u": now + 3600}
+        await fx_set(target, fx)
+        await fx_set(me["nick"], mine)
+        await db.kv_set(f"borrow:{uid}", now)
+        await m.answer(f"🦝 Ты одолжил у @{target}: {FX_ITEMS[item][0]} — на 1 час, потом вернётся само!", reply_markup=kb)
+        await notify(target, f"🦝 @{me['nick']} одолжил твоё украшение «{FX_ITEMS[item][0]}» на 1 час. Не волнуйся — вернётся само! (Можешь одолжить у него в ответ 😉)")
+
+
+@r.callback_query(F.data.startswith("fr:"))
+async def friend_ok(c: CallbackQuery):
+    await c.answer()
+    me = await db.linked(c.from_user.id)
+    other = c.data[3:]
+    if not me:
+        return
+    for a, b in ((me["nick"], other), (other, me["nick"])):
+        fx = await fx_get(a)
+        fx["f"] = sorted(set(fx.get("f", [])) | {b})[:20]
+        await fx_set(a, fx)
+    await c.message.edit_text(f"👫 Теперь вы с @{other} друзья! Между домами горит неоновая нить, и можно дарить друг другу украшения.")
+    ow = await db.by_nick(other)
+    if ow and ow[0].get("tg_id"):
+        try:
+            await c.bot.send_message(ow[0]["tg_id"], f"👫 @{me['nick']} принял дружбу! Между вашими домами загорелась неоновая нить.")
+        except Exception:
+            pass
+
+
+@r.callback_query(F.data == "frno")
+async def friend_no(c: CallbackQuery):
+    await c.answer()
+    await c.message.edit_text("Ок, без дружбы 🙂")
+
+
+@r.message(Command("roof_clear"))
+async def roof_clear(m: Message):
+    if not is_admin(m.from_user.id):
+        return
+    parts = (m.text or "").split()
+    if len(parts) < 2:
+        await m.answer("<code>/roof_clear ник</code>")
+        return
+    nick = norm_nick(parts[1])
+    fx = await fx_get(nick)
+    fx["rf"] = ""
+    await fx_set(nick, fx)
+    await m.answer(f"✅ Флаг-рисунок @{nick} снят.")
+
+
 async def wishes_get():
     try:
         return json.loads(await db.kv_get("wishes") or "[]")
@@ -390,6 +693,7 @@ async def claim_mini(m, uid, i, code):
     else:
         item = "top"
         fx["top"] = max(int(fx.get("top", 0)), int(time.time())) + 24 * 3600
+    fx["co"] = int(fx.get("co", 0)) + 15
     await fx_set(me["nick"], fx)
     asyncio.create_task(klad_publish(day))
     await m.answer(f"🎁 Сундук открыт! Внутри — <b>{FX_ITEMS[item][0]}</b>. Уже у твоего дома (на сайте через пару минут). Разместить его можно в «⭐ Украсить» → «⚙️ Разместить».",
@@ -424,6 +728,9 @@ async def fx_publish():
             continue
         if fx.get("top", 0) < now:
             fx.pop("top", None)
+        for kk in ("lent", "bor"):
+            if isinstance(fx.get(kk), dict) and fx[kk].get("u", 0) < now:
+                fx.pop(kk, None)
         fx = {a: b for a, b in fx.items() if b not in ("", [], None, 0)}
         if fx:
             out[k[3:]] = fx
@@ -431,6 +738,15 @@ async def fx_publish():
     old, sha = await gh_get("fx.json")
     if old != body:
         await gh_put("fx.json", body, f"Дома жителей: {len(out)} с табличками/украшениями", sha)
+    meta = {"contest": int(await db.kv_get("contest_until") or 0), "deps": json.loads(await db.kv_get("mayor_deps") or "[]")}
+    body = json.dumps(meta, ensure_ascii=False)
+    old, sha = await gh_get("meta.json")
+    if old != body:
+        await gh_put("meta.json", body, "Город: конкурс/замы", sha)
+    body = json.dumps(await duma_get(), ensure_ascii=False, separators=(",", ":"))
+    old, sha = await gh_get("duma.json")
+    if old != body:
+        await gh_put("duma.json", body, "Дума: идеи", sha)
     wl = await wishes_get()
     body = json.dumps(wl[-30:][::-1], ensure_ascii=False, separators=(",", ":"))
     old, sha = await gh_get("wishes.json")
@@ -591,7 +907,8 @@ async def menu_backfill(bot):
 
 def main_menu():
     rows = [[IB(text="🏠 Мой дом", callback_data="home")], [IB(text="👥 Пригласить друга · бонус", callback_data="ref")],
-            [IB(text="🗳 Выборы мэра", callback_data="elect")], [IB(text="🐞 Нашёл баг", callback_data="bug"), IB(text="💡 Идея для города", callback_data="idea")]]
+            [IB(text="🗳 Выборы мэра", callback_data="elect")], [IB(text="🪙 Бонус дня", callback_data="daily"), IB(text="🏛 Дума", callback_data="duma")],
+            [IB(text="🐞 Нашёл баг", callback_data="bug"), IB(text="💡 Идея для города", callback_data="idea")]]
     if CHAT_URL:
         rows.append([IB(text="💬 Чат жителей", url=CHAT_URL)])
     links = []
@@ -834,6 +1151,9 @@ async def bug_text(m: Message, state: FSMContext):
         try:
             await m.bot.send_message(a, ("💡 <b>Идея для города</b>" if idea else "🐞 <b>Баг</b>") + f"\nОт: {tg} · дом {who}")
             await m.bot.copy_message(a, m.chat.id, m.message_id)
+            if idea:
+                n_rep = len(json.loads(await db.kv_get("reports") or "[]")) - 1
+                await m.bot.send_message(a, "Добавить в думу на голосование?", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[IB(text="🏛 В думу", callback_data=f"dumaok:{n_rep}")]]))
         except Exception as e:
             log.warning("bug fwd: %s", e)
     await m.answer("Спасибо за идею! 💡 Передал в мэрию — лучшие сделаем и отметим автора 🏅" if idea else "Спасибо! 🙏 Передал в мэрию. Самым внимательным — титул 🏅", reply_markup=main_menu())
@@ -896,7 +1216,8 @@ async def mayor_json():
             "apply": bot_link("cand"), "candidates": [{"id": c["id"], "nick": c["nick"], "promise": c["promise"], "votes": c["votes"],
                                                         "vote": bot_link(f"vote_{c['id']}")} for c in cands]}
     if winner:
-        return {**base, "stage": 3, "title": f"Мэр города — @{winner}!", "text": "Выборы завершены. Мэр заселился в Ратушу 🏛", "winner": winner, "until": ""}
+        deps = json.loads(await db.kv_get("mayor_deps") or "[]")
+        return {**base, "stage": 3, "title": f"Мэр города — @{winner}!", "text": "Выборы завершены. Мэр заселился в Ратушу 🏛" + (". Заместители: " + ", ".join("@" + d for d in deps) if deps else ""), "winner": winner, "deputies": deps, "until": ""}
     if until:
         return {**base, "stage": 2, "until": msk(until),
                 "text": "Хочешь стать мэром? Подай заявку в боте: нужен свой дом, подписка на ТГ-канал и чат жителей. "
@@ -942,6 +1263,19 @@ async def mayor_finish(bot):
         return
     w = cands[0]
     await db.kv_set("mayor_winner", w["nick"])
+    deps = [c["nick"] for c in cands[1:3] if c.get("votes")]
+    await db.kv_set("mayor_deps", json.dumps(deps, ensure_ascii=False))
+    for nick, title in [(w["nick"], "👑 Мэр города")] + [(d, "🎖 Заместитель мэра") for d in deps]:
+        fx = await fx_get(nick)
+        fx["tt"] = title
+        await fx_set(nick, fx)
+    for d in deps:
+        ow = await db.by_nick(d)
+        if ow and ow[0].get("tg_id"):
+            try:
+                await bot.send_message(ow[0]["tg_id"], "🎖 <b>Ты — заместитель мэра Города подписчиков!</b> Титул уже над твоим домом.")
+            except Exception:
+                pass
     try:
         await bot.send_message(w["tg_id"], f"👑 <b>Ты — мэр Города подписчиков!</b>\n\nЗа тебя проголосовали {w['votes']} жителей. Твой ник теперь на Ратуше 🏛")
     except Exception:
@@ -1320,7 +1654,8 @@ async def claim_klad(m: Message, uid: int, code: str):
     if k:
         await db.klad_use(k)
     await add_ai_gift(uid, me["nick"])
-    await m.answer_photo(photo(cards.klad_card(me["nick"])), caption=(
+    await coins_add(me["nick"], 50)
+    await m.answer_photo(photo(cards.klad_card(me["nick"])), caption="🪙 +50 неонок! " + (
         "<b>Клад твой!</b> 💎\n\nПриз — <b>дом по описанию бесплатно</b>: опиши любую идею, и нейросеть построит её в 3D ✨\n"
         "Нажми <b>«🏙 Открыть город»</b> внизу → <b>«🎨 Мой дом»</b> → <b>«✨ По описанию»</b>."),
         reply_markup=city_keyboard(me["nick"], gift=True))
@@ -1425,7 +1760,8 @@ async def web_app(m: Message, bot: Bot):
         fx = await fx_get(target)
         fx["k"] = int(fx.get("k", 0)) + 1
         await fx_set(target, fx)
-        await m.answer(f"🚪 Тук-тук! Ты постучал к @{target}. У дома уже ❤ {fx['k']}.", reply_markup=city_keyboard(me["nick"]))
+        await coins_add(me["nick"], 2)
+        await m.answer(f"🚪 Тук-тук! Ты постучал к @{target}. У дома уже ❤ {fx['k']}. Тебе 🪙 +2.", reply_markup=city_keyboard(me["nick"]))
         owners = await db.by_nick(target)
         owner = owners[0] if owners else None
         if owner and owner.get("tg_id"):
@@ -1434,6 +1770,26 @@ async def web_app(m: Message, bot: Bot):
                                        reply_markup=city_keyboard(target))
             except Exception:
                 pass
+        return
+    if data.get("t") == "buyc":
+        item = str(data.get("i") or "")
+        if item not in FX_ITEMS or item in COIN_NO:
+            return
+        fx = await fx_get(me["nick"])
+        price = coin_price(item)
+        if int(fx.get("co", 0)) < price:
+            await m.answer(f"Не хватает неонок: нужно 🪙 {price}, у тебя {fx.get('co', 0)}. Забирай «🪙 Бонус дня» каждый день, ищи клад и сундуки!", reply_markup=main_menu())
+            return
+        fx["co"] = int(fx["co"]) - price
+        if item == "top":
+            fx["top"] = max(int(fx.get("top", 0)), int(time.time())) + 24 * 3600
+        else:
+            fx["d"] = sorted(set(fx.get("d", [])) | {item})
+        await fx_set(me["nick"], fx)
+        await m.answer(f"🪙 Куплено: {FX_ITEMS[item][0]} за {price} неонок. Осталось 🪙 {fx['co']}.", reply_markup=city_keyboard(me["nick"]))
+        return
+    if data.get("t") in ("cvote", "ivote", "friend", "gift", "roof", "borrow"):
+        await social_action(m, bot, me, data)
         return
     if data.get("t") == "spin":
         await do_spin(m, m.from_user.id)

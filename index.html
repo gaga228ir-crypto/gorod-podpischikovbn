@@ -152,7 +152,7 @@ window.city = city;
 let houses = [], milestones = MILESTONES_DEFAULT, election = null;
 const loadStep = (p, t) => { $('lbarI').style.width = p + '%'; if (t) $('ltxt').textContent = t; };
 const hideLoad = () => { loadStep(100); setTimeout(() => $('load').classList.add('hide'), 250); setTimeout(() => $('load').remove(), 900); };
-let baseList = [], hallInfo = null, specialRows = [], fxMap = {}, titles = {}, estates = {};
+let baseList = [], hallInfo = null, specialRows = [], fxMap = {}, titles = {}, estates = {}, meta = {}, duma = [];
 async function loadCity() {
   loadStep(20, 'Загружаем жителей…');
   const [base, ms, el, est] = await Promise.all([getJSON('subscribers.json'), getJSON('milestones.json'), getJSON('election.json'), getJSON('estates.json')]); estates = est || {};
@@ -183,6 +183,7 @@ async function loadSpecial(byKey) {
   if (SUPABASE_URL) { try { n += apply(await (await api('residents?select=nick,recipe&status=eq.approved&recipe=not.is.null')).json()); } catch (e) {} }
   if (n) buildCity();
   fxMap = (await getJSON('fx.json')) || {}; city.setFx(fxMap); loadWishes();
+  meta = (await getJSON('meta.json')) || {}; duma = (await getJSON('duma.json')) || []; renderSocialChips();
   titles = (await getJSON('titles.json')) || {}; city.setTitles(titles);
   updateHonor();
 }
@@ -228,7 +229,15 @@ function focus(h, fly = true) {
   const fx = fxMap[h.key] || {}, mine = TG && h.key === ME;
   const T0 = titles[h.key] || (fx.tt ? { t: fx.tt } : null);
   $('cfx').innerHTML = h.gone ? '' : (h.isEstate ? '<span class="k" style="color:#a6ff8f">🏡 Усадьба</span>' : '') + (T0 ? `<span class="k" style="color:var(--gold)">🏅 ${esc(T0.t)}</span>` : '') + (fx.k ? `<span class="k">❤ ${fx.k}</span>` : '') + (fx.s ? `<span class="k" style="color:#fff">💬 ${esc(fx.s)}</span>` : '')
-    + (mine ? '<button type="button" id="bfx">✏️ ТАБЛИЧКА</button><button type="button" id="bshop">⭐ УКРАСИТЬ</button>' : TG && ME ? '<button type="button" id="bknock">🚪 ПОСТУЧАТЬ</button>' : '');
+    + (fx.f && fx.f.length ? `<span class="k" style="color:#ff8fd0">👫 ${fx.f.slice(0, 3).map(n => '@' + esc(n)).join(', ')}</span>` : '')
+    + (contestOn() && fx.cv ? `<span class="k" style="color:var(--gold)">🏆 ${fx.cv}</span>` : '')
+    + (mine ? `<span class="k" style="color:#ffd23f">🪙 ${fx.co || 0}</span><button type="button" id="bfx">✏️ ТАБЛИЧКА</button><button type="button" id="bshop">⭐ УКРАСИТЬ</button><button type="button" id="broof">🎨 ФЛАГ</button>`
+      : TG && ME ? '<button type="button" id="bknock">🚪 ПОСТУЧАТЬ</button><button type="button" id="bborrow">🦝 ОДОЛЖИТЬ</button>'
+        + (((fxMap[ME] || {}).f || []).includes(h.key) ? '<button type="button" id="bgift">🎁 ПОДАРИТЬ</button>' : '<button type="button" id="bfriend">👫 ДРУЖИТЬ</button>')
+        + (contestOn() ? '<button type="button" id="bcvote" style="background:var(--gold);color:#1a1238">🏆 ГОЛОС</button>' : '') : '');
+  const on = (id, fn) => { if ($(id)) $(id).onclick = fn; };
+  on('broof', () => openRoof(h)); on('bborrow', () => sendTG({ t: 'borrow', n: h.key })); on('bfriend', () => sendTG({ t: 'friend', n: h.key }));
+  on('bgift', () => openGift(h)); on('bcvote', () => sendTG({ t: 'cvote', n: h.key }));
   if ($('bfx')) $('bfx').onclick = () => openFx(h); if ($('bshop')) $('bshop').onclick = () => openShop(h); if ($('bknock')) $('bknock').onclick = () => sendTG({ t: 'knock', n: h.key });
   card.classList.add('show'); history.replaceState(null, '', location.search + '#' + encodeURIComponent(h.key));
 }
@@ -271,16 +280,19 @@ const SHOP = [['fireworks', '🎆 Салют над домом', 15], ['ufo', '�
 function openShop(h) {
   const have = new Set((fxMap[h.key] || {}).d || []);
   sheet.innerHTML = `<h2>⭐ Украсить дом</h2><p>Украшения остаются у дома навсегда (кроме «Дома дня» — он на сутки). Оплата звёздами Telegram.</p>
-    ${SHOP.map(([k, t, p]) => `<div class="shop"><span>${t}</span>${have.has(k) || (k === 'estate' && h.isEstate) ? (k === 'top' || k === 'estate' ? '<b style="color:var(--gold)">✓ есть</b>' : `<button type="button" class="ghost" data-place="${k}">⚙️ РАЗМЕСТИТЬ</button>`) : `<button type="button" data-buy="${k}">${p} ⭐</button>`}</div>`).join('')}
+    <p>У тебя: <b style="color:var(--gold)">🪙 ${(fxMap[h.key] || {}).co || 0} неонок</b> — их дают за «🪙 Бонус дня» в боте, клад, сундуки и стуки.</p>
+    ${SHOP.map(([k, t, p]) => `<div class="shop"><span>${t}</span>${have.has(k) || (k === 'estate' && h.isEstate) ? (k === 'top' || k === 'estate' ? '<b style="color:var(--gold)">✓ есть</b>' : `<button type="button" class="ghost" data-place="${k}">⚙️ РАЗМЕСТИТЬ</button>`) : `<button type="button" data-buy="${k}">${p} ⭐</button>${k !== 'estate' ? `<button type="button" class="ghost" data-buyc="${k}">${p * 5} 🪙</button>` : ''}`}</div>`).join('')}
+    ${(fxMap[h.key] || {}).rf ? '<div class="shop"><span>🎨 Флаг-рисунок</span><button type="button" class="ghost" data-place="roof">⚙️ РАЗМЕСТИТЬ</button></div>' : ''}
     ${(fxMap[h.key] || {}).s ? '<div class="shop"><span>💬 Табличка над домом</span><button type="button" class="ghost" data-place="sign">⚙️ РАЗМЕСТИТЬ</button></div>' : ''}
     <div class="btns"><button class="ghost" id="seeEst" type="button">👀 ПОСЁЛОК УСАДЕБ</button><button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button></div>`;
   sheet.querySelectorAll('[data-buy]').forEach(b => b.onclick = () => sendTG({ t: 'buy', i: b.dataset.buy }));
+  sheet.querySelectorAll('[data-buyc]').forEach(b => b.onclick = () => sendTG({ t: 'buyc', i: b.dataset.buyc }));
   sheet.querySelectorAll('[data-place]').forEach(b => b.onclick = () => openPlace(h, b.dataset.place));
   if ($('seeEst')) $('seeEst').onclick = () => { modal.classList.remove('show'); const c = city.estateCenter; if (c) city.flyTo(c.x, c.z, 16); };
   modal.classList.add('show'); closeBtn();
 }
 
-const PLACE_NAME = { fireworks: '🎆 Салют', ufo: '🛸 НЛО', rainbow: '🌈 Радуга', xmas: '🎄 Ёлка', snowman: '⛄ Снеговик', sign: '💬 Табличка', balloons: '🎈 Шары', cat: '🐱 Кот', flag: '🚩 Флаг', lanterns: '🏮 Фонарики', pool: '🏊 Бассейн', crystal: '💎 Кристалл', rocket: '🚀 Ракета', halo: '✨ Нимб', ghost: '👻 Призрак', flowers: '🌷 Клумба' };
+const PLACE_NAME = { fireworks: '🎆 Салют', ufo: '🛸 НЛО', rainbow: '🌈 Радуга', xmas: '🎄 Ёлка', snowman: '⛄ Снеговик', sign: '💬 Табличка', balloons: '🎈 Шары', cat: '🐱 Кот', flag: '🚩 Флаг', lanterns: '🏮 Фонарики', pool: '🏊 Бассейн', crystal: '💎 Кристалл', rocket: '🚀 Ракета', halo: '✨ Нимб', ghost: '👻 Призрак', flowers: '🌷 Клумба', roof: '🎨 Флаг' };
 function openPlace(h, k) {
   const fx = fxMap[h.key] = fxMap[h.key] || {}, old = JSON.stringify(fx.p || {}); fx.p = fx.p || {};
   const v = (fx.p[k] || [0, 0, 1]).slice(); while (v.length < 3) v.push(v.length === 2 ? 1 : 0);
@@ -334,6 +346,56 @@ function startRide() {
   stop.textContent = '🎢 ВЫЙТИ С ГОРОК'; stop.style.display = '';
   stop.onclick = () => city.rideStop();
   city.rideStart(target, () => { stop.style.display = 'none'; if (target) focus(target, false); });
+}
+
+// ---------- дружба, флаг, дума, конкурс ----------
+const contestOn = () => (meta.contest || 0) * 1000 > Date.now();
+function openGift(h) {
+  const has = new Set((fxMap[h.key] || {}).d || []), myCo = (fxMap[ME] || {}).co || 0;
+  const list = SHOP.filter(([k]) => !['top', 'estate'].includes(k) && !has.has(k));
+  sheet.innerHTML = `<h2>🎁 Подарок другу @${esc(h.key)}</h2><p>Украшение появится у его дома. Платишь неонками — у тебя 🪙 ${myCo}.</p>
+    ${list.map(([k, t, p]) => `<div class="shop"><span>${t}</span><button type="button" data-gift="${k}">${p * 5} 🪙</button></div>`).join('') || '<p>У друга уже есть всё 😄</p>'}
+    <button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button>`;
+  sheet.querySelectorAll('[data-gift]').forEach(b => b.onclick = () => sendTG({ t: 'gift', n: h.key, i: b.dataset.gift }));
+  modal.classList.add('show'); closeBtn();
+}
+function openRoof(h) {
+  const PAL = ['', '#ffffff', '#1a1238', '#ff3d7f', '#ffd23f', '#5ef2ff', '#a6ff8f', '#c084fc', '#ff7a1a'];
+  let px = ((fxMap[h.key] || {}).rf || '0'.repeat(64)).split(''), col = 3;
+  const draw = () => { $('rg').innerHTML = px.map((c, i) => `<i data-i="${i}" style="background:${PAL[+c] || 'rgba(255,255,255,.06)'}"></i>`).join(''); };
+  sheet.innerHTML = `<h2>🎨 Флаг над домом</h2><p>Нарисуй картинку 8×8 — она будет развеваться на флаге над твоим домом. Нажимай клетки.</p>
+    <div class="opts">${PAL.map((c, i) => `<button class="opt sw${i === col ? ' on' : ''}" data-col="${i}" type="button" style="background:${c || 'rgba(255,255,255,.08)'}">${c ? '' : '🧽'}</button>`).join('')}</div>
+    <div id="rg" style="display:grid;grid-template-columns:repeat(8,1fr);gap:2px;width:min(70vw,260px);margin:4px auto;aspect-ratio:1"></div>
+    <style>#rg i{display:block;border-radius:3px;cursor:pointer}</style>
+    <div class="btns"><button class="ghost" id="rclr" type="button">ОЧИСТИТЬ</button><button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button><button id="rgo" type="button">ПОВЕСИТЬ</button></div>`;
+  draw();
+  sheet.querySelectorAll('[data-col]').forEach(b => b.onclick = () => { col = +b.dataset.col; sheet.querySelectorAll('[data-col]').forEach(x => x.classList.toggle('on', x === b)); });
+  $('rg').onclick = e => { const i = e.target.dataset.i; if (i == null) return; px[+i] = String(col); draw(); };
+  $('rclr').onclick = () => { px = '0'.repeat(64).split(''); draw(); };
+  $('rgo').onclick = () => sendTG({ t: 'roof', p: px.join('') });
+  modal.classList.add('show'); closeBtn();
+}
+function openDuma() {
+  const ideas = [...duma].sort((a, b) => (b.up - b.down) - (a.up - a.down));
+  sheet.innerHTML = `<h2>🏛 Городская дума</h2><p>Идеи жителей. Голосуй 👍 или 👎 — идеи с лучшим счётом мэрия делает первыми. Свою идею предложи в боте: «💡 Идея для города».</p>
+    ${ideas.map(x => `<div class="cand"><div style="flex:1;min-width:0"><div class="p" style="color:#fff">${esc(x.text)}</div><div class="p" style="font-size:12px">${x.nick ? '@' + esc(x.nick) : ''} · 👍 ${x.up || 0} · 👎 ${x.down || 0}</div></div>
+      ${TG ? `<div style="display:flex;flex-direction:column;gap:6px"><button class="vbtn" type="button" data-iv="${x.id}" data-v="1">👍</button><button class="vbtn ghost" type="button" data-iv="${x.id}" data-v="-1">👎</button></div>` : ''}</div>`).join('') || '<p>Идей пока нет — предложи первую!</p>'}
+    <button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button>`;
+  sheet.querySelectorAll('[data-iv]').forEach(b => b.onclick = () => sendTG({ t: 'ivote', i: +b.dataset.iv, v: +b.dataset.v }));
+  modal.classList.add('show'); closeBtn();
+}
+function openContest() {
+  const top = Object.entries(fxMap).filter(([k, f]) => f.cv && city.byKey.get(k)).sort((a, b) => b[1].cv - a[1].cv).slice(0, 10);
+  const left = Math.max(0, Math.round(((meta.contest || 0) * 1000 - Date.now()) / 3600e3));
+  sheet.innerHTML = `<h2>🏆 Самый красивый дом</h2><p>Нажми на понравившийся дом → «🏆 ГОЛОС». Один голос на жителя, за свой нельзя. До конца — ~${left} ч. Победителю — титул и «Дом дня» на неделю!</p>
+    ${top.map(([k, f], i) => `<div class="cand"><b>${i + 1}</b><div style="flex:1"><button class="opt hn" data-n="${esc(k)}" type="button">@${esc(k)}</button></div><div class="p">🏆 ${f.cv}</div></div>`).join('') || '<p>Голосов пока нет — будь первым!</p>'}
+    <button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button>`;
+  sheet.querySelectorAll('.hn').forEach(b => b.onclick = () => { const h = city.byKey.get(b.dataset.n); if (h) { modal.classList.remove('show'); focus(h); } });
+  modal.classList.add('show'); closeBtn();
+}
+function renderSocialChips() {
+  if (!$('dumaChip')) { const c = document.createElement('button'); c.className = 'chip'; c.id = 'dumaChip'; c.textContent = '🏛 ДУМА'; c.onclick = openDuma; $('chips').appendChild(c); }
+  if (contestOn() && !$('contestChip')) { const c = document.createElement('button'); c.className = 'chip'; c.id = 'contestChip'; c.textContent = '🏆 КОНКУРС'; c.onclick = openContest; $('chips').appendChild(c); }
 }
 
 // ---------- доска почёта и кандидаты ----------
@@ -472,7 +534,7 @@ function renderElection() {
         + (c.votes != null ? `<div class="vbar"><i style="width:${pc}%"></i></div><div class="p">🗳 ${c.votes} · ${pc}%</div>` : '')
         + `</div><div style="display:flex;flex-direction:column;gap:6px;align-self:center">${city.byKey.get(norm(c.nick)) ? `<button class="vbtn ghost" type="button" data-home="${esc(norm(c.nick))}">🏠 ДОМ</button>` : ''}${open2 && c.vote ? `<a class="btn vbtn tglink" href="${esc(c.vote)}" target="_blank" rel="noopener">ЗА</a>` : ''}</div></div>`; }).join('')
       || (open2 ? '<p>Кандидатов пока нет — стань первым! 🙋</p>' : '');
-    sheet.innerHTML = `<h2>${esc(E.title || 'Выборы мэра')}</h2><p>${esc(E.text || '')}</p>${cands}${E.until ? `<p>⏳ До: <b>${esc(E.until)}</b></p>` : ''}
+    sheet.innerHTML = `<h2>${esc(E.title || 'Выборы мэра')}</h2><p>${esc(E.text || '')}</p>${(E.deputies || []).length ? `<p>🎖 Заместители мэра: <b>${E.deputies.map(d => '@' + esc(d)).join(', ')}</b></p>` : ''}${cands}${E.until ? `<p>⏳ До: <b>${esc(E.until)}</b></p>` : ''}
       <div class="btns">${open2 && E.apply ? `<a class="btn tglink" href="${esc(E.apply)}" target="_blank" rel="noopener">🙋 СТАТЬ КАНДИДАТОМ</a>` : ''}${E.link && !open2 ? `<a class="btn" href="${esc(E.link)}" target="_blank" rel="noopener">${esc(E.button || 'УЧАСТВОВАТЬ')}</a>` : ''}<button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button></div>`;
     sheet.querySelectorAll('.tglink').forEach(a => a.onclick = e => { if (TG && tg.openTelegramLink) { e.preventDefault(); tg.openTelegramLink(a.href); } });
     sheet.querySelectorAll('.more').forEach(b => b.onclick = () => { b.parentElement.textContent = b.dataset.full; });
