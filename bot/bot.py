@@ -904,6 +904,9 @@ async def do_vote(m: Message, uid: int, cid: int, bot, retry_cb=None):
     me = await resident_ok(m, uid)
     if not me:
         return
+    if cd.get("tg_id") == uid or norm_nick(cd["nick"]) == me["nick"]:
+        await m.answer("За себя голосовать нельзя 🙂 Зови друзей — пусть голосуют за тебя!", reply_markup=main_menu())
+        return
     prev = await db.vote_get(uid)
     if prev:
         p = await db.cand_get(prev)
@@ -921,6 +924,24 @@ async def do_vote(m: Message, uid: int, cid: int, bot, retry_cb=None):
 async def vote_cb(c: CallbackQuery):
     await c.answer()
     await do_vote(c.message, c.from_user.id, int(c.data.split(":")[1]), c.bot)
+
+
+@r.message(Command("mayor_noself"))
+async def mayor_noself(m: Message):
+    """Убрать голоса кандидатов за самих себя (после запрета самоголосования)."""
+    if not is_admin(m.from_user.id) or not hasattr(db, "c"):
+        return
+    rows = db.c.execute("select v.tg_id, c.nick from votes v join candidates c on c.id = v.cand_id where c.tg_id = v.tg_id").fetchall()
+    for uid, _ in rows:
+        db.c.execute("delete from votes where tg_id=?", (uid,))
+    db.c.commit()
+    _mayor_dirty.set()
+    for uid, nick in rows:
+        try:
+            await m.bot.send_message(uid, "🗳 Голоса за самого себя больше не считаются — твой голос снят. Можешь отдать его другому кандидату в «🗳 Выборы мэра» 🙂")
+        except Exception:
+            pass
+    await m.answer("Сняты голоса за себя: " + (", ".join("@" + n for _, n in rows) or "таких нет") + ". Сайт обновится через пару минут.")
 
 
 @r.message(Command("mayor_start"))
