@@ -441,9 +441,39 @@ def sakura_estate():
     return h.r
 
 
+def mandarin_house():
+    """#20 @off.night_eclipse.off (клад): Дом-Мандарин."""
+    h = H("Дом-Мандарин", "warm")
+    orange, dark = "#ff8c1a", "#e86f00"
+    h.p("box", 0, 0, 0, .94, .03, .94, "#4f7a46")
+    h.p("cyl", 0, .03, 0, .5, .03, .5, "#d9a066")  # подставка
+    h.p("sphere", 0, .05, 0, .88, .74, .88, orange, .18)  # сам мандарин
+    for x, y, z in ((-.3, .5, .25), (.28, .62, .2), (.05, .7, .28), (-.33, .28, -.1), (.36, .3, .05), (.15, .2, .36)):  # поры кожуры
+        h.p("sphere", x, y, z, .05, .05, .05, dark)
+    for x in (-.17, .17):  # круглые окна первого этажа
+        h.p("sphere", x, .3, .405, .15, .15, .06, "#ffe08a", .9)
+    h.p("sphere", 0, .52, .41, .13, .13, .06, "#ffe08a", .9)  # окно второго этажа
+    h.p("box", 0, .05, .41, .15, .2, .04, "#6b3a1a")  # дверь
+    h.p("sphere", 0, .21, .41, .15, .09, .04, "#6b3a1a")
+    h.p("sphere", .05, .13, .435, .025, .025, .02, "#ffd23f", .8)  # ручка
+    h.p("box", 0, .03, .5, .24, .03, .1, "#c9a46a")  # ступенька
+    h.p("cyl", 0, .77, 0, .04, .09, .04, "#6b4a2e")  # черешок
+    h.p("sphere", .13, .8, .02, .3, .05, .13, "#2f9a55", .1, r=20)  # листья
+    h.p("sphere", -.11, .81, -.04, .24, .05, .11, "#3fae62", .1, r=-30)
+    h.p("cyl", -.22, .6, -.15, .07, .16, .07, "#7a5030")  # труба
+    h.p("sphere", -.22, .78, -.15, .09, .06, .09, "#e8e8f0", .3)  # дымок
+    h.p("sphere", -.18, .86, -.18, .07, .05, .07, "#e8e8f0", .3)
+    for x, z in ((.4, .38), (-.4, .4)):  # дольки-фонарики у входа
+        h.p("dome", x, .03, z, .12, .08, .12, orange, .6)
+        h.p("cyl", x, .03, z, .015, .03, .015, "#ffd23f", .9)
+    for x, z in ((.42, -.3), (-.42, -.35)):  # кусты
+        h.p("sphere", x, .03, z, .16, .14, .16, "#2f7a4a", .05)
+    return h.r
+
+
 if __name__ == "__main__":
     out = {"3": treehouse(), "4": lambo_house(), "6": obsidian_cliff(), "9": spider_tower(), "7": tv_tower(), "10": japanese_house(),
-           "11": hero_house(), "12": crown_palace(), "13": sand_castle(), "16": arabian_castle(), "17": horror_house(), "19": sakura_estate()}
+           "11": hero_house(), "12": crown_palace(), "13": sand_castle(), "16": arabian_castle(), "17": horror_house(), "19": sakura_estate(), "20": mandarin_house()}
     for v in out.values():
         v["publish"] = True  # бот сам поставит в город и напишет жителю (handmade_loop)
     for k, v in out.items():
