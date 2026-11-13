@@ -403,6 +403,26 @@ function openRoof(h) {
   $('rgo').onclick = () => sendTG({ t: 'roof', p: px.join('') });
   modal.classList.add('show'); closeBtn();
 }
+// «Мой дом» (идея жителей): всё о своём доме в одном месте, без поиска по нику
+function openProfile() {
+  const h = city.byKey.get(ME); if (!h) { toastMsg('Дом не найден — привяжи ник в боте: «🏠 Мой дом»'); return; }
+  const fx = fxMap[ME] || {}, T0 = titles[ME] || (fx.tt ? { t: fx.tt } : null), off = new Set(fx.off || []), ad = city.address(h);
+  const mine = SHOP.filter(([k]) => (fx.d || []).includes(k) && k !== 'top' && k !== 'estate');
+  sheet.innerHTML = `<h2>👤 @${esc(ME)}</h2><p>📍 ${esc(ad.text)} · ${esc(ad.district)}${h.isEstate ? ' · 🏡 Усадьба' : ''}</p>
+    <p><b style="color:#ffd23f">🪙 ${fx.co || 0} неонок</b>${fx.k ? ` · ❤ ${fx.k} стуков` : ''}${T0 ? ` · 🏅 ${esc(T0.t)}` : ''}${fx.mc ? ' · 💎 Меценат' : ''}${(fx.f || []).length ? ` · 👫 ${fx.f.length}` : ''}</p>
+    <div class="btns" style="flex-wrap:wrap"><button type="button" id="pGo">🏠 ПОКАЗАТЬ ДОМ</button><button type="button" class="ghost" id="pLook">🔄 ОСМОТРЕТЬ</button></div>
+    <div class="btns" style="flex-wrap:wrap"><button type="button" class="ghost" id="pSign">✏️ ТАБЛИЧКА</button><button type="button" class="ghost" id="pRoof">🎨 ФЛАГ</button><button type="button" class="ghost" id="pShop">⭐ УКРАСИТЬ</button><button type="button" class="ghost" id="pEst">🏡 УСАДЬБЫ</button></div>
+    <p><b>Мои украшения</b> — можно снять и вернуть в любой момент, они остаются твоими.</p>
+    ${mine.map(([k, t]) => `<div class="shop"><span style="${off.has(k) ? 'opacity:.45' : ''}">${t}</span><button type="button" class="ghost" data-hide="${k}">${off.has(k) ? '↩️ ВЕРНУТЬ' : '🙈 СНЯТЬ'}</button></div>`).join('') || '<p>Пока нет — загляни в «⭐ УКРАСИТЬ».</p>'}
+    <button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button>`;
+  const go = () => { modal.classList.remove('show'); focus(h); };
+  $('pGo').onclick = go; $('pLook').onclick = () => { go(); startOrbit(h); };
+  $('pSign').onclick = () => { go(); setTimeout(() => $('bfx') && $('bfx').click(), 50); };
+  $('pRoof').onclick = () => openRoof(h); $('pShop').onclick = () => openShop(h); $('pEst').onclick = openEstates;
+  sheet.querySelectorAll('[data-hide]').forEach(b => b.onclick = () => { const k = b.dataset.hide, f = fxMap[ME] = fxMap[ME] || {}, o = new Set(f.off || []);
+    o.has(k) ? o.delete(k) : o.add(k); f.off = [...o]; city.setFx(fxMap); b.textContent = '…'; sendTG({ t: 'hide', i: k }); });
+  modal.classList.add('show'); closeBtn();
+}
 function openEstates() {
   const c = city.estateCenter; if (c) city.flyTo(c.x, c.z, 16);
   const own = Object.entries(estates).filter(([k]) => city.byKey.get(k)).sort((a, b) => a[1] - b[1]), free = 36 - Object.keys(estates).length;
@@ -461,6 +481,7 @@ function openHonor() {
   const d = honorData(), li = (nick, t) => `<div class="cand"><div style="flex:1;min-width:0"><div class="n"><button class="opt hn" data-n="${esc(norm(nick))}" type="button">@${esc(norm(nick))}</button></div>${t ? `<div class="p">${esc(t)}</div>` : ''}</div></div>`;
   sheet.innerHTML = `<h2>🏆 Доска почёта</h2><p>Стоит у ратуши в центре города. Нажми на ник — покажу дом.</p>
     ${d.cands.length ? '<p><b>🗳 Кандидаты в мэры</b></p>' + d.cands.map(c => li(c.nick, `${c.votes || 0} голосов`)).join('') : ''}
+    ${(meta.donors || []).length ? '<p><b>💎 Поддержали город</b></p>' + meta.donors.map(([k, n], i) => li(k, `${['🥇', '🥈', '🥉'][i] || '💎'} ${n} ⭐`)).join('') : ''}
     ${d.tit.length ? '<p><b>🏅 Титулы жителей</b></p>' + d.tit.map(([k, T]) => li(k, T.t + (T.why ? ' — ' + T.why : ''))).join('') : ''}
     ${d.tops.length ? '<p><b>🔦 Дом дня</b></p>' + d.tops.map(([k]) => li(k)).join('') : ''}
     ${d.pop.length ? '<p><b>❤ Популярные дома</b></p>' + d.pop.slice(0, 10).map(([k, f]) => li(k, `❤ ${f.k} стуков`)).join('') : ''}
@@ -493,6 +514,7 @@ function applyAmbience() {
 function initAmbience() {
   if (!$('parkChip')) { const pc = document.createElement('button'); pc.className = 'chip'; pc.id = 'parkChip'; pc.textContent = parkOpen() ? '🎡 ПАРК' : '🎡 ПАРК · СКОРО';
     pc.onclick = () => { const lm = city.landmarks[1]; if (lm) city.flyTo(lm.position.x, lm.position.z, 7); if (!parkOpen()) openPark('park'); }; $('chips').appendChild(pc); }
+  if (TG && ME && !$('meChip')) { const mc = document.createElement('button'); mc.className = 'chip'; mc.id = 'meChip'; mc.textContent = '👤 МОЙ ДОМ'; mc.onclick = openProfile; $('chips').prepend(mc); }
   if (!$('estChip')) { const ec = document.createElement('button'); ec.className = 'chip'; ec.id = 'estChip'; ec.textContent = '🏡 УСАДЬБЫ'; ec.onclick = openEstates; $('chips').appendChild(ec); }
   if (!$('honorChip')) { const hc = document.createElement('button'); hc.className = 'chip'; hc.id = 'honorChip'; hc.textContent = '🏆 ДОСКА ПОЧЁТА'; hc.onclick = openHonor; $('chips').appendChild(hc); }
   if (ambChip) { if (!ambChip.isConnected) $('chips').appendChild(ambChip); return; } ambChip = document.createElement('button'); ambChip.className = 'chip klad'; ambChip.title = 'Время суток и погода'; $('chips').appendChild(ambChip);

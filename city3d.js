@@ -752,7 +752,7 @@ export class City3D {
       if (fx.c) { const ring = new THREE.Mesh(new THREE.RingGeometry(.5, .6, 40), new THREE.MeshBasicMaterial({ color: fx.c, transparent: true, opacity: .9, toneMapped: false, side: THREE.DoubleSide }));
         ring.rotation.x = -Math.PI / 2; ring.position.y = .035; G.add(ring); }
       if (fx.s) { const sg = textSprite('💬 ' + fx.s, { color: '#fff', bg: 'rgba(255,61,127,.9)', scale: .0016, size: 48 }); sg.position.y = top + .55; G.add(place(sg, 'sign')); }
-      const d = new Set(fx.d || []), nowS = Date.now() / 1000;
+      const d = new Set(fx.d || []), nowS = Date.now() / 1000; for (const o of fx.off || []) d.delete(o);
       if (fx.lent && fx.lent.u > nowS) d.delete(fx.lent.i);
       if (fx.bor && fx.bor.u > nowS) d.add(fx.bor.i);
       if (fx.rf && (fx.rf.length === 64 || fx.rf.length === 225)) { const PAL = ['', '#ffffff', '#1a1238', '#ff3d7f', '#ffd23f', '#5ef2ff', '#a6ff8f', '#c084fc', '#ff7a1a'], N = fx.rf.length === 64 ? 8 : 15, S = N * 8;

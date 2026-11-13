@@ -572,6 +572,16 @@ async def social_action(m, bot, me, data):
         await fx_set(target, fx)
         await m.answer(f"🎁 Подарил @{target}: {FX_ITEMS[item][0]}! Осталось 🪙 {mine['co']}.", reply_markup=kb)
         await notify(target, f"🎁 Твой друг @{me['nick']} подарил тебе {FX_ITEMS[item][0]}! Уже у твоего дома.")
+    elif t == "hide":  # снять / вернуть своё украшение (остаётся купленным)
+        item = str(data.get("i") or "")
+        fx = await fx_get(me["nick"])
+        if item not in fx.get("d", []):
+            return
+        off = set(fx.get("off", []))
+        off ^= {item}
+        fx["off"] = sorted(off)
+        await fx_set(me["nick"], fx)
+        await m.answer(f"{FX_ITEMS[item][0] if item in FX_ITEMS else item}: {'снято — вернуть можно в «Мой дом»' if item in off else 'снова у дома'} ✅", reply_markup=kb)
     elif t == "roof":
         px = re.sub(r"[^0-8]", "", str(data.get("p") or ""))[:225]
         if len(px) not in (64, 225):
@@ -688,6 +698,34 @@ async def roof_moderate(c: CallbackQuery, bot: Bot):
             pass
 
 
+@r.message(Command("reward"))
+async def reward_cmd(m: Message, bot: Bot):
+    """/reward ник неонки [титул] — наградить жителя (например, за идею)."""
+    if not is_admin(m.from_user.id):
+        return
+    parts = (m.text or "").split(maxsplit=3)
+    if len(parts) < 3 or not parts[2].lstrip("-").isdigit():
+        await m.answer("<code>/reward ник 100 💡 Автор идеи</code>\nНеонки обязательны (можно 0), титул — по желанию.")
+        return
+    nick, coins = norm_nick(parts[1].lstrip("@")), int(parts[2])
+    title = parts[3].strip()[:28] if len(parts) > 3 else ""
+    fx = await fx_get(nick)
+    fx["co"] = int(fx.get("co", 0)) + coins
+    if title:
+        fx["tt"] = title
+    await fx_set(nick, fx)
+    txt = f"🎁 Мэрия наградила тебя: {'+' + str(coins) + ' 🪙' if coins else ''}{' и титул «' + title + '»' if title else ''}! Спасибо, что делаешь город лучше 🫶"
+    ow = await db.by_nick(nick)
+    sent = False
+    if ow and ow[0].get("tg_id"):
+        try:
+            await bot.send_message(ow[0]["tg_id"], txt, reply_markup=city_keyboard(nick))
+            sent = True
+        except Exception:
+            pass
+    await m.answer(f"✅ @{nick}: 🪙 {fx['co']}{', титул «' + title + '»' if title else ''}. {'Житель получил сообщение.' if sent else 'Житель не привязан к боту — сообщение не отправлено.'}")
+
+
 @r.message(Command("roof_clear"))
 async def roof_clear(m: Message):
     if not is_admin(m.from_user.id):
@@ -798,6 +836,8 @@ async def fx_publish():
     if old != body:
         await gh_put("fx.json", body, f"Дома жителей: {len(out)} с табличками/украшениями", sha)
     meta = {"contest": int(await db.kv_get("contest_until") or 0), "deps": json.loads(await db.kv_get("mayor_deps") or "[]")}
+    if hasattr(db, "donors"):  # топ поддержавших город звёздами — для доски почёта
+        meta["donors"] = sorted(([n, s_] for n, s_ in (await db.donors()).items() if s_ > 0), key=lambda x: -x[1])[:10]
     body = json.dumps(meta, ensure_ascii=False)
     old, sha = await gh_get("meta.json")
     if old != body:
@@ -2011,7 +2051,7 @@ async def web_app(m: Message, bot: Bot):
         await fx_set(me["nick"], fx)
         await m.answer(f"🪙 Куплено: {FX_ITEMS[item][0]} за {price} неонок. Осталось 🪙 {fx['co']}.", reply_markup=city_keyboard(me["nick"]))
         return
-    if data.get("t") in ("cvote", "ivote", "friend", "gift", "roof", "borrow"):
+    if data.get("t") in ("cvote", "ivote", "friend", "gift", "roof", "borrow", "hide"):
         await social_action(m, bot, me, data)
         return
     if data.get("t") == "spin":
