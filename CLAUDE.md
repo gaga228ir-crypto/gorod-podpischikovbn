@@ -75,3 +75,5 @@ TikTok @eben51041: каждый подписчик получает дом со 
 ## Видео
 Серия 2 собрана через Playwright+ffmpeg (сцены sc0..7.mp4 → concat + аудио), озвучка ElevenLabs Stanislav.
 Серия 3 (43 с, хук + как получить дом + выборы): `Desktop/gorod/video3/` (director.js, render.py, music.py — свой синтвейв). ElevenLabs из РФ заблокирован — озвучку Михаил делает сам и присылает файлы.
+
+- Журнал чата жителей: бот пишет каждое сообщение групп в `bot/chat_log.jsonl` (в папке gorod-podpischikovbn-main/bot, в git не идёт). Читать его вместо скриншотов Telegram. Нужен выключенный privacy mode у бота (BotFather → /setprivacy → Disable) или права админа в чате.
