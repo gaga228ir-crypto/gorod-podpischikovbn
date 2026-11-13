@@ -472,12 +472,61 @@ def mandarin_house():
     return h.r
 
 
+def gothic_castle():
+    """#22 @svivka_: огромный готический замок, много высоких башен, массивные стены, острые шпили,
+    светлый камень с сиреневым оттенком, фиолетовый туман у основания, тёмное фэнтези. Лимит движка — 48 деталей."""
+    import math
+    h = H("Сумеречная цитадель", "cool")
+    stone, stone2, slate, glow, gold = "#ddd2ef", "#c4b5e2", "#3b2f5c", "#c084fc", "#e9d8ff"
+    h.p("box", 0, 0, 0, .98, .05, .98, "#5b4f7a")  # скальное основание (1)
+    # массивные стены по периметру (4)
+    for x, z, w, d in ((0, -.36, .66, .09), (-.36, 0, .09, .66), (.36, 0, .09, .66), (-.22, .36, .22, .09)):
+        h.p("box", x, .05, z, w, .32, d, stone2, .03)
+    h.p("box", .22, .05, .36, .22, .32, .09, stone2, .03)  # (5)
+    # главный корпус-собор с окнами и острой крышей (3)
+    h.p("box", 0, .05, -.08, .36, .62, .3, stone, .05, win=True)
+    h.p("pyramid", 0, .67, -.08, .42, .3, .34, slate, .05)
+    # фасад: стрельчатый портал, роза-окно, витражи (6) -> 14
+    h.p("box", 0, .05, .075, .12, .24, .015, "#2a1f45")
+    h.p("cone", 0, .29, .075, .12, .1, .015, "#2a1f45")
+    h.p("sphere", 0, .46, .076, .13, .13, .015, glow, 1)
+    h.p("torus", 0, .46, .08, .14, .012, .14, gold, .6)
+    for x in (-.12, .12):
+        h.p("box", x, .3, .072, .045, .2, .012, glow, .9)
+    # центральная главная башня — самый высокий шпиль (4) -> 18
+    h.p("cyl", 0, .67, -.16, .17, .62, .17, stone, .05, win=True)
+    h.p("torus", 0, 1.29, -.16, .21, .02, .21, gold, .6)
+    h.p("cone", 0, 1.29, -.16, .2, .62, .2, slate, .08)
+    h.p("sphere", 0, 1.9, -.16, .045, .045, .045, glow, 1)
+    # четыре угловые башни с высокими шпилями (16) -> 34
+    for x in (-.36, .36):
+        for z in (-.36, .36):
+            h.p("cyl", x, .05, z, .16, .82, .16, stone, .05, win=True)
+            h.p("torus", x, .87, z, .2, .025, .2, stone2)
+            h.p("cone", x, .87, z, .19, .52, .19, slate, .08)
+            h.p("sphere", x, 1.38, z, .035, .035, .035, glow, 1)
+    # две башни у собора (6) -> 40
+    for x in (-.21, .21):
+        h.p("cyl", x, .05, .02, .11, .8, .11, stone2, .05, win=True)
+        h.p("cone", x, .85, .02, .13, .44, .13, slate, .08)
+        h.p("sphere", x, 1.28, .02, .03, .03, .03, glow, 1)
+    # надвратная башня с воротами (3) -> 43
+    h.p("box", 0, .05, .36, .2, .44, .12, stone, .05)
+    h.p("box", 0, .05, .422, .09, .2, .01, "#2a1f45")
+    h.p("pyramid", 0, .49, .36, .22, .18, .14, slate)
+    # фиолетовый туман у основания (5) -> 48
+    for x, z, w, d, c in ((0, .45, .9, .14, "#8b5cff"), (0, -.45, .9, .14, "#7a4be0"), (-.45, 0, .14, .9, "#a874ff"),
+                          (.45, 0, .14, .9, "#8b5cff"), (0, .22, .5, .2, "#9d6bff")):
+        h.p("sphere", x, .02, z, w, .08, d, c, .55)
+    return h.r
+
+
 if __name__ == "__main__":
     out = {"3": treehouse(), "4": lambo_house(), "6": obsidian_cliff(), "9": spider_tower(), "7": tv_tower(), "10": japanese_house(),
-           "11": hero_house(), "12": crown_palace(), "13": sand_castle(), "16": arabian_castle(), "17": horror_house(), "19": sakura_estate(), "20": mandarin_house()}
+           "11": hero_house(), "12": crown_palace(), "13": sand_castle(), "16": arabian_castle(), "17": horror_house(), "19": sakura_estate(), "20": mandarin_house(), "22": gothic_castle()}
     for v in out.values():
         v["publish"] = True  # бот сам поставит в город и напишет жителю (handmade_loop)
     for k, v in out.items():
         bad = [q for q in v["parts"] if q["p"][1] + q["s"][1] > 2.2 or max(q["s"][0], q["s"][2]) > 1 or q["s"][1] > 1.6 or abs(q["p"][0]) > .5 or abs(q["p"][2]) > .5]
-        print(k, v["name"], len(v["parts"]), "деталей", "ОШИБКИ:" if bad else "ок", bad[:2])
+        print(k, v["name"], len(v["parts"]), "деталей", "ОШИБКИ:" if bad or len(v["parts"]) > 48 else "ок", bad[:2])
     Path(__file__).resolve().parent.parent.joinpath("handmade.json").write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
