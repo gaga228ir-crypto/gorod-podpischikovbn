@@ -45,7 +45,8 @@ button.ghost{background:rgba(255,255,255,.12)}
 .card .nb button{font:700 13px Inter,sans-serif;color:var(--gold);background:none;border:0;padding:0 2px;cursor:pointer;text-decoration:underline dotted}
 .cta{position:fixed;right:16px;bottom:18px;z-index:2}
 .card.show ~ .cta{display:none}
-.chips{display:flex;gap:8px;flex-wrap:wrap}
+body.orbiting .top,body.orbiting #card,body.orbiting #cta{display:none!important}
+.chips{display:flex;gap:8px;flex-wrap:wrap}.chips:not(.open){display:none}#menuBtn{align-self:flex-start}#menuBtn.open{background:var(--pink);color:#fff}
 .fxb{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.fxb:empty{display:none}.fxb button{padding:7px 11px;font-size:10px;background:rgba(255,255,255,.12)}.fxb .k{font:800 12px Inter,sans-serif;color:#ff8fb8;align-self:center}
 .shop{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.06);border-radius:14px;padding:10px 12px}.shop span{flex:1;font:600 14px Inter,sans-serif}.shop button{padding:8px 12px;font-size:12px}
 .klad{background:rgba(12,8,36,.8);color:#fff;border:1px solid rgba(255,210,63,.5);animation:none}
@@ -106,10 +107,11 @@ button.ghost{background:rgba(255,255,255,.12)}
   <div class="title"><h1>ГОРОД ПОДПИСЧИКОВ</h1><div class="count">домов: <b id="cnt">0</b></div></div>
   <form class="row" id="f" autocomplete="off"><input id="q" placeholder="Найди свой дом: @ник" aria-label="Ник"><button>НАЙТИ</button></form>
   <div class="prog" id="prog" hidden></div>
+  <button class="chip" id="menuBtn" type="button">☰ МЕНЮ</button>
   <div class="chips" id="chips"></div>
   <div class="msg" id="msg"></div>
 </div>
-<div class="card" id="card"><div class="grow"><div class="nick" id="cnick"></div><div class="sub" id="csub"></div><div class="sub nb" id="cnb"></div><div class="fxb" id="cfx"></div></div><button class="share" id="cedit" style="display:none;background:var(--pink);color:#fff">🎨 ИЗМЕНИТЬ</button><button class="share" id="cshare">ПОДЕЛИТЬСЯ</button><button id="cclose" aria-label="Закрыть">✕</button></div>
+<div class="card" id="card"><div class="grow"><div class="nick" id="cnick"></div><div class="sub" id="csub"></div><div class="sub nb" id="cnb"></div><div class="fxb" id="cfx"></div></div><button class="share" id="cedit" style="display:none;background:var(--pink);color:#fff">🎨 ИЗМЕНИТЬ</button><button class="share" id="clook" style="background:#5ef2ff;color:#1a1238">🔄 ОСМОТРЕТЬ</button><button class="share" id="cshare">ПОДЕЛИТЬСЯ</button><button id="cclose" aria-label="Закрыть">✕</button></div>
 <button class="btn cta" id="cta">🏠 ПОЛУЧИТЬ ДОМ</button>
 <div class="hint">Тяни — двигать · колесо/щипок — зум · правая кнопка/два пальца — поворот</div>
 
@@ -242,6 +244,7 @@ function focus(h, fly = true) {
   card.classList.add('show'); history.replaceState(null, '', location.search + '#' + encodeURIComponent(h.key));
 }
 $('cedit').onclick = () => openStudio();
+$('clook').onclick = () => startOrbit(city.hi);
 $('cshare').onclick = async e => {
   const url = location.origin + location.pathname + location.hash, text = city.hi ? `Мой дом в Городе подписчиков: ${city.hi.label} 🏠` : 'Город подписчиков 🏙';
   try { if (navigator.share) { await navigator.share({ title: 'Город подписчиков', text, url }); return; } await navigator.clipboard.writeText(url); e.target.textContent = 'ССЫЛКА СКОПИРОВАНА'; setTimeout(() => e.target.textContent = 'ПОДЕЛИТЬСЯ', 1800); } catch (_) {}
@@ -558,6 +561,16 @@ function openKlad() {
 // ---------- окно ----------
 const modal = $('modal'), sheet = $('sheet');
 modal.addEventListener('pointerdown', e => { if (e.target === modal) modal.classList.remove('show'); });
+$('menuBtn').onclick = () => { const o = $('chips').classList.toggle('open'); $('menuBtn').classList.toggle('open', o); $('menuBtn').textContent = o ? '✕ ЗАКРЫТЬ' : '☰ МЕНЮ'; };
+$('chips').addEventListener('click', e => { if (e.target.closest('.chip')) { $('chips').classList.remove('open'); $('menuBtn').classList.remove('open'); $('menuBtn').textContent = '☰ МЕНЮ'; } });
+// «Осмотреть дом»: камера облетает дом по кругу, интерфейс прячется; любое касание — выход
+let orbit = null;
+function stopOrbit() { if (!orbit) return; cancelAnimationFrame(orbit.raf); orbit = null; document.body.classList.remove('orbiting'); }
+function startOrbit(h) { stopOrbit(); if (!h) return;
+  const top = city.houseTop ? city.houseTop(h) : 1; city.flyTo(h.x, h.z, Math.max(4.2, top * 2.6));
+  document.body.classList.add('orbiting'); orbit = { raf: 0, t0: performance.now() };
+  const step = () => { if (!orbit) return; city.ctl.taz += .0055; orbit.raf = requestAnimationFrame(step); }; step();
+  setTimeout(() => addEventListener('pointerdown', stopOrbit, { once: true }), 300); }
 const closeBtn = () => { $('mclose').onclick = () => modal.classList.remove('show'); };
 
 // ---------- выборы ----------
