@@ -78,6 +78,10 @@ body.orbiting .top,body.orbiting #card,body.orbiting #cta{display:none!important
 .modal.show{display:flex}
 .sheet{background:#140c3a;border:1px solid rgba(160,150,255,.35);border-radius:26px 26px 0 0;padding:22px 18px 26px;width:min(100vw,480px);display:flex;flex-direction:column;gap:12px;max-height:92vh;overflow:auto}
 @media (min-width:600px){.modal{align-items:center}.sheet{border-radius:26px}}
+/* настройка положения украшения: город не затемняем, панель — узкая полоска внизу, чтобы видеть дом */
+.modal.placing{background:none!important;backdrop-filter:none!important;pointer-events:none;align-items:flex-end!important}
+.modal.placing .sheet{pointer-events:auto;padding:10px 14px 14px;gap:4px;border-radius:20px 20px 0 0!important;background:rgba(20,12,58,.86);max-height:46vh}
+.modal.placing .sheet p{display:none}.modal.placing .sheet h2{font-size:15px;margin:0}.modal.placing .srow{margin:0}
 .sheet h2{margin:0;font:800 20px Unbounded,sans-serif}
 .sheet p{margin:0;font:500 14px/1.45 Inter,sans-serif;color:var(--muted)}
 .sheet p b{color:#fff}
@@ -330,7 +334,7 @@ function openPlace(h, k) {
   sheet.innerHTML = `<h2>⚙️ ${PLACE_NAME[k] || k}</h2><p>Двигай ползунки — украшение сразу двигается у твоего дома. Потом нажми «Сохранить».</p>
     ${k === 'rainbow' ? '' : row(0, '↔️ Влево / вправо', -.7, .7, .05)}${k === 'rainbow' ? '' : row(1, '↕️ Ниже / выше', -1, 2.5, .05)}${row(2, '🔍 Размер', .4, 2.5, .1)}
     <div class="btns"><button class="ghost" id="pcancel" type="button">ОТМЕНА</button><button id="pgo" type="button">СОХРАНИТЬ</button></div>`;
-  modal.classList.add('show'); city.focus(h, true); let tm = 0;
+  modal.classList.add('show', 'placing'); city.focus(h, true); let tm = 0;
   sheet.querySelectorAll('input[type=range]').forEach(r => r.oninput = () => { v[+r.dataset.i] = +r.value; $('pv' + r.dataset.i).textContent = (+r.value).toFixed(2); fx.p[k] = v.slice();
     clearTimeout(tm); tm = setTimeout(() => city.setFx(fxMap), 60); });
   $('pcancel').onclick = () => { fx.p = JSON.parse(old); city.setFx(fxMap); modal.classList.remove('show'); };
@@ -586,6 +590,11 @@ function openKlad() {
 
 // ---------- окно ----------
 const modal = $('modal'), sheet = $('sheet');
+// режим «placing» снимаем, как только окно закрылось или в нём открыли что-то другое
+new MutationObserver(() => { if (!modal.classList.contains('show') || !sheet.querySelector('#pgo')) modal.classList.remove('placing'); })
+  .observe(modal, { attributes: true, attributeFilter: ['class'] });
+new MutationObserver(() => { if (!sheet.querySelector('#pgo')) modal.classList.remove('placing'); }).observe(sheet, { childList: true });
+
 modal.addEventListener('pointerdown', e => { if (e.target === modal) modal.classList.remove('show'); });
 $('menuBtn').onclick = () => { const o = $('chips').classList.toggle('open'); $('menuBtn').classList.toggle('open', o); $('menuBtn').textContent = o ? '✕ ЗАКРЫТЬ' : '☰ МЕНЮ'; };
 $('chips').addEventListener('click', e => { if (e.target.closest('.chip')) { $('chips').classList.remove('open'); $('menuBtn').classList.remove('open'); $('menuBtn').textContent = '☰ МЕНЮ'; } });
