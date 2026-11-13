@@ -255,7 +255,12 @@ $('f').addEventListener('submit', e => {
 });
 
 // ---------- взаимодействие с домом ----------
-let API = null; getJSON('api.json').then(j => { if (j && j.url) API = j.url; });
+let API = null;
+// адрес API меняется (бесплатный туннель): берём самый свежий из зеркала и GitHub
+async function loadAPI() { const a = await Promise.all([getJSON('api.json'), getJSON('https://raw.githubusercontent.com/gaga228ir-crypto/gorod-podpischikovbn/main/api.json')]);
+  const j = a.filter(x => x && x.url).sort((x, y) => (y.ts || 0) - (x.ts || 0))[0]; if (j) API = j.url; return API; }
+loadAPI();
+async function apiPost(data) { const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ initData: tg.initData, data }), signal: withTimeout(15000) }); return r.json(); }
 function toastMsg(t) { let el = document.getElementById('toastM'); if (!el) { el = document.createElement('div'); el.id = 'toastM';
     el.style.cssText = 'position:fixed;left:50%;top:18%;transform:translateX(-50%);z-index:20;max-width:88vw;background:rgba(20,12,58,.96);border:1px solid #ffd23f;color:#fff;font:600 14px/1.4 Inter,sans-serif;padding:12px 16px;border-radius:16px;box-shadow:0 10px 40px rgba(0,0,0,.5);transition:opacity .3s';
     document.body.appendChild(el); } el.textContent = t; el.style.opacity = 1; clearTimeout(el._t); el._t = setTimeout(() => el.style.opacity = 0, 4200); }
@@ -264,9 +269,8 @@ function optimistic(d) { const me = fxMap[ME] = fxMap[ME] || {};
   if (d.t === 'fx') { me.s = d.s; me.c = d.c; } if (d.t === 'place') { me.p = me.p || {}; me.p[d.i] = d.p; } if (d.t === 'roof') me.rf = d.p;
   city.setFx(fxMap); if (city.hi) focus(city.hi, false); }
 async function sendTG(data, errEl) {
-  if (API && TG && tg.initData) {
-    try { const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ initData: tg.initData, data }) });
-      const j = await r.json();
+  if (TG && tg.initData && (API || await loadAPI())) {
+    try { let j; try { j = await apiPost(data); } catch (e) { const was = API; if (await loadAPI() === was) throw e; j = await apiPost(data); }
       if (j.ok) { modal.classList.remove('show');
         if (j.invoice) { tg.openInvoice(j.invoice, st => { if (st === 'paid') toastMsg('Спасибо! ⭐ Уже ставим — в городе через пару минут.'); }); return; }
         const t = (j.msgs || []).filter(Boolean).join('\n\n'); if (t) toastMsg(t); optimistic(data); return; }

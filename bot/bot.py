@@ -1709,6 +1709,7 @@ async def klad_text(m: Message):
 # ---------- мини-приложение: выбор дома ----------
 # ---------- API для мини-приложения: действия без закрытия окна (через туннель Cloudflare) ----------
 import hmac
+import shutil
 import subprocess
 from types import SimpleNamespace
 from urllib.parse import parse_qsl
@@ -1780,45 +1781,41 @@ async def api_serve(bot):
     await runner.setup()
     await web.TCPSite(runner, "127.0.0.1", API_PORT).start()
     log.info("API мини-приложения: http://127.0.0.1:%s/api", API_PORT)
-    exe = next((x for x in [r"C:\Program Files (x86)\cloudflared\cloudflared.exe", r"C:\Program Files\cloudflared\cloudflared.exe"] if os.path.exists(x)), None)
-    if not exe or not GITHUB_TOKEN:
-        log.info("cloudflared не найден — мини-приложение работает по-старому (sendData)")
+    ssh = next((x for x in [r"C:\Windows\System32\OpenSSH\ssh.exe", shutil.which("ssh") or ""] if x and os.path.exists(x)), None)
+    if not ssh or not GITHUB_TOKEN:
+        log.info("ssh не найден — мини-приложение работает по-старому (sendData)")
         return
+    # Туннель localhost.run (без аккаунта, через SSH). Cloudflare-туннели в РФ режутся DPI.
     logf = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tunnel.log")
-    subprocess.run(["taskkill", "/IM", "cloudflared.exe", "/F"], capture_output=True)
+
+    async def publish(url):
+        for _ in range(5):
+            try:
+                old, sha = await gh_get("api.json")
+                await gh_put("api.json", json.dumps({"url": url + "/api", "ts": int(time.time())}), "API мини-приложения", sha)
+                return
+            except Exception as e:
+                log.warning("api.json: %s", e)
+                await asyncio.sleep(10)
+
     while True:
-        # лог туннеля — в файл (не pipe): cloudflared не зависит от того, читаем ли мы его вывод
-        try:
-            open(logf, "w").close()
-        except Exception:
-            pass
-        proc = subprocess.Popen([exe, "tunnel", "--no-autoupdate", "--logfile", logf, "--url", f"http://127.0.0.1:{API_PORT}"],
-                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        lf = open(logf, "w", encoding="utf-8")
+        proc = subprocess.Popen([ssh, "-o", "StrictHostKeyChecking=accept-new", "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=3",
+                                 "-o", "ExitOnForwardFailure=yes", "-R", f"80:127.0.0.1:{API_PORT}", "nokey@localhost.run", "--", "--output", "json"],
+                                stdin=subprocess.DEVNULL, stdout=lf, stderr=lf, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         API_STATE["proc"] = proc
         url = None
-        for _ in range(90):
-            await asyncio.sleep(1)
-            try:
-                mt = re.search(r"https://[a-z0-9-]+\.trycloudflare\.com", open(logf, encoding="utf-8", errors="ignore").read())
-            except Exception:
-                mt = None
-            if mt:
-                url = mt.group(0)
-                break
-            if proc.poll() is not None:
-                break
-        if url:
-            log.info("туннель: %s", url)
-            for _ in range(5):
-                try:
-                    old, sha = await gh_get("api.json")
-                    await gh_put("api.json", json.dumps({"url": url + "/api", "ts": int(time.time())}), "API мини-приложения", sha)
-                    break
-                except Exception as e:
-                    log.warning("api.json: %s", e)
-                    await asyncio.sleep(10)
         while proc.poll() is None:
-            await asyncio.sleep(5)
+            await asyncio.sleep(3)
+            try:
+                found = re.findall(r'"address"\s*:\s*"([a-z0-9.-]+)"', open(logf, encoding="utf-8", errors="ignore").read())
+            except Exception:
+                found = []
+            if found and "https://" + found[-1] != url:  # адрес меняется — каждый раз публикуем новый
+                url = "https://" + found[-1]
+                log.info("туннель: %s", url)
+                await publish(url)
+        lf.close()
         log.warning("туннель упал (код %s) — перезапускаю через 10 с", proc.returncode)
         await asyncio.sleep(10)
 
