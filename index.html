@@ -149,13 +149,14 @@ window.city = city;
 let houses = [], milestones = MILESTONES_DEFAULT, election = null;
 const loadStep = (p, t) => { $('lbarI').style.width = p + '%'; if (t) $('ltxt').textContent = t; };
 const hideLoad = () => { loadStep(100); setTimeout(() => $('load').classList.add('hide'), 250); setTimeout(() => $('load').remove(), 900); };
-let baseList = [], hallInfo = null, specialRows = [], fxMap = {}, titles = {};
+let baseList = [], hallInfo = null, specialRows = [], fxMap = {}, titles = {}, estates = {};
 async function loadCity() {
   loadStep(20, 'Загружаем жителей…');
-  const [base, ms, el] = await Promise.all([getJSON('subscribers.json'), getJSON('milestones.json'), getJSON('election.json')]);
+  const [base, ms, el, est] = await Promise.all([getJSON('subscribers.json'), getJSON('milestones.json'), getJSON('election.json'), getJSON('estates.json')]); estates = est || {};
   loadStep(60, 'Строим дома…');
   const src = Array.isArray(base) && base.length ? base : FALLBACK, byKey = new Map();
   for (const n of src) { const gone = String(n).startsWith('~'), k = norm(String(n).replace(/^~/, '')); if (k && !byKey.has(k)) { const it = { nick: '@' + k, key: k, recipe: null, gone }; byKey.set(k, it); baseList.push(it); } }
+  baseList.forEach(it => { if (estates[it.key] != null) it.estate = +estates[it.key]; });
   baseList.forEach((it, i) => it.label = HIDE.test(it.key) && !/^user\d+$/.test(it.key) ? 'Житель №' + (i + 1) : it.nick);
   if (Array.isArray(ms) && ms.length) milestones = ms;
   election = el; hallInfo = election && election.winner ? { open: true, title: 'Ратуша · мэр @' + norm(election.winner) } : null;
@@ -212,7 +213,7 @@ requestAnimationFrame(loop);
 
 // ---------- карточка, поиск, поделиться ----------
 const card = $('card'), msg = $('msg');
-function pick(x, y) { const h = city.pick(x, y); if (h && h.honor) return openHonor(); if (h && h.chest) return kladOver() ? kladChip.onclick() : openKlad(); if (h) focus(h, false); }
+function pick(x, y) { const h = city.pick(x, y); if (h && h.honor) return openHonor(); if (h && h.mini != null) return openMini(h.mini); if (h && h.chest) return kladOver() ? kladChip.onclick() : openKlad(); if (h) focus(h, false); }
 function focus(h, fly = true) {
   city.focus(h, fly);
   $('cnick').textContent = h.label;
@@ -222,7 +223,7 @@ function focus(h, fly = true) {
   $('cnb').querySelectorAll('button').forEach(b => b.onclick = () => focus(nb[+b.dataset.i].h));
   $('cedit').style.display = (TG && h.key === ME) ? '' : 'none';
   const fx = fxMap[h.key] || {}, mine = TG && h.key === ME;
-  $('cfx').innerHTML = h.gone ? '' : (titles[h.key] ? `<span class="k" style="color:var(--gold)">🏅 ${esc(titles[h.key].t)}</span>` : '') + (fx.k ? `<span class="k">❤ ${fx.k}</span>` : '') + (fx.s ? `<span class="k" style="color:#fff">💬 ${esc(fx.s)}</span>` : '')
+  $('cfx').innerHTML = h.gone ? '' : (h.isEstate ? '<span class="k" style="color:#a6ff8f">🏡 Усадьба</span>' : '') + (titles[h.key] ? `<span class="k" style="color:var(--gold)">🏅 ${esc(titles[h.key].t)}</span>` : '') + (fx.k ? `<span class="k">❤ ${fx.k}</span>` : '') + (fx.s ? `<span class="k" style="color:#fff">💬 ${esc(fx.s)}</span>` : '')
     + (mine ? '<button type="button" id="bfx">✏️ ТАБЛИЧКА</button><button type="button" id="bshop">⭐ УКРАСИТЬ</button>' : TG && ME ? '<button type="button" id="bknock">🚪 ПОСТУЧАТЬ</button>' : '');
   if ($('bfx')) $('bfx').onclick = () => openFx(h); if ($('bshop')) $('bshop').onclick = () => openShop(h); if ($('bknock')) $('bknock').onclick = () => sendTG({ t: 'knock', n: h.key });
   card.classList.add('show'); history.replaceState(null, '', location.search + '#' + encodeURIComponent(h.key));
@@ -260,15 +261,16 @@ function openFx(h) {
   $('fxgo').onclick = () => sendTG({ t: 'fx', s: $('fxs').value.trim().slice(0, 24), c: col });
   modal.classList.add('show'); closeBtn();
 }
-const SHOP = [['fireworks', '🎆 Салют над домом', 15], ['ufo', '🛸 НЛО над домом', 20], ['rainbow', '🌈 Радужная подсветка', 15], ['xmas', '🎄 Новогодняя ёлка', 10], ['snowman', '⛄ Снеговик во дворе', 10], ['top', '🔦 Дом дня: прожектор и доска почёта на 24 ч', 25]];
+const SHOP = [['fireworks', '🎆 Салют над домом', 15], ['ufo', '🛸 НЛО над домом', 20], ['rainbow', '🌈 Радужная подсветка', 15], ['xmas', '🎄 Новогодняя ёлка', 10], ['snowman', '⛄ Снеговик во дворе', 10], ['top', '🔦 Дом дня: прожектор и доска почёта на 24 ч', 25], ['estate', '🏡 Усадьба: большой участок (как 4 дома) с забором и садом в Посёлке Усадеб', 100]];
 function openShop(h) {
   const have = new Set((fxMap[h.key] || {}).d || []);
   sheet.innerHTML = `<h2>⭐ Украсить дом</h2><p>Украшения остаются у дома навсегда (кроме «Дома дня» — он на сутки). Оплата звёздами Telegram.</p>
-    ${SHOP.map(([k, t, p]) => `<div class="shop"><span>${t}</span>${have.has(k) ? (k === 'top' ? '<b style="color:var(--gold)">✓ есть</b>' : `<button type="button" class="ghost" data-place="${k}">⚙️ РАЗМЕСТИТЬ</button>`) : `<button type="button" data-buy="${k}">${p} ⭐</button>`}</div>`).join('')}
+    ${SHOP.map(([k, t, p]) => `<div class="shop"><span>${t}</span>${have.has(k) || (k === 'estate' && h.isEstate) ? (k === 'top' || k === 'estate' ? '<b style="color:var(--gold)">✓ есть</b>' : `<button type="button" class="ghost" data-place="${k}">⚙️ РАЗМЕСТИТЬ</button>`) : `<button type="button" data-buy="${k}">${p} ⭐</button>`}</div>`).join('')}
     ${(fxMap[h.key] || {}).s ? '<div class="shop"><span>💬 Табличка над домом</span><button type="button" class="ghost" data-place="sign">⚙️ РАЗМЕСТИТЬ</button></div>' : ''}
-    <button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button>`;
+    <div class="btns"><button class="ghost" id="seeEst" type="button">👀 ПОСЁЛОК УСАДЕБ</button><button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button></div>`;
   sheet.querySelectorAll('[data-buy]').forEach(b => b.onclick = () => sendTG({ t: 'buy', i: b.dataset.buy }));
   sheet.querySelectorAll('[data-place]').forEach(b => b.onclick = () => openPlace(h, b.dataset.place));
+  if ($('seeEst')) $('seeEst').onclick = () => { modal.classList.remove('show'); const c = city.estateCenter; if (c) city.flyTo(c.x, c.z, 16); };
   modal.classList.add('show'); closeBtn();
 }
 
@@ -367,13 +369,21 @@ const KLAD = (d => ({ day: d, code: String(1000 + fnv(KLAD_SALT + ':code:' + d) 
 let kladState = null; // klad.json от бота: {day, taken, limit}
 const kladOver = () => !!(kladState && kladState.day === KLAD.day && kladState.taken >= kladState.limit);
 const kladLeft = () => kladState && kladState.day === KLAD.day ? Math.max(0, kladState.limit - kladState.taken) : null;
-async function loadKladState() { const j = await getJSON('klad.json'); if (j && j.day) kladState = j; if (city.chest) city.chest.visible = !kladOver(); updateHonor(); }
+const MINI_N = 8, miniSeed = () => fnv(KLAD_SALT + ':mini:' + KLAD.day), miniCode = i => String(1000 + fnv(KLAD_SALT + ':mini:' + KLAD.day + ':' + i) % 9000);
+const miniTaken = () => kladState && kladState.day === KLAD.day ? (kladState.mini || []) : [];
+async function loadKladState() { const j = await getJSON('klad.json'); if (j && j.day) kladState = j; if (city.chest) city.chest.visible = !kladOver(); city.setMini(miniSeed(), MINI_N, miniTaken()); updateHonor(); }
+function openMini(i) {
+  const deep = BOT_URL.replace(/\/$/, '') + `?start=mini${i}c${miniCode(i)}`;
+  sheet.innerHTML = `<h2>🎁 Малый сундук!</h2><p>Внутри — <b>случайное украшение для твоего дома</b>: салют, НЛО, радуга, ёлка или снеговик. Один малый сундук в день на жителя, всего в городе их ${MINI_N} — кто первый.</p>
+    <div class="btns"><button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button>${TG ? '<button id="mgo" type="button">ОТКРЫТЬ 🎁</button>' : `<a class="btn" href="${esc(deep)}">ОТКРЫТЬ В БОТЕ</a>`}</div>`;
+  modal.classList.add('show'); closeBtn(); if ($('mgo')) $('mgo').onclick = () => sendTG({ t: 'mini', i, c: miniCode(i) });
+}
 const kladFound = () => { try { return localStorage.getItem('klad') === KLAD.day; } catch (e) { return false; } };
 let kladChip = null;
 function renderKlad() {
   kladChip = document.createElement('button'); kladChip.className = 'chip klad'; $('chips').appendChild(kladChip);
   if (CHAT_URL) { const ch = document.createElement('a'); ch.className = 'chip'; ch.href = CHAT_URL; ch.target = '_blank'; ch.rel = 'noopener'; ch.textContent = '💬 ЧАТ ЖИТЕЛЕЙ'; ch.onclick = e => { if (TG && tg.openTelegramLink) { e.preventDefault(); tg.openTelegramLink(CHAT_URL); } }; $('chips').appendChild(ch); }
-  kladChip.onclick = () => { if (kladOver()) { sheet.innerHTML = `<h2>💎 Клад на сегодня разобран</h2><p>Все ${kladState.limit} призов уже забрали 🎉 Новый сундук спрячется в городе в <b>00:00 МСК</b> — приходи пораньше!</p><button class="ghost" id="mclose">ПОНЯЛ</button>`; modal.classList.add('show'); return closeBtn(); } if (kladFound()) return openKlad(); sheet.innerHTML = `<h2>💎 Клад дня</h2><p>Каждый день в городе прячется сундук. Найди его между домами — подсказка вверху: <b>холодно → тепло → горячо</b>. Подойди поближе (приблизь камеру) и нажми на сундук.</p><p>Приз — <b>дом по описанию бесплатно</b>: нейросеть построит любую твою идею в 3D. Новый клад — каждый день в 00:00 МСК.</p><button class="ghost" id="mclose">ИСКАТЬ</button>`; modal.classList.add('show'); closeBtn(); };
+  kladChip.onclick = () => { if (kladOver()) { sheet.innerHTML = `<h2>💎 Клад на сегодня разобран</h2><p>Все ${kladState.limit} призов уже забрали 🎉 Новый сундук спрячется в городе в <b>00:00 МСК</b> — приходи пораньше!</p><button class="ghost" id="mclose">ПОНЯЛ</button>`; modal.classList.add('show'); return closeBtn(); } if (kladFound()) return openKlad(); sheet.innerHTML = `<h2>💎 Клад дня</h2><p>Каждый день в городе прячется сундук. Найди его между домами — подсказка вверху: <b>холодно → тепло → горячо</b>. Подойди поближе (приблизь камеру) и нажми на сундук.</p><p>Приз — <b>дом по описанию бесплатно</b>: нейросеть построит любую твою идею в 3D. Новый клад — каждый день в 00:00 МСК.</p><p>🎁 А ещё по городу спрятаны <b>${MINI_N} малых сундуков</b> (голубые) — в них украшения для дома!</p><button class="ghost" id="mclose">ИСКАТЬ</button>`; modal.classList.add('show'); closeBtn(); };
   setInterval(updKlad, 250); updKlad(); loadKladState(); setInterval(loadKladState, 120000);
 }
 function updKlad() {

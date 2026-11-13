@@ -56,6 +56,8 @@ export function placeAt(bx, by) {
   return { kind, name: names[(i >> 3) % names.length], bx, by, x: cx, z: cz };
 }
 
+// Посёлок усадеб: участок = целый квартал (как 4 дома), вынесен за город — нумерация обычных домов не сдвигается
+export const ESTATE_BLOCKS = []; for (let bx = 32; bx <= 37; bx++) for (let by = -3; by <= 2; by++) { const c = [3 * bx + 2, 3 * by + 2]; if (!inWater(c[0], c[1], 2.4)) ESTATE_BLOCKS.push([bx, by]); }
 export const CELLS = [];
 for (let x = -90; x <= 90; x++) for (let y = -90; y <= 90; y++) { const b = blockOf(x, y); if (!isRoad(x, y) && !RES.has(b.join(',')) && !inWater(x + .5, y + .5, .75) && !placeAt(b[0], b[1])) CELLS.push([x, y]); }
 CELLS.sort((a, b) => (Math.hypot(a[0] + .5 - 2, a[1] + .5 - 2) - Math.hypot(b[0] + .5 - 2, b[1] + .5 - 2)) || (a[0] - b[0]) || (a[1] - b[1]));
@@ -361,11 +363,14 @@ export class City3D {
     const add = o => { this.scene.add(o); this.dyn.push(o); return o; };
     const N = Math.min(list.length, CELLS.length - 20), r = rnd(7);
     this.houses = list.slice(0, N).map((it, i) => ({ ...it, n: i + 1, x: CELLS[i][0] + .5, z: CELLS[i][1] + .5 }));
+    for (const h of this.houses) if (h.estate != null && ESTATE_BLOCKS[h.estate] && !h.gone) { const [cx, cz] = blockCenter(ESTATE_BLOCKS[h.estate]); h.x = cx; h.z = cz; h.isEstate = true;
+      if (!h.recipe) h.recipe = { shape: 'house', floors: 2, wall: WALLS[hash(h.key) % WALLS.length], roof: ROOFS[hash(h.key + 'r') % ROOFS.length], decor: ['garland', 'tree'] }; }
     this.byKey = new Map(this.houses.map(h => [h.key, h]));
     const span = Math.ceil(Math.sqrt((N + 60) * 2.25 / Math.PI) / 3) + 4; this.span = span;
     // кварталы-газоны и тротуары
     const blocks = new Set(); for (const h of this.houses) blocks.add(blockOf(Math.floor(h.x), Math.floor(h.z)).join(','));
     for (const b of LANDMARK_BLOCKS) blocks.add(b.join(','));
+    for (const b of ESTATE_BLOCKS) blocks.add(b.join(','));
     // кварталы вдоль реки тоже мостим, чтобы набережная шла без дыр
     const rMax = this.houses.reduce((m, h) => Math.max(m, Math.hypot(h.x - 2, h.z - 2)), 6);
     for (let bx = -span; bx <= span; bx++) for (let by = -span; by <= span; by++) { const [cx, cz] = blockCenter([bx, by]); if (Math.hypot(cx - 2, cz - 2) < rMax + 1 && inWater(cx, cz, 2.2)) blocks.add(bx + ',' + by); }
@@ -464,7 +469,15 @@ export class City3D {
     this.houses.forEach((h, i) => { M.makeRotationX(-Math.PI / 2); M.setPosition(h.x + .08, .07, h.z + .08); sh.setMatrixAt(i, M); }); add(sh); reg(sh, this.houses);
     // особые дома
     this.specialG = [];
-    for (const h of special) { const g = makeHouse(h.recipe, h.key); g.position.set(h.x, .06, h.z); g.userData.house = h; h.top = g.userData.top + .06; add(g); this.specialG.push(g); }
+    for (const h of special) { const g = makeHouse(h.recipe, h.key); g.position.set(h.x, .06, h.z); g.userData.house = h; h.top = g.userData.top + .06;
+      if (h.isEstate) { g.scale.setScalar(1.8); g.userData.k = 1.8; h.top = (g.userData.top || .6) * 1.8 + .06;
+        const fence = flat('#e8dcc4'), Y = new THREE.Group(); Y.position.set(h.x, .06, h.z);
+        for (const [w, d, x, z] of [[2, .04, 0, 1], [2, .04, 0, -1], [.04, 2, 1, 0], [.04, 2, -1, 0]]) { const f = new THREE.Mesh(new THREE.BoxGeometry(w, .12, d), fence); f.position.set(x, .06, z); Y.add(f); }
+        for (const [x, z] of [[-.75, .75], [.75, -.75], [.75, .75]]) { const t = new THREE.Mesh(new THREE.ConeGeometry(.16, .5, 8), flat('#2f9a55', '#0a5', .15)); t.position.set(x, .3, z); Y.add(t); }
+        const path = new THREE.Mesh(new THREE.BoxGeometry(.3, .01, .9), flat('#c9a46a')); path.position.set(0, .01, .55); Y.add(path); add(Y); }
+      add(g); this.specialG.push(g); }
+    if (ESTATE_BLOCKS.length) { const xs = ESTATE_BLOCKS.map(b => blockCenter(b)); this.places.push({ kind: 'estate', name: 'Посёлок Усадеб', x: xs.reduce((a, c) => a + c[0], 0) / xs.length, z: xs.reduce((a, c) => a + c[1], 0) / xs.length });
+      this.estateCenter = this.places[this.places.length - 1]; }
     // улицы: фонари по углам кварталов, деревья и скамейки, зебры
     const lamps = [], strees = [], benches = [], zebra = new Set();
     bl.forEach(([bx, by]) => { const [cx, cz] = blockCenter([bx, by]), rb = rnd(hash(bx + ':' + by));
@@ -634,7 +647,7 @@ export class City3D {
     const sc = h => { if (h.n > n) return 0; const u = Math.min(1, (n - h.n) / pop); return u >= 1 ? 1 : Math.max(0.001, 1 - Math.pow(1 - u, 3) * Math.cos(u * 6)); };
     for (const g of this.grow || []) { g.list.forEach((h, i) => { const s = sc(h); if (s === 1) { g.mesh.setMatrixAt(i, g.base[i]); return; }
       T1.makeTranslation(h.x, 0, h.z); S.makeScale(s || 1e-4, s || 1e-4, s || 1e-4); T2.makeTranslation(-h.x, 0, -h.z); M.multiplyMatrices(T1, S).multiply(T2).multiply(g.base[i]); g.mesh.setMatrixAt(i, M); }); g.mesh.instanceMatrix.needsUpdate = true; }
-    for (const g of this.specialG || []) { const s = sc(g.userData.house); g.visible = s > 0; g.scale.setScalar(Math.max(s, 1e-4)); }
+    for (const g of this.specialG || []) { const s = sc(g.userData.house); g.visible = s > 0; g.scale.setScalar(Math.max(s, 1e-4) * (g.userData.k || 1)); }
   }
   // «Неоновая улица, 45 · Пиксельный квартал»
   address(h) { const cx = Math.floor(h.x), cy = Math.floor(h.z), a = addressOf(cx, cy); return { ...a, district: h.district || districtOf(h.x, h.z), text: `${a.street}, ${a.num}` }; }
@@ -656,6 +669,7 @@ export class City3D {
     this.ray.setFromCamera(new THREE.Vector2(x / this.W * 2 - 1, -(y / this.H) * 2 + 1), this.cam);
     if (this.chest && this.ray.intersectObject(this.chest, true).length) return { chest: true };
     if (this.honorG && this.ray.intersectObject(this.honorG, true).length) return { honor: true };
+    { const mh = this.ray.intersectObjects((this.extras || []).filter(o => o.userData.miniPos), true); if (mh.length) return { mini: mh[0].object.userData.mini }; }
     if (this.chest && this.treasure && this.ctl.d < 14) { const p = this.project(this.treasure.x, .15, this.treasure.z); if (p && Math.hypot(p[0] - x, p[1] - y) < 26) return { chest: true }; }
     const hits = this.ray.intersectObjects([...this.pickables, ...this.specialG], true);
     for (const hit of hits) {
@@ -668,6 +682,7 @@ export class City3D {
   setHonor(data) { this.honorData = data; this._extrasDirty = true; }
   setCandidates(list) { this.candList = list || []; this._extrasDirty = true; }
   setFx(map) { this.fxMap = map || {}; this._extrasDirty = true; }
+  setMini(seed, n, taken) { this.mini = { seed, n, taken: new Set(taken || []) }; this._extrasDirty = true; }
   setTitles(map) { this.titles = map || {}; this._extrasDirty = true; }
   houseTop(h) {
     const r = h.recipe; if (r && Array.isArray(r.parts) && r.parts.length) return Math.max(...r.parts.map(q => (q.p?.[1] || 0) + (q.s?.[1] || 0)));
@@ -731,6 +746,11 @@ export class City3D {
     }
     for (const [nick, T] of Object.entries(this.titles || {})) { const h = this.byKey.get(nick); if (!h || h.gone || !T || !T.t) continue;
       const sg = textSprite('🏅 ' + T.t, { color: '#1a1238', bg: 'rgba(255,210,63,.95)', scale: .0015, size: 48 }); sg.position.set(h.x, this.houseTop(h) + (this.fxMap?.[nick]?.s ? 1.0 : .62), h.z); add(sg); }
+    if (this.mini) { const { seed, n, taken } = this.mini, base = this.houses.filter(h => !h.recipe && !h.gone);
+      for (let i = 0; i < n && base.length; i++) { if (taken.has(i)) continue; const r0 = rnd(seed ^ Math.imul(i + 1, 2654435761)), h = base[Math.floor(r0() * base.length)];
+        const C = makeChest(); C.scale.setScalar(.75); C.position.set(h.x + (r0() < .5 ? -.47 : .47), .07, h.z + (r0() < .5 ? -.47 : .47)); C.rotation.y = r0() * 6;
+        C.traverse(m => { m.userData.mini = i; if (m.material && m.material.color && m.material.metalness > .5) { m.material = m.material.clone(); m.material.color.set('#9fd8ff'); m.material.emissive.set('#3aa0ff'); } });
+        C.userData.miniPos = [C.position.x, C.position.z]; add(C); } }
     const SUIT = ['#1f4fd8', '#d81f2a', '#2f9a55', '#7b2cbf', '#ff7a1a', '#14141c', '#0fb5b5'];
     (this.candList || []).forEach((c, i) => {
       const h = this.byKey.get(c.nick); if (!h || h.gone) return;
@@ -862,9 +882,9 @@ export class City3D {
         const t = d.name.toUpperCase(); g.strokeText(t, p[0], p[1]); g.fillStyle = big ? `rgba(255,210,63,${a})` : `rgba(255,140,220,${.95 * a})`; g.fillText(t, p[0], p[1]); }
     }
     // названия мест (парки, площади, памятники) — на среднем плане
-    if (c.d > 7 && c.d < 24 && this.places && !this.noLmLabels) {
+    if (c.d > 5 && c.d < 40 && this.places && !this.noLmLabels) {
       const R = c.d * 1.1, used = []; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = '700 12px Inter, sans-serif';
-      const ICON = { park: '🌳', square: '⭐', fountain: '⛲', playground: '🎠', art: '💗', monument: '🗿' };
+      const ICON = { park: '🌳', square: '⭐', fountain: '⛲', playground: '🎠', art: '💗', monument: '🗿', estate: '🏡' };
       for (const pl of this.places) { if (Math.hypot(pl.x - c.x, pl.z - c.z) > R) continue; const p = this.project(pl.x, 1.1, pl.z); if (!p) continue;
         if (used.some(q => Math.abs(q[0] - p[0]) < 150 && Math.abs(q[1] - p[1]) < 26)) continue; used.push(p);
         const t = `${ICON[pl.kind] || '📍'} ${pl.name}`, w = g.measureText(t).width + 16;

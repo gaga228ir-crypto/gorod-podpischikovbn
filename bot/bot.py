@@ -294,7 +294,51 @@ async def gh_put(path, text, message, sha=None):
 FX_ITEMS = {
     "fireworks": ("🎆 Салют над домом", 15), "snowman": ("⛄ Снеговик во дворе", 10), "xmas": ("🎄 Новогодняя ёлка", 10),
     "ufo": ("🛸 НЛО над домом", 20), "rainbow": ("🌈 Радужная подсветка", 15), "top": ("🔦 Дом дня на 24 часа", 25),
+    "estate": ("🏡 Усадьба — участок как 4 дома", 100),
 }
+ESTATE_SLOTS = 36
+MINI_N = 8
+MINI_POOL = ["fireworks", "snowman", "xmas", "ufo", "rainbow"]
+
+
+def mini_code(day, i):
+    return str(1000 + fnv(f"{KLAD_SALT}:mini:{day}:{i}") % 9000)
+
+
+async def estate_slot_free():
+    used = {int(v) for _, v in await db.kv_prefix("estate:")} if hasattr(db, "kv_prefix") else set()
+    return next((i for i in range(ESTATE_SLOTS) if i not in used), None)
+
+
+async def claim_mini(m, uid, i, code):
+    day = msk_day()
+    if not (0 <= i < MINI_N) or code != mini_code(day, i):
+        await m.answer("Этот сундучок уже исчез 🤔 Малые сундуки меняются каждый день в 00:00 МСК.", reply_markup=main_menu())
+        return
+    me = await db.linked(uid)
+    if not me:
+        await m.answer("Сначала привяжи ник — «🏠 Мой дом», потом открывай сундук 🎁", reply_markup=main_menu())
+        return
+    if await db.kv_get(f"mini:{day}:{i}"):
+        await m.answer("Этот сундучок уже кто-то открыл 😔 Ищи другой — их по городу несколько!", reply_markup=city_keyboard(me["nick"]))
+        return
+    if await db.kv_get(f"minu:{day}:{uid}"):
+        await m.answer("Ты сегодня уже открыл малый сундук 😉 Завтра будут новые!", reply_markup=city_keyboard(me["nick"]))
+        return
+    await db.kv_set(f"mini:{day}:{i}", me["nick"])
+    await db.kv_set(f"minu:{day}:{uid}", i)
+    fx = await fx_get(me["nick"])
+    left = [k for k in MINI_POOL if k not in fx.get("d", [])]
+    if left:
+        item = random.choice(left)
+        fx["d"] = sorted(set(fx.get("d", [])) | {item})
+    else:
+        item = "top"
+        fx["top"] = max(int(fx.get("top", 0)), int(time.time())) + 24 * 3600
+    await fx_set(me["nick"], fx)
+    asyncio.create_task(klad_publish(day))
+    await m.answer(f"🎁 Сундук открыт! Внутри — <b>{FX_ITEMS[item][0]}</b>. Уже у твоего дома (на сайте через пару минут). Разместить его можно в «⭐ Украсить» → «⚙️ Разместить».",
+                   reply_markup=city_keyboard(me["nick"]))
 FX_COLORS = {"", "#ff3d7f", "#ffd23f", "#5ef2ff", "#a6ff8f", "#c084fc", "#ff7a1a"}
 KNOCK_DAY_LIMIT = 15
 _fx_dirty = asyncio.Event()
@@ -332,6 +376,11 @@ async def fx_publish():
     old, sha = await gh_get("fx.json")
     if old != body:
         await gh_put("fx.json", body, f"Дома жителей: {len(out)} с табличками/украшениями", sha)
+    est = {k[7:]: int(v) for k, v in await db.kv_prefix("estate:")}
+    body = json.dumps(est, ensure_ascii=False, separators=(",", ":"))
+    old, sha = await gh_get("estates.json")
+    if old != body:
+        await gh_put("estates.json", body, f"Усадьбы: {len(est)}", sha)
 
 
 async def export_loop():
@@ -518,6 +567,11 @@ async def start(m: Message, state: FSMContext):
     if arg[0].startswith("vote_") and arg[0][5:].isdigit():
         await do_vote(m, m.from_user.id, int(arg[0][5:]), m.bot)
         return
+    if arg[0].startswith("mini") and "c" in arg[0][4:]:
+        i, _, code = arg[0][4:].partition("c")
+        if i.isdigit():
+            await claim_mini(m, m.from_user.id, int(i), code)
+            return
     if arg[0] == "city":
         if not _me:
             await m.answer("Сначала привяжи ник TikTok — «🏠 Мой дом» 👇", reply_markup=main_menu())
@@ -1125,7 +1179,8 @@ async def klad_publish(day: str):
     try:
         taken = await db.klad_today(day)
         winners = await db.klad_winners(day)
-        body = json.dumps({"day": day, "taken": taken, "limit": KLAD_LIMIT, "winners": winners}, ensure_ascii=False)
+        mini = sorted(int(k.rsplit(":", 1)[1]) for k, _ in await db.kv_prefix(f"mini:{day}:")) if hasattr(db, "kv_prefix") else []
+        body = json.dumps({"day": day, "taken": taken, "limit": KLAD_LIMIT, "winners": winners, "mini": mini}, ensure_ascii=False)
         old, sha = await gh_get("klad.json")
         if old != body:
             await gh_put("klad.json", body, f"Клад {day}: {taken}/{KLAD_LIMIT}", sha)
@@ -1278,6 +1333,12 @@ async def web_app(m: Message, bot: Bot):
             except Exception:
                 pass
         return
+    if data.get("t") == "mini":
+        try:
+            await claim_mini(m, m.from_user.id, int(data.get("i", -1)), str(data.get("c", "")))
+        except (TypeError, ValueError):
+            pass
+        return
     if data.get("t") == "place":
         item = str(data.get("i") or "")
         fx = await fx_get(me["nick"])
@@ -1363,7 +1424,10 @@ async def pre_checkout(q: PreCheckoutQuery):
         o = await db.ai_get(int(parts[1])) if len(parts) == 2 and parts[1].isdigit() else None
         ok = bool(o) and o["status"] == "new" and q.total_amount == AI_PRICE
     elif parts[0] == "f":
-        ok = len(parts) == 2 and parts[1] in FX_ITEMS and q.total_amount == FX_ITEMS[parts[1]][1] and bool(await db.linked(q.from_user.id))
+        me = await db.linked(q.from_user.id)
+        ok = len(parts) == 2 and parts[1] in FX_ITEMS and q.total_amount == FX_ITEMS[parts[1]][1] and bool(me)
+        if ok and parts[1] == "estate":
+            ok = not await db.kv_get("estate:" + me["nick"]) and await estate_slot_free() is not None
     else:
         ok = len(parts) == 3 and parts[0] == "c" and decode_recipe(parts[2]) is not None and q.total_amount == PRICE
     await q.answer(ok=ok, error_message=None if ok else "Счёт устарел, оформи заново.")
@@ -1389,6 +1453,26 @@ async def paid(m: Message, bot: Bot):
         if not me or item not in FX_ITEMS:
             await bot.refund_star_payment(m.from_user.id, p.telegram_payment_charge_id)
             await m.answer("Не получилось — звёзды вернули.")
+            return
+        if item == "estate":
+            slot = await estate_slot_free()
+            if slot is None or await db.kv_get("estate:" + me["nick"]):
+                await bot.refund_star_payment(m.from_user.id, p.telegram_payment_charge_id)
+                await m.answer("Свободных участков нет или усадьба уже есть — звёзды вернули.")
+                return
+            await db.kv_set("estate:" + me["nick"], slot)
+            _fx_dirty.set()
+            try:
+                await db.add_payment(m.from_user.id, me["nick"], p.total_amount, p.telegram_payment_charge_id, {"fx": item, "slot": slot})
+            except RuntimeError as e:
+                log.warning("payment log: %s", e)
+            await m.answer(f"🏡 Поздравляем! Твой дом переехал в <b>Посёлок Усадеб</b> — участок №{slot + 1}: большой дом, забор и свой сад. На сайте через пару минут.",
+                           reply_markup=city_keyboard(me["nick"]))
+            for a in ADMIN_IDS:
+                try:
+                    await bot.send_message(a, f"🏡 @{me['nick']} купил усадьбу (участок №{slot + 1}) — 100 ⭐")
+                except Exception:
+                    pass
             return
         fx = await fx_get(me["nick"])
         if item == "top":
