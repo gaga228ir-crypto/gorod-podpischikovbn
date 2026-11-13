@@ -1688,8 +1688,28 @@ BAD = re.compile(r"(х[уy][йияеёю]|п[иі]зд|(?<![а-яё])[её]б[а
 _feed: list = []
 
 
+CHAT_LOG = Path(__file__).parent / "chat_log.jsonl"  # локальный журнал чата жителей (баги/идеи читает Claude), в git не идёт
+
+
+def chat_log(m: Message):
+    """Пишем сообщение группы в chat_log.jsonl: кто, что, на что ответил, было ли фото."""
+    try:
+        u = m.from_user
+        rp = m.reply_to_message
+        row = {"ts": dt.datetime.now(dt.timezone(dt.timedelta(hours=3))).strftime("%Y-%m-%d %H:%M"), "chat": m.chat.id, "title": m.chat.title,
+               "id": m.message_id, "name": (u.full_name if u else "?")[:40], "user": (u.username if u else None), "uid": (u.id if u else None),
+               "text": (m.text or m.caption or "")[:2000], "photo": bool(m.photo), "sticker": bool(m.sticker), "edit": bool(m.edit_date)}
+        if rp:
+            row["reply"] = {"name": (rp.from_user.full_name if rp.from_user else "?")[:40], "text": (rp.text or rp.caption or "")[:200]}
+        with open(CHAT_LOG, "a", encoding="utf-8") as f:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    except Exception as e:
+        log.warning("chat_log: %s", e)
+
+
 @r.message(F.chat.type.in_({"group", "supergroup"}) & F.text & ~F.text.startswith("/"))
 async def chat_feed(m: Message):
+    chat_log(m)
     if not CHAT_ID or str(m.chat.id) != str(CHAT_ID) or not m.from_user or m.from_user.is_bot:
         return
     text = re.sub(r"\s+", " ", m.text).strip()
@@ -1702,6 +1722,12 @@ async def chat_feed(m: Message):
         (Path(__file__).parent / "chat_feed.json").write_text(json.dumps(_feed, ensure_ascii=False), encoding="utf-8")
     except OSError:
         pass
+
+
+@r.message(F.chat.type.in_({"group", "supergroup"}) & ~F.text)
+async def chat_media(m: Message):
+    """Фото/стикеры/голосовые в чате — тоже в журнал (у фото с багами важна подпись)."""
+    chat_log(m)
 
 
 
