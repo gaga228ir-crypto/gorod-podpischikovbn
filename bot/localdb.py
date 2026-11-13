@@ -85,6 +85,10 @@ class LocalDB:
         s, n = self.c.execute("select coalesce(sum(stars),0), count(*) from payments").fetchone()
         return s, n
 
+    async def donors(self):
+        """Сколько ⭐ всего заплатил каждый ник."""
+        return {n: int(v) for n, v in self.c.execute("select nick, sum(stars) from payments group by nick")}
+
     async def add_payment(self, tg_id, nick, stars, charge_id, recipe):
         try:
             self.c.execute("insert into payments (tg_id, nick, stars, charge_id, recipe) values (?,?,?,?,?)", (tg_id, nick, stars, charge_id, json.dumps(recipe)))

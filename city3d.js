@@ -755,8 +755,8 @@ export class City3D {
       const d = new Set(fx.d || []), nowS = Date.now() / 1000;
       if (fx.lent && fx.lent.u > nowS) d.delete(fx.lent.i);
       if (fx.bor && fx.bor.u > nowS) d.add(fx.bor.i);
-      if (fx.rf && fx.rf.length === 64) { const PAL = ['', '#ffffff', '#1a1238', '#ff3d7f', '#ffd23f', '#5ef2ff', '#a6ff8f', '#c084fc', '#ff7a1a'];
-        const tex = canvasTex(64, 64, g => { for (let i = 0; i < 64; i++) { const c = PAL[+fx.rf[i]]; if (!c) continue; g.fillStyle = c; g.fillRect((i % 8) * 8, Math.floor(i / 8) * 8, 8, 8); } });
+      if (fx.rf && (fx.rf.length === 64 || fx.rf.length === 225)) { const PAL = ['', '#ffffff', '#1a1238', '#ff3d7f', '#ffd23f', '#5ef2ff', '#a6ff8f', '#c084fc', '#ff7a1a'], N = fx.rf.length === 64 ? 8 : 15, S = N * 8;
+        const tex = canvasTex(S, S, g => { for (let i = 0; i < N * N; i++) { const c = PAL[+fx.rf[i]]; if (!c) continue; g.fillStyle = c; g.fillRect((i % N) * 8, Math.floor(i / N) * 8, 8, 8); } });
         tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter;
         const RF = new THREE.Group(); const pole = new THREE.Mesh(new THREE.CylinderGeometry(.008, .008, .62, 6), flat('#d0d0e0')); pole.position.y = .31; RF.add(pole);
         const pan = new THREE.Mesh(new THREE.PlaneGeometry(.3, .3), new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide, toneMapped: false }));
@@ -823,11 +823,13 @@ export class City3D {
       G.position.set(h.x, 0, h.z); add(G);
     }
     const allT = { ...this.titles }; for (const [nk, f] of Object.entries(this.fxMap || {})) if (f.tt && !allT[nk]) allT[nk] = { t: f.tt };
+    for (const [nk, f] of Object.entries(this.fxMap || {})) if (f.mc) allT[nk] = { ...(allT[nk] || {}), mc: 1 };
     const pk = (this.landmarks || [])[1];
     if (pk && this.wishes && this.wishes.length && this.parkOpen) this.wishes.slice(0, 4).forEach((w, i) => { const sg = textSprite('⭐ ' + w.text, { color: '#fff', bg: 'rgba(94,242,255,.35)', scale: .0011, size: 44 });
       sg.position.set(pk.position.x + .42 + Math.sin(i * 2.1) * .5, 1.0 + i * .28, pk.position.z + .42 + Math.cos(i * 2.1) * .3); add(sg); });
-    for (const [nick, T] of Object.entries(allT)) { const h = this.byKey.get(nick); if (!h || h.gone || !T || !T.t) continue;
-      const sg = textSprite('🏅 ' + T.t, { color: '#1a1238', bg: 'rgba(255,210,63,.95)', scale: .0015, size: 48 }); sg.position.set(h.x, this.houseTop(h) + (this.fxMap?.[nick]?.s ? 1.0 : .62), h.z); add(sg); }
+    for (const [nick, T] of Object.entries(allT)) { const h = this.byKey.get(nick); if (!h || h.gone || !T || !(T.t || T.mc)) continue;
+      const sg = T.t ? textSprite((T.mc ? '💎 ' : '🏅 ') + T.t, { color: '#1a1238', bg: T.mc ? 'rgba(126,232,255,.95)' : 'rgba(255,210,63,.95)', scale: .0015, size: 48 })
+        : textSprite('💎 Меценат', { color: '#1a1238', bg: 'rgba(126,232,255,.95)', scale: .0015, size: 48 }); sg.position.set(h.x, this.houseTop(h) + (this.fxMap?.[nick]?.s ? 1.0 : .62), h.z); add(sg); }
     if (this.mini) { const { seed, n, taken } = this.mini, base = this.houses.filter(h => !h.recipe && !h.gone);
       for (let i = 0; i < n && base.length; i++) { if (taken.has(i)) continue; const r0 = rnd(seed ^ Math.imul(i + 1, 2654435761)), h = base[Math.floor(r0() * base.length)];
         const C = makeChest(); C.scale.setScalar(.75); C.position.set(h.x + (r0() < .5 ? -.47 : .47), .07, h.z + (r0() < .5 ? -.47 : .47)); C.rotation.y = r0() * 6;

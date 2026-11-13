@@ -60,6 +60,7 @@ CHAT_ID = E("CHAT_ID", "")                    # id чата жителей (-100
 CHANNEL_ID = E("CHANNEL_ID", "")              # @username канала — бот должен быть в нём админом
 KLAD_SALT = E("KLAD_SALT", "gorod-klad-v1")
 KLAD_LIMIT = int(E("KLAD_LIMIT", "5"))
+MECENAT_STARS = int(E("MECENAT_STARS", "50"))  # столько ⭐ всего → значок «💎 Меценат»
 GITHUB_TOKEN = E("GITHUB_TOKEN", "")
 TIKTOK_SESSIONID = E("TIKTOK_SESSIONID", "")
 SUBS_EVERY_MIN = int(E("SUBS_EVERY_MIN", "120"))
@@ -572,8 +573,8 @@ async def social_action(m, bot, me, data):
         await m.answer(f"🎁 Подарил @{target}: {FX_ITEMS[item][0]}! Осталось 🪙 {mine['co']}.", reply_markup=kb)
         await notify(target, f"🎁 Твой друг @{me['nick']} подарил тебе {FX_ITEMS[item][0]}! Уже у твоего дома.")
     elif t == "roof":
-        px = re.sub(r"[^0-8]", "", str(data.get("p") or ""))[:64]
-        if len(px) != 64:
+        px = re.sub(r"[^0-8]", "", str(data.get("p") or ""))[:225]
+        if len(px) not in (64, 225):
             return
         fx = await fx_get(me["nick"])
         fx["rf"] = px if px.strip("0") else ""
@@ -737,6 +738,10 @@ async def fx_publish():
         fx = {a: b for a, b in fx.items() if b not in ("", [], None, 0)}
         if fx:
             out[k[3:]] = fx
+    if hasattr(db, "donors"):
+        for nick, stars in (await db.donors()).items():
+            if stars >= MECENAT_STARS:
+                out.setdefault(nick, {})["mc"] = 1
     body = json.dumps(out, ensure_ascii=False, separators=(",", ":"))
     old, sha = await gh_get("fx.json")
     if old != body:
@@ -2036,9 +2041,26 @@ async def pre_checkout(q: PreCheckoutQuery):
     await q.answer(ok=ok, error_message=None if ok else "Счёт устарел, оформи заново.")
 
 
+async def mecenat_check(bot: Bot, tg_id: int):
+    """После оплаты: если житель впервые набрал MECENAT_STARS ⭐ — поздравить."""
+    try:
+        await asyncio.sleep(3)
+        me = await db.linked(tg_id)
+        if not me or not hasattr(db, "donors") or await db.kv_get("mc:" + me["nick"]):
+            return
+        if (await db.donors()).get(me["nick"], 0) >= MECENAT_STARS:
+            await db.kv_set("mc:" + me["nick"], "1")
+            _fx_dirty.set()
+            await bot.send_message(tg_id, f"💎 Ты поддержал город на {MECENAT_STARS}+ ⭐ — теперь у твоего дома значок <b>Меценат</b>! Спасибо 🫶",
+                                   reply_markup=city_keyboard(me["nick"]))
+    except Exception as e:
+        log.warning("mecenat: %s", e)
+
+
 @r.message(F.successful_payment)
 async def paid(m: Message, bot: Bot):
     p = m.successful_payment
+    asyncio.create_task(mecenat_check(bot, m.from_user.id))
     if p.invoice_payload.startswith("a|"):
         oid = int(p.invoice_payload.split("|")[1])
         await db.ai_patch(oid, {"status": "paid", "charge_id": p.telegram_payment_charge_id})

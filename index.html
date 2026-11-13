@@ -228,7 +228,7 @@ function focus(h, fly = true) {
   $('cedit').style.display = (TG && h.key === ME) ? '' : 'none';
   const fx = fxMap[h.key] || {}, mine = TG && h.key === ME;
   const T0 = titles[h.key] || (fx.tt ? { t: fx.tt } : null);
-  $('cfx').innerHTML = h.gone ? '' : (h.isEstate ? '<span class="k" style="color:#a6ff8f">🏡 Усадьба</span>' : '') + (T0 ? `<span class="k" style="color:var(--gold)">🏅 ${esc(T0.t)}</span>` : '') + (fx.k ? `<span class="k">❤ ${fx.k}</span>` : '') + (fx.s ? `<span class="k" style="color:#fff">💬 ${esc(fx.s)}</span>` : '')
+  $('cfx').innerHTML = h.gone ? '' : (h.isEstate ? '<span class="k" style="color:#a6ff8f">🏡 Усадьба</span>' : '') + (T0 ? `<span class="k" style="color:var(--gold)">🏅 ${esc(T0.t)}</span>` : '') + (fx.mc ? '<span class="k" style="color:#7ee8ff">💎 Меценат</span>' : '') + (fx.k ? `<span class="k">❤ ${fx.k}</span>` : '') + (fx.s ? `<span class="k" style="color:#fff">💬 ${esc(fx.s)}</span>` : '')
     + (fx.f && fx.f.length ? `<span class="k" style="color:#ff8fd0">👫 ${fx.f.slice(0, 3).map(n => '@' + esc(n)).join(', ')}</span>` : '')
     + (contestOn() && fx.cv ? `<span class="k" style="color:var(--gold)">🏆 ${fx.cv}</span>` : '')
     + (mine ? `<span class="k" style="color:#ffd23f">🪙 ${fx.co || 0}</span><button type="button" id="bfx">✏️ ТАБЛИЧКА</button><button type="button" id="bshop">⭐ УКРАСИТЬ</button><button type="button" id="broof">🎨 ФЛАГ</button>`
@@ -302,7 +302,7 @@ const SHOP = [['fireworks', '🎆 Салют над домом', 15], ['ufo', '�
   ['pool', '🏊 Бассейн во дворе', 15], ['crystal', '💎 Парящий кристалл', 15], ['rocket', '🚀 Ракета у дома', 15], ['halo', '✨ Сияющий нимб', 15]];
 function openShop(h) {
   const have = new Set((fxMap[h.key] || {}).d || []);
-  sheet.innerHTML = `<h2>⭐ Украсить дом</h2><p>Украшения остаются у дома навсегда (кроме «Дома дня» — он на сутки). Оплата звёздами Telegram.</p>
+  sheet.innerHTML = `<h2>⭐ Украсить дом</h2><p>Украшения остаются у дома навсегда (кроме «Дома дня» — он на сутки). Оплата звёздами Telegram. <b style="color:#7ee8ff">💎 Кто поддержал город на 50+ ⭐ — получает значок «Меценат»</b> над домом.</p>
     <p>У тебя: <b style="color:var(--gold)">🪙 ${(fxMap[h.key] || {}).co || 0} неонок</b> — их дают за «🪙 Бонус дня» в боте, клад, сундуки и стуки.</p>
     ${SHOP.map(([k, t, p]) => `<div class="shop"><span>${t}</span>${have.has(k) || (k === 'estate' && h.isEstate) ? (k === 'top' || k === 'estate' ? '<b style="color:var(--gold)">✓ есть</b>' : `<button type="button" class="ghost" data-place="${k}">⚙️ РАЗМЕСТИТЬ</button>`) : `<button type="button" data-buy="${k}">${p} ⭐</button>${k !== 'estate' ? `<button type="button" class="ghost" data-buyc="${k}">${p * 5} 🪙</button>` : ''}`}</div>`).join('')}
     ${(fxMap[h.key] || {}).rf ? '<div class="shop"><span>🎨 Флаг-рисунок</span><button type="button" class="ghost" data-place="roof">⚙️ РАЗМЕСТИТЬ</button></div>' : ''}
@@ -384,18 +384,31 @@ function openGift(h) {
 }
 function openRoof(h) {
   const PAL = ['', '#ffffff', '#1a1238', '#ff3d7f', '#ffd23f', '#5ef2ff', '#a6ff8f', '#c084fc', '#ff7a1a'];
-  let px = ((fxMap[h.key] || {}).rf || '0'.repeat(64)).split(''), col = 3;
+  const N = 15, old = (fxMap[h.key] || {}).rf || '';
+  let px = old.length === N * N ? old.split('') : old.length === 64 ? Array.from({ length: N * N }, (_, i) => old[Math.floor((Math.floor(i / N) * 8) / N) * 8 + Math.floor((i % N) * 8 / N)]) : '0'.repeat(N * N).split(''), col = 3;
   const draw = () => { $('rg').innerHTML = px.map((c, i) => `<i data-i="${i}" style="background:${PAL[+c] || 'rgba(255,255,255,.06)'}"></i>`).join(''); };
-  sheet.innerHTML = `<h2>🎨 Флаг над домом</h2><p>Нарисуй картинку 8×8 — она будет развеваться на флаге над твоим домом. Нажимай клетки.</p>
+  sheet.innerHTML = `<h2>🎨 Флаг над домом</h2><p>Нарисуй картинку 15×15 — она будет развеваться на флаге над твоим домом. Нажимай клетки.</p>
     <div class="opts">${PAL.map((c, i) => `<button class="opt sw${i === col ? ' on' : ''}" data-col="${i}" type="button" style="background:${c || 'rgba(255,255,255,.08)'}">${c ? '' : '🧽'}</button>`).join('')}</div>
-    <div id="rg" style="display:grid;grid-template-columns:repeat(8,1fr);gap:2px;width:min(70vw,260px);margin:4px auto;aspect-ratio:1"></div>
-    <style>#rg i{display:block;border-radius:3px;cursor:pointer}</style>
+    <div id="rg" style="display:grid;grid-template-columns:repeat(15,1fr);gap:1px;width:min(84vw,330px);margin:4px auto;aspect-ratio:1"></div>
+    <style>#rg{touch-action:none}#rg i{display:block;border-radius:2px;cursor:pointer}</style>
     <div class="btns"><button class="ghost" id="rclr" type="button">ОЧИСТИТЬ</button><button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button><button id="rgo" type="button">ПОВЕСИТЬ</button></div>`;
   draw();
   sheet.querySelectorAll('[data-col]').forEach(b => b.onclick = () => { col = +b.dataset.col; sheet.querySelectorAll('[data-col]').forEach(x => x.classList.toggle('on', x === b)); });
-  $('rg').onclick = e => { const i = e.target.dataset.i; if (i == null) return; px[+i] = String(col); draw(); };
-  $('rclr').onclick = () => { px = '0'.repeat(64).split(''); draw(); };
+  let painting = false; const paint = e => { const t = document.elementFromPoint(e.clientX, e.clientY), i = t && t.dataset && t.dataset.i; if (i == null || px[+i] === String(col)) return; px[+i] = String(col); t.style.background = PAL[col] || 'rgba(255,255,255,.06)'; };
+  $('rg').onpointerdown = e => { painting = true; paint(e); }; $('rg').onpointermove = e => { if (painting) paint(e); }; window.addEventListener('pointerup', () => painting = false);
+  $('rclr').onclick = () => { px = '0'.repeat(N * N).split(''); draw(); };
   $('rgo').onclick = () => sendTG({ t: 'roof', p: px.join('') });
+  modal.classList.add('show'); closeBtn();
+}
+function openEstates() {
+  const c = city.estateCenter; if (c) city.flyTo(c.x, c.z, 16);
+  const own = Object.entries(estates).filter(([k]) => city.byKey.get(k)).sort((a, b) => a[1] - b[1]), free = 36 - Object.keys(estates).length;
+  sheet.innerHTML = `<h2>🏡 Посёлок Усадеб</h2><p>Тихий район на окраине: участок как 4 обычных дома, свой забор и сад. Сейчас свободно участков: <b style="color:var(--gold)">${Math.max(0, free)}</b>.</p>
+    ${own.map(([k, s]) => `<div class="shop"><span>№${s + 1} · @${esc(k)}</span><button type="button" class="ghost hn" data-n="${esc(k)}">👀 СМОТРЕТЬ</button></div>`).join('') || '<p>Пока никто не переехал — займи лучший участок первым!</p>'}
+    <p>Как переехать: открой свой дом → «⭐ УКРАСИТЬ» → «🏡 Усадьба» (100 ⭐).</p>
+    <div class="btns">${TG && ME && city.byKey.get(ME) && !estates[ME] ? '<button type="button" id="estMine">🏡 ХОЧУ УСАДЬБУ</button>' : ''}<button class="ghost" id="mclose" type="button">${c ? 'СМОТРЕТЬ ПОСЁЛОК' : 'ЗАКРЫТЬ'}</button></div>`;
+  sheet.querySelectorAll('.hn').forEach(b => b.onclick = () => { const h = city.byKey.get(b.dataset.n); if (h) { modal.classList.remove('show'); focus(h); } });
+  if ($('estMine')) $('estMine').onclick = () => openShop(city.byKey.get(ME));
   modal.classList.add('show'); closeBtn();
 }
 function openDuma() {
@@ -477,6 +490,7 @@ function applyAmbience() {
 function initAmbience() {
   if (!$('parkChip')) { const pc = document.createElement('button'); pc.className = 'chip'; pc.id = 'parkChip'; pc.textContent = parkOpen() ? '🎡 ПАРК' : '🎡 ПАРК · СКОРО';
     pc.onclick = () => { const lm = city.landmarks[1]; if (lm) city.flyTo(lm.position.x, lm.position.z, 7); if (!parkOpen()) openPark('park'); }; $('chips').appendChild(pc); }
+  if (!$('estChip')) { const ec = document.createElement('button'); ec.className = 'chip'; ec.id = 'estChip'; ec.textContent = '🏡 УСАДЬБЫ'; ec.onclick = openEstates; $('chips').appendChild(ec); }
   if (!$('honorChip')) { const hc = document.createElement('button'); hc.className = 'chip'; hc.id = 'honorChip'; hc.textContent = '🏆 ДОСКА ПОЧЁТА'; hc.onclick = openHonor; $('chips').appendChild(hc); }
   if (ambChip) { if (!ambChip.isConnected) $('chips').appendChild(ambChip); return; } ambChip = document.createElement('button'); ambChip.className = 'chip klad'; ambChip.title = 'Время суток и погода'; $('chips').appendChild(ambChip);
   ambChip.onclick = openAmbience; applyAmbience(); setInterval(applyAmbience, 20000);
