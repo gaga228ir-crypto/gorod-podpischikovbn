@@ -124,7 +124,7 @@
   <h2 class="brand">ПИКСЕЛЬ·БАТТЛ</h2>
   <p class="sub">Один холст на всех. Рисуйте вместе, защищайте свои картинки, перекрашивайте чужие.</p>
   <div class="steps">
-    <div><em>👆</em>Тапни клетку и выбери цвет</div>
+    <div><em>👆</em>Тап — приблизить, ещё тап — выбрать клетку</div>
     <div><em>⏱</em>1 пиксель раз в <b id="cdTxt">&nbsp;30&nbsp;</b> секунд</div>
     <div><em>🔍</em>Два пальца или колесо — приблизить, тяни — двигать</div>
   </div>
@@ -163,15 +163,19 @@ function drawGrid() { const d = devicePixelRatio || 1, w = innerWidth, h = inner
   for (let x = x0; x <= x1; x++) { const px = Math.round(ox + x * scale) + .5; gctx.moveTo(px, oy + y0 * scale); gctx.lineTo(px, oy + y1 * scale); }
   for (let y = y0; y <= y1; y++) { const py = Math.round(oy + y * scale) + .5; gctx.moveTo(ox + x0 * scale, py); gctx.lineTo(ox + x1 * scale, py); }
   gctx.stroke(); }
+const MINS = .1; // холст 1000×1000 целиком влезает в экран
 const barH = () => document.querySelector('.bar').offsetHeight + 20;
 function fit() { const w = innerWidth, top = 64, h = innerHeight - barH() - top;
-  scale = Math.max(1, Math.min(w * .92, h * .94) / SIZE); ox = (w - SIZE * scale) / 2; oy = top + (h - SIZE * scale) / 2; apply(); }
+  scale = Math.max(MINS, Math.min(w * .92, h * .94) / SIZE); ox = (w - SIZE * scale) / 2; oy = top + (h - SIZE * scale) / 2; apply(); }
 function draw(x, y, c) { ctx.fillStyle = PAL[c]; ctx.fillRect(x, y, 1, 1); }
 function drawAll() { const img = ctx.createImageData(SIZE, SIZE);
   const rgb = PAL.map(h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]);
   for (let i = 0; i < board.length; i++) { const p = rgb[board[i]] || rgb[0]; img.data.set([p[0], p[1], p[2], 255], i * 4); }
   ctx.putImageData(img, 0, 0); }
-async function loadBoard() { board = new Uint8Array(await (await fetch(BASE + '/board', { cache: 'no-store' })).arrayBuffer()); drawAll(); }
+async function loadBoard() { // холст приходит сжатым (пары цвет+длина) — через туннель 1 МБ не пролезает
+  const r = new Uint8Array(await (await fetch(BASE + '/board?rle=1', { cache: 'no-store' })).arrayBuffer()), b = new Uint8Array(SIZE * SIZE);
+  for (let i = 0, k = 0; i + 1 < r.length && k < b.length; i += 2) { const n = r[i + 1] + 1; b.fill(r[i], k, Math.min(b.length, k + n)); k += n; }
+  board = b; drawAll(); }
 function ping(x, y) { const p = document.createElement('div'); p.className = 'ping'; p.style.left = x + 'px'; p.style.top = y + 'px'; wrap.appendChild(p); setTimeout(() => p.remove(), 700); }
 
 function buildPalette() { const el = $('pal'); el.innerHTML = '';
@@ -233,19 +237,19 @@ view.addEventListener('pointermove', e => { const p = pts.get(e.pointerId); if (
   if (pts.size === 1) { const dx = e.clientX - p.x, dy = e.clientY - p.y; moved += Math.abs(dx) + Math.abs(dy); ox += dx; oy += dy; apply(); }
   p.x = e.clientX; p.y = e.clientY;
   if (pts.size === 2 && pinch0) { const [a, b] = [...pts.values()]; const k = Math.hypot(a.x - b.x, a.y - b.y) / pinch0.d; moved = 99;
-    zoomAt(pinch0.mx, pinch0.my, Math.min(60, Math.max(1, pinch0.s * k)), pinch0); } });
+    zoomAt(pinch0.mx, pinch0.my, Math.min(60, Math.max(MINS, pinch0.s * k)), pinch0); } });
 function endPtr(e) { if (!pts.has(e.pointerId)) return; pts.delete(e.pointerId); if (pts.size < 2) pinch0 = null;
   if (e.type === 'pointerup' && pts.size === 0 && moved < 8) { const x = Math.floor((e.clientX - ox) / scale), y = Math.floor((e.clientY - oy) / scale);
-    if (x >= 0 && y >= 0 && x < SIZE && y < SIZE) { setSel(x, y); if (scale < 7) smoothZoom(e.clientX, e.clientY, 8); } } }
+    if (x >= 0 && y >= 0 && x < SIZE && y < SIZE) { if (scale < 4) smoothZoom(e.clientX, e.clientY, 10); else setSel(x, y); } } }
 view.addEventListener('pointerup', endPtr); view.addEventListener('pointercancel', endPtr);
-view.addEventListener('wheel', e => { e.preventDefault(); zoomAt(e.clientX, e.clientY, Math.min(60, Math.max(1, scale * (e.deltaY < 0 ? 1.15 : 1 / 1.15)))); }, { passive: false });
+view.addEventListener('wheel', e => { e.preventDefault(); zoomAt(e.clientX, e.clientY, Math.min(60, Math.max(MINS, scale * (e.deltaY < 0 ? 1.15 : 1 / 1.15)))); }, { passive: false });
 function zoomAt(mx, my, ns, from) { const s0 = from ? from.s : scale, ox0 = from ? from.ox : ox, oy0 = from ? from.oy : oy;
   const wx = (mx - ox0) / s0, wy = (my - oy0) / s0; scale = ns; ox = mx - wx * ns; oy = my - wy * ns; apply(); }
 function smoothZoom(mx, my, target) { const s0 = scale, t0 = performance.now();
   const step = t => { const k = Math.min(1, (t - t0) / 260), e = 1 - Math.pow(1 - k, 3); zoomAt(mx, my, s0 + (target - s0) * e); if (k < 1) requestAnimationFrame(step); }; requestAnimationFrame(step); }
 const center = () => [innerWidth / 2, (innerHeight - barH()) / 2 + 32];
 $('zIn').onclick = () => smoothZoom(...center(), Math.min(60, scale * 1.6));
-$('zOut').onclick = () => smoothZoom(...center(), Math.max(1, scale / 1.6));
+$('zOut').onclick = () => smoothZoom(...center(), Math.max(MINS, scale / 1.6));
 $('zFit').onclick = fit;
 
 const MED = ['🥇', '🥈', '🥉'];
