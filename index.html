@@ -313,6 +313,7 @@ function applyAmbience() {
   if (ambChip) { const t = city.dayT; ambChip.textContent = (t > .6 ? '☀️' : t > .05 ? '🌇' : '🌙') + (WX_ICON[city.weather] ? ' ' + WX_ICON[city.weather] : ''); }
 }
 function initAmbience() {
+  if (!$('honorChip')) { const hc = document.createElement('button'); hc.className = 'chip'; hc.id = 'honorChip'; hc.textContent = '🏆 ДОСКА ПОЧЁТА'; hc.onclick = openHonor; $('chips').appendChild(hc); }
   if (ambChip) { if (!ambChip.isConnected) $('chips').appendChild(ambChip); return; } ambChip = document.createElement('button'); ambChip.className = 'chip klad'; ambChip.title = 'Время суток и погода'; $('chips').appendChild(ambChip);
   ambChip.onclick = openAmbience; applyAmbience(); setInterval(applyAmbience, 20000);
 }
