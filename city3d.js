@@ -689,7 +689,7 @@ export class City3D {
   pan(dx, dy) { const c = this.ctl, k = c.d * .0022, s = Math.sin(c.az), co = Math.cos(c.az); c.tx -= (dx * co - dy * s * 1.3) * k; c.tz -= (-dx * s - dy * co * 1.3) * k; c.x = c.tx; c.z = c.tz; this.clamp(); }
   zoom(f) { this.ctl.td = Math.max(3, Math.min(140, this.ctl.td * f)); }
   rotate(da) { this.ctl.taz += da; }
-  clamp() { const c = this.ctl, L = (this.span || 20) * 3 + 6; c.tx = Math.max(-L, Math.min(L, c.tx)); c.tz = Math.max(-L, Math.min(L, c.tz)); }
+  clamp() { const c = this.ctl, L = (this.span || 20) * 3 + 6, XR = Math.max(L, ESTATE_BLOCKS.length ? Math.max(...ESTATE_BLOCKS.map(b => blockCenter(b)[0])) + 10 : L); c.tx = Math.max(-L, Math.min(XR, c.tx)); c.tz = Math.max(-L, Math.min(L, c.tz)); }
   pick(x, y) {
     this.ray.setFromCamera(new THREE.Vector2(x / this.W * 2 - 1, -(y / this.H) * 2 + 1), this.cam);
     if (this.chest && this.ray.intersectObject(this.chest, true).length) return { chest: true };
