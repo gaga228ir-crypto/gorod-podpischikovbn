@@ -482,7 +482,7 @@ async def menu_backfill(bot):
 
 def main_menu():
     rows = [[IB(text="🏠 Мой дом", callback_data="home")], [IB(text="👥 Пригласить друга · бонус", callback_data="ref")],
-            [IB(text="🗳 Выборы мэра", callback_data="elect")]]
+            [IB(text="🗳 Выборы мэра", callback_data="elect")], [IB(text="🐞 Нашёл баг / идея", callback_data="bug")]]
     if CHAT_URL:
         rows.append([IB(text="💬 Чат жителей", url=CHAT_URL)])
     links = []
@@ -670,6 +670,55 @@ async def claim(c: CallbackQuery, bot: Bot):
 # ---------- выборы мэра ----------
 # Кандидат: привязанный ник (свой дом) + подписка на канал + участник чата жителей → программа → проверка админом → сайт.
 # Голос: привязанный ник + подписка на канал; 1 человек = 1 голос. Неделя (MAYOR_DAYS), потом итог — мэр в Ратуше.
+class Bug(StatesGroup):
+    text = State()
+
+
+@r.callback_query(F.data == "bug")
+async def bug_start(c: CallbackQuery, state: FSMContext):
+    await c.answer()
+    await state.set_state(Bug.text)
+    await c.message.answer("🐞 <b>Нашёл баг или есть идея?</b>\n\nОпиши одним сообщением, что случилось (что нажимал, что увидел). Можно прикрепить скриншот 📸 — это очень помогает.\n\nОтмена — /start")
+
+
+@r.message(Command("bug"))
+async def bug_cmd(m: Message, state: FSMContext):
+    await state.set_state(Bug.text)
+    await m.answer("🐞 Опиши баг или идею одним сообщением — можно со скриншотом 📸\n\nОтмена — /start")
+
+
+@r.message(Bug.text)
+async def bug_text(m: Message, state: FSMContext):
+    await state.clear()
+    me = await db.linked(m.from_user.id)
+    who = f"@{me['nick']}" if me else "без привязки"
+    tg = f"@{m.from_user.username}" if m.from_user.username else f"id {m.from_user.id}"
+    for a in ADMIN_IDS:
+        try:
+            await m.bot.send_message(a, f"🐞 <b>Сообщение о баге / идея</b>\nОт: {tg} · дом {who}")
+            await m.bot.copy_message(a, m.chat.id, m.message_id)
+        except Exception as e:
+            log.warning("bug fwd: %s", e)
+    await m.answer("Спасибо! 🙏 Передал в мэрию. Самым внимательным — титул 🏅", reply_markup=main_menu())
+
+
+async def program_notice(bot):
+    """Один раз: одобренным кандидатам — что программу теперь можно дополнить (/program)."""
+    await asyncio.sleep(30)
+    if not hasattr(db, "c") or await db.kv_get("notice_program"):
+        return
+    await db.kv_set("notice_program", 1)
+    rows = db.c.execute("select tg_id, nick from candidates where status='approved'").fetchall()
+    for uid, nick in rows:
+        try:
+            await bot.send_message(uid, "🗳 <b>Программу кандидата теперь можно дополнить!</b>\n\nЛимит вырос с 200 до 800 символов. Отправь сюда <code>/program</code> и дальше всю программу целиком — она заменит старую на сайте.\n\n"
+                                   "Например: <code>/program 1. Магазин украшений… 2. Мини-игры… 3. …</code>")
+        except Exception as e:
+            log.warning("notice %s: %s", nick, e)
+        await asyncio.sleep(.3)
+    log.info("про /program написал %s кандидатам", len(rows))
+
+
 class Mayor(StatesGroup):
     promise = State()
 
@@ -1785,6 +1834,7 @@ async def main():
     asyncio.create_task(mayor_loop(bot))
     asyncio.create_task(handmade_loop(bot))
     asyncio.create_task(menu_backfill(bot))
+    asyncio.create_task(program_notice(bot))
     asyncio.create_task(sync_loop(bot))
     asyncio.create_task(ai_resume(bot))
     asyncio.create_task(restart_later())
