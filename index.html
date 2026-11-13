@@ -535,6 +535,11 @@ function renderStudio() {
     if (S.tab === 'free') data = { t: 'preset', i: S.preset };
     else if (S.tab === 'ai') { const d = ($('aitext').value || '').trim(); if (d.length < 5) { $('serr').textContent = 'Опиши дом хотя бы парой слов 🙂'; return; } data = { t: 'ai', d }; }
     else data = { t: 'custom', r: { ...CityHouse.normRecipe(R), decor: R.decor || [] } };
+    const mineH = city.byKey.get(ME), special = mineH && mineH.recipe && Array.isArray(mineH.recipe.parts) && mineH.recipe.parts.length;
+    if (S.tab !== 'ai' && special && !S.confirmed) { const msgC = 'У тебя особый дом (сделан по описанию). Если выбрать этот — особый дом пропадёт. Точно заменить?';
+      const go = ok => { if (ok) { S.confirmed = true; $('sgo').click(); } };
+      try { tg.showConfirm(msgC, go); } catch (e) { go(confirm(msgC)); } return; }
+    S.confirmed = false;
     try { sendTG(data); } catch (e) { $('serr').textContent = 'Открой город кнопкой «🏙 Открыть город» внизу чата с ботом — тогда выбор отправится.'; }
   };
   if (preview) preview.alive = false; preview = null;
