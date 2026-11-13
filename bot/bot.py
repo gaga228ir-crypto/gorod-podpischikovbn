@@ -1799,10 +1799,15 @@ async def pixel_proxy(req):
                     t.cancel()
             await ws.close()
             return ws
-        if req.method != "GET":
+        if req.method == "OPTIONS":
+            return web.Response(headers={"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST",
+                                         "Access-Control-Allow-Headers": "Content-Type"})
+        if req.method not in ("GET", "POST"):
             return web.Response(status=405)
+        body = await req.read() if req.method == "POST" else None
         async with aiohttp.ClientSession() as ses:
-            async with ses.get(f"{PIXEL_URL}/{tail}", params=req.query, headers=fwd, timeout=aiohttp.ClientTimeout(total=15)) as r:
+            async with ses.request(req.method, f"{PIXEL_URL}/{tail}", params=req.query, data=body, headers=fwd,
+                                   timeout=aiohttp.ClientTimeout(total=15)) as r:
                 body = await r.read()
                 return web.Response(body=body, status=r.status, content_type=r.content_type,
                                     headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "no-store"})

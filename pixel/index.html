@@ -98,17 +98,34 @@ function setSel(x, y) { sel = { x, y }; const s = $('sel'); s.style.display = 'b
 function tick() { const left = Math.ceil((waitUntil - Date.now()) / 1000), b = $('put');
   if (left > 0) { b.disabled = true; b.textContent = `⏳ ${left} С`; }
   else if (!sel) { b.disabled = true; b.textContent = 'ВЫБЕРИ КЛЕТКУ'; }
-  else if (!ws || ws.readyState !== 1) { b.disabled = true; b.textContent = 'ПОДКЛЮЧАЮСЬ…'; }
+  else if (!online()) { b.disabled = true; b.textContent = 'ПОДКЛЮЧАЮСЬ…'; }
   else { b.disabled = false; b.textContent = 'ПОСТАВИТЬ ПИКСЕЛЬ'; b.style.background = ''; } }
 setInterval(tick, 250);
 
-$('put').onclick = () => { if (!sel || !ws || ws.readyState !== 1) return;
-  ws.send(JSON.stringify({ t: 'place', x: sel.x, y: sel.y, c: color })); waitUntil = Date.now() + CD * 1000;
+$('put').onclick = () => { if (!sel || !online()) return;
+  if (POLL) act({ t: 'place', x: sel.x, y: sel.y, c: color }).then(j => { waitUntil = Date.now() + (j.wait || 0) * 1000; if (!j.ok && j.wait) toast('Подожди ещё ' + Math.ceil(j.wait) + ' с'); tick(); }).catch(() => toast('Нет связи — попробуй ещё раз'));
+  else ws.send(JSON.stringify({ t: 'place', x: sel.x, y: sel.y, c: color }));
+  waitUntil = Date.now() + CD * 1000;
   board[sel.y * SIZE + sel.x] = color; draw(sel.x, sel.y, color); try { tg && tg.HapticFeedback.impactOccurred('light'); } catch (e) {} tick(); };
 
+let POLL = false, pseq = 0, pollT = 0;
+const helloData = () => ({ initData: tg ? tg.initData : '', anon: anonId(), name: myName() });
+const act = d => fetch(BASE + '/act', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ ...helloData(), ...d }) }).then(r => r.json());
+const online = () => POLL || (ws && ws.readyState === 1);
+async function startPoll() { if (POLL) return; POLL = true; try { ws && ws.close(); } catch (e) {}
+  const me = await act({ t: 'hello' }).catch(() => null); if (me) { $('meName').textContent = me.name; waitUntil = Date.now() + me.wait * 1000; }
+  const info = await fetch(BASE + '/info', { cache: 'no-store' }).then(r => r.json()).catch(() => null); if (info) pseq = info.seq || 0;
+  await loadBoard(); pollLoop(); }
+async function pollLoop() { clearTimeout(pollT);
+  try { const j = await (await fetch(`${BASE}/poll?since=${pseq}&id=${encodeURIComponent(anonId())}`, { cache: 'no-store' })).json();
+    if (j.reload) { pseq = j.seq; await loadBoard(); } else { for (const q of j.px || []) { board[q.y * SIZE + q.x] = q.c; draw(q.x, q.y, q.c); } pseq = j.seq; }
+    $('online').textContent = j.online; fails = 0;
+  } catch (e) { if (++fails % 3 === 0) await resolveBase(); }
+  tick(); pollT = setTimeout(pollLoop, 2000); }
 function anonId() { try { let a = localStorage.getItem('pxAnon'); if (!a) { a = crypto.getRandomValues(new Uint32Array(4)).join('-'); localStorage.setItem('pxAnon', a); } return a; } catch (e) { return ''; } }
-function connect() {
-  ws = new WebSocket(BASE.replace(/^http/, 'ws') + '/ws');
+function connect() { if (POLL) return;
+  ws = new WebSocket(BASE.replace(/^http/, 'ws') + '/ws'); const w0 = ws;
+  setTimeout(() => { if (w0.readyState !== 1 && !POLL) startPoll(); }, 6000);
   ws.onopen = () => { fails = 0; ws.send(JSON.stringify({ t: 'hello', initData: tg ? tg.initData : '', anon: anonId(), name: myName() })); loadBoard(); tick(); };
   ws.onmessage = e => { const d = JSON.parse(e.data);
     if (d.t === 'px') { board[d.y * SIZE + d.x] = d.c; draw(d.x, d.y, d.c); }
@@ -116,7 +133,8 @@ function connect() {
     else if (d.t === 'me' && d.name) { $('meName').textContent = d.name; waitUntil = Date.now() + d.wait * 1000; tick(); }
     else if (d.t === 'me' || d.t === 'wait') { waitUntil = Date.now() + d.wait * 1000; if (d.t === 'wait' && d.wait < CD) toast('Подожди ещё ' + Math.ceil(d.wait) + ' с'); tick(); }
     else if (d.t === 'reload') loadBoard(); };
-  ws.onclose = async () => { tick(); if (++fails % 3 === 0) await resolveBase(); setTimeout(connect, 2000); };
+  ws.onerror = () => { if (!POLL && w0.readyState !== 1) startPoll(); };
+  ws.onclose = async () => { if (POLL) return; tick(); if (++fails % 3 === 0) await resolveBase(); setTimeout(connect, 2000); };
 }
 
 // --- перемещение и масштаб (мышь + пальцы) ---
@@ -143,7 +161,8 @@ $('topBtn').onclick = async () => { const el = $('topList'); if (el.style.displa
 if (tg && tg.initData) $('nameIn').style.display = 'none'; else $('nameIn').value = myName();
 $('go').onclick = () => { const n = $('nameIn').value.trim(); if (!(tg && tg.initData) && n.length < 2) { $('nameIn').focus(); $('nameIn').placeholder = 'Напиши ник — от 2 букв'; return; }
   $('help').style.display = 'none'; try { localStorage.setItem('pxHelp', 1); if (n) localStorage.setItem('pxName', n); } catch (e) {}
-  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'hello', initData: tg ? tg.initData : '', anon: anonId(), name: myName() })); };
+  if (POLL) act({ t: 'hello' }).then(me => $('meName').textContent = me.name).catch(() => {});
+  else if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'hello', ...helloData() })); };
 try { if (localStorage.getItem('pxHelp') && (myName() || (tg && tg.initData))) $('help').style.display = 'none'; } catch (e) {}
 
 (async () => { await resolveBase(); let info;
