@@ -580,11 +580,15 @@ async def social_action(m, bot, me, data):
         fx["rf"] = px if px.strip("0") else ""
         await fx_set(me["nick"], fx)
         await m.answer("🎨 Флаг-рисунок над домом готов! На сайте через пару минут.", reply_markup=kb)
-        for a in ADMIN_IDS:
-            try:
-                await bot.send_message(a, f"🎨 @{me['nick']} нарисовал флаг. Если там что-то плохое: /roof_clear {me['nick']}")
-            except Exception:
-                pass
+        if px.strip("0"):
+            pic = BufferedInputFile(flag_png(px), "flag.png")
+            mk = InlineKeyboardMarkup(inline_keyboard=[[IB(text="✅ Оставить", callback_data=f"rfk:{me['nick']}"),
+                                                        IB(text="🗑 Убрать", callback_data=f"rfd:{me['nick']}:{fnv(px) % 99991}")]])
+            for a in ADMIN_IDS:
+                try:
+                    await bot.send_photo(a, pic, caption=f"🎨 @{me['nick']} нарисовал флаг над домом.", reply_markup=mk)
+                except Exception as e:
+                    log.warning("flag preview: %s", e)
     elif t == "borrow":
         target = norm_nick(str(data.get("n") or ""))
         now = int(time.time())
@@ -635,6 +639,53 @@ async def friend_ok(c: CallbackQuery):
 async def friend_no(c: CallbackQuery):
     await c.answer()
     await c.message.edit_text("Ок, без дружбы 🙂")
+
+
+FLAG_PAL = ["#1a1238", "#ffffff", "#1a1238", "#ff3d7f", "#ffd23f", "#5ef2ff", "#a6ff8f", "#c084fc", "#ff7a1a"]
+
+
+def flag_png(px):
+    """Превью флага для админа: сетка N×N, пустые клетки — шахматка."""
+    from io import BytesIO
+    from PIL import Image, ImageDraw
+    n = 15 if len(px) == 225 else 8
+    c = 360 // n
+    im = Image.new("RGB", (c * n + 20, c * n + 20), "#0d0a1f")
+    d = ImageDraw.Draw(im)
+    for i, ch in enumerate(px):
+        x, y = 10 + (i % n) * c, 10 + (i // n) * c
+        col = FLAG_PAL[int(ch)] if ch != "0" else ("#2a2448" if (i % n + i // n) % 2 else "#221d3d")
+        d.rectangle([x, y, x + c - 1, y + c - 1], fill=col)
+    buf = BytesIO()
+    im.save(buf, "PNG")
+    return buf.getvalue()
+
+
+@r.callback_query(F.data.startswith("rfk:") | F.data.startswith("rfd:"))
+async def roof_moderate(c: CallbackQuery, bot: Bot):
+    if not is_admin(c.from_user.id):
+        return await c.answer()
+    parts = c.data.split(":")
+    nick = parts[1]
+    cap = (c.message.caption or "") + "\n"
+    if parts[0] == "rfk":
+        await c.answer("Оставлен ✅")
+        return await c.message.edit_caption(caption=cap + "✅ Оставлен", reply_markup=None)
+    fx = await fx_get(nick)
+    if not fx.get("rf") or (len(parts) > 2 and str(fnv(fx["rf"]) % 99991) != parts[2]):
+        await c.answer("Флаг уже другой или снят", show_alert=True)
+        return await c.message.edit_caption(caption=cap + "⚠️ Уже не актуально", reply_markup=None)
+    fx["rf"] = ""
+    await fx_set(nick, fx)
+    await c.answer("Убран 🗑")
+    await c.message.edit_caption(caption=cap + "🗑 Убран", reply_markup=None)
+    ow = await db.by_nick(nick)
+    if ow and ow[0].get("tg_id"):
+        try:
+            await bot.send_message(ow[0]["tg_id"], "🎨 Мэрия сняла твой флаг-рисунок: он не подошёл правилам города. Нарисуй новый — без грубостей 🙂",
+                                   reply_markup=city_keyboard(nick))
+        except Exception:
+            pass
 
 
 @r.message(Command("roof_clear"))
