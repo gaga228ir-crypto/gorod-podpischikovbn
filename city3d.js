@@ -388,7 +388,7 @@ export class City3D {
     const add = o => { this.scene.add(o); this.dyn.push(o); return o; };
     const N = Math.min(list.length, CELLS.length - 20), r = rnd(7);
     this.houses = list.slice(0, N).map((it, i) => ({ ...it, n: i + 1, x: CELLS[i][0] + .5, z: CELLS[i][1] + .5 }));
-    for (const h of this.houses) if (h.estate != null && ESTATE_BLOCKS[h.estate] && !h.gone) { const [cx, cz] = blockCenter(ESTATE_BLOCKS[h.estate]); h.x = cx; h.z = cz; h.isEstate = true;
+    for (const h of this.houses) if (h.estate != null && ESTATE_BLOCKS[h.estate] && !h.gone) { const [cx, cz] = blockCenter(ESTATE_BLOCKS[h.estate]); h.oldX = h.x; h.oldZ = h.z; h.x = cx; h.z = cz; h.isEstate = true;
       if (!h.recipe) h.recipe = { shape: 'house', floors: 2, wall: WALLS[hash(h.key) % WALLS.length], roof: ROOFS[hash(h.key + 'r') % ROOFS.length], decor: ['garland', 'tree'] }; }
     this.byKey = new Map(this.houses.map(h => [h.key, h]));
     const span = Math.ceil(Math.sqrt((N + 60) * 2.25 / Math.PI) / 3) + 4; this.span = span;
@@ -503,6 +503,9 @@ export class City3D {
       add(g); this.specialG.push(g); }
     if (ESTATE_BLOCKS.length) { const xs = ESTATE_BLOCKS.map(b => blockCenter(b)); this.places.push({ kind: 'estate', name: 'Посёлок Усадеб', x: xs.reduce((a, c) => a + c[0], 0) / xs.length, z: xs.reduce((a, c) => a + c[1], 0) / xs.length });
       this.estateCenter = this.places[this.places.length - 1]; }
+    // на старом месте дома, переехавшего в усадьбу, — указатель, чтобы его не искали в городе
+    for (const h of this.houses) if (h.isEstate && h.oldX != null) { const sg = textSprite('🏡 ' + h.label + ' → Посёлок Усадеб', { color: '#1a1238', bg: 'rgba(166,255,143,.92)', scale: .0016, size: 46 });
+      sg.position.set(h.oldX, 1.15, h.oldZ); add(sg); }
     // улицы: фонари по углам кварталов, деревья и скамейки, зебры
     const lamps = [], strees = [], benches = [], zebra = new Set();
     bl.forEach(([bx, by]) => { const [cx, cz] = blockCenter([bx, by]), rb = rnd(hash(bx + ':' + by));
