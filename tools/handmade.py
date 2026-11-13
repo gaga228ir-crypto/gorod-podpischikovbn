@@ -402,9 +402,48 @@ def horror_house():
     return h.r
 
 
+def sakura_estate():
+    """#19 @_margarita_dmitrievna_: японская усадьба с прудом и сакурой."""
+    h = H("Японская усадьба", "warm")
+    wall, wood, roof, pink = "#f3ead2", "#5a3a22", "#4a5568", "#ff9ccf"
+    h.p("box", 0, 0, 0, .96, .03, .96, "#4f7a46")  # сад
+    h.p("box", -.12, .03, -.18, .6, .06, .46, "#8a8f99")  # каменное основание
+    h.p("box", -.12, .09, -.2, .5, .24, .36, wall, .25)
+    for x in (-.34, -.2, -.05, .1):
+        h.p("box", x, .09, -.015, .022, .24, .022, wood)
+    h.p("box", -.12, .21, -.012, .5, .01, .01, wood)
+    h.p("box", -.12, .09, .07, .6, .025, .14, "#8a5a2b")  # энгава
+    h.p("box", -.12, .33, -.2, .56, .025, .42, wood)
+    h.p("pyramid", -.12, .355, -.2, .78, .17, .6, roof)
+    h.p("box", -.12, .45, -.2, .32, .1, .22, wood)
+    h.p("pyramid", -.12, .55, -.2, .48, .13, .36, roof)
+    h.p("box", -.12, .67, -.2, .42, .025, .04, "#1f242c")
+    for x in (-.3, .06):  # фонарики под крышей
+        h.p("sphere", x, .25, .09, .045, .06, .045, "#ffb347", 1)
+    # пруд с карпами и мостиком
+    h.p("cyl", .26, .03, .24, .4, .012, .32, "#3aa0ff", .55)
+    for x, z, c in ((.2, .2, "#ff7a2a"), (.32, .28, "#ffffff"), (.28, .16, "#ff7a2a")):
+        h.p("sphere", x, .04, z, .05, .02, .025, c, .4)
+    h.p("box", .26, .045, .24, .06, .02, .34, "#c0392b", r=90)  # красный мостик
+    for x in (.11, .41):
+        h.p("box", x, .045, .24, .012, .05, .012, "#c0392b")
+    # сакуры
+    for x, z, k in ((-.4, .35, 1), (.38, -.3, .85), (-.42, -.38, .7)):
+        h.p("cyl", x, .03, z, .035 * k, .3 * k, .035 * k, "#5a3a2a")
+        h.p("sphere", x, .26 * k, z, .26 * k, .18 * k, .26 * k, pink, .25)
+        h.p("sphere", x + .07 * k, .36 * k, z - .03, .16 * k, .12 * k, .16 * k, "#ffc1e0", .3)
+    for x, z in ((-.25, .3), (-.3, .44), (.05, .42), (.45, -.1)):  # лепестки на траве
+        h.p("sphere", x, .03, z, .05, .008, .05, pink, .2)
+    # каменный фонарь торо
+    h.p("box", .05, .03, .4, .05, .1, .05, "#9aa0a8")
+    h.p("box", .05, .13, .4, .08, .05, .08, "#ffd27a", .9)
+    h.p("pyramid", .05, .18, .4, .11, .05, .11, "#8a8f99")
+    return h.r
+
+
 if __name__ == "__main__":
     out = {"3": treehouse(), "4": lambo_house(), "6": obsidian_cliff(), "9": spider_tower(), "7": tv_tower(), "10": japanese_house(),
-           "11": hero_house(), "12": crown_palace(), "13": sand_castle(), "16": arabian_castle(), "17": horror_house()}
+           "11": hero_house(), "12": crown_palace(), "13": sand_castle(), "16": arabian_castle(), "17": horror_house(), "19": sakura_estate()}
     for v in out.values():
         v["publish"] = True  # бот сам поставит в город и напишет жителю (handmade_loop)
     for k, v in out.items():
