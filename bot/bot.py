@@ -1131,6 +1131,41 @@ async def program_cmd(m: Message):
             pass
 
 
+@r.message(Command("sign_clear", "sign_set"))
+async def sign_admin(m: Message):
+    """/sign_clear ник [причина] — снять табличку; /sign_set ник текст — заменить табличку."""
+    if not is_admin(m.from_user.id):
+        return
+    parts = (m.text or "").split(maxsplit=2)
+    cmd = parts[0].lstrip("/").split("@")[0]
+    if len(parts) < 2:
+        await m.answer("Как пользоваться:\n<code>/sign_clear ник [причина]</code> — снять табличку\n<code>/sign_set ник новый текст</code> — заменить табличку")
+        return
+    nick = norm_nick(parts[1].lstrip("@"))
+    rest = parts[2].strip() if len(parts) > 2 else ""
+    fx = await fx_get(nick)
+    old = fx.get("s", "")
+    if cmd == "sign_set":
+        if not rest:
+            await m.answer("Напиши новый текст: <code>/sign_set ник текст</code>")
+            return
+        fx["s"] = rest[:24]
+        note = f"🛠 Мэрия обновила табличку над твоим домом: «{fx['s']}»."
+        done = f"✅ Табличка @{nick}: «{old or '—'}» → «{fx['s']}»"
+    else:
+        fx["s"] = ""
+        note = "🛠 Мэрия сняла табличку над твоим домом" + (f": {rest}" if rest else " — она нарушает правила города (без политики, мата и рекламы).") + " Можешь повесить новую в «✏️ Табличка»."
+        done = f"✅ Табличка @{nick} снята (была: «{old or '—'}»)"
+    await fx_set(nick, fx)
+    owners = await db.by_nick(nick)
+    if owners and owners[0].get("tg_id"):
+        try:
+            await m.bot.send_message(owners[0]["tg_id"], note, reply_markup=city_keyboard(nick))
+        except Exception:
+            pass
+    await m.answer(done + "\nНа сайте — через пару минут.")
+
+
 @r.message(Command("mayor_noself"))
 async def mayor_noself(m: Message):
     """Убрать голоса кандидатов за самих себя (после запрета самоголосования)."""
