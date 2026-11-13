@@ -179,7 +179,7 @@ async function loadSpecial(byKey) {
   let n = apply(await getJSON('special.json')) + apply(rec); // special.json — дома по пожеланиям из комментов
   if (SUPABASE_URL) { try { n += apply(await (await api('residents?select=nick,recipe&status=eq.approved&recipe=not.is.null')).json()); } catch (e) {} }
   if (n) buildCity();
-  fxMap = (await getJSON('fx.json')) || {}; city.setFx(fxMap);
+  fxMap = (await getJSON('fx.json')) || {}; city.setFx(fxMap); loadWishes();
   titles = (await getJSON('titles.json')) || {}; city.setTitles(titles);
   updateHonor();
 }
@@ -213,7 +213,7 @@ requestAnimationFrame(loop);
 
 // ---------- карточка, поиск, поделиться ----------
 const card = $('card'), msg = $('msg');
-function pick(x, y) { const h = city.pick(x, y); if (h && h.honor) return openHonor(); if (h && h.mini != null) return openMini(h.mini); if (h && h.chest) return kladOver() ? kladChip.onclick() : openKlad(); if (h) focus(h, false); }
+function pick(x, y) { const h = city.pick(x, y); if (h && h.park) return openPark(h.park); if (h && h.honor) return openHonor(); if (h && h.mini != null) return openMini(h.mini); if (h && h.chest) return kladOver() ? kladChip.onclick() : openKlad(); if (h) focus(h, false); }
 function focus(h, fly = true) {
   city.focus(h, fly);
   $('cnick').textContent = h.label;
@@ -223,7 +223,8 @@ function focus(h, fly = true) {
   $('cnb').querySelectorAll('button').forEach(b => b.onclick = () => focus(nb[+b.dataset.i].h));
   $('cedit').style.display = (TG && h.key === ME) ? '' : 'none';
   const fx = fxMap[h.key] || {}, mine = TG && h.key === ME;
-  $('cfx').innerHTML = h.gone ? '' : (h.isEstate ? '<span class="k" style="color:#a6ff8f">🏡 Усадьба</span>' : '') + (titles[h.key] ? `<span class="k" style="color:var(--gold)">🏅 ${esc(titles[h.key].t)}</span>` : '') + (fx.k ? `<span class="k">❤ ${fx.k}</span>` : '') + (fx.s ? `<span class="k" style="color:#fff">💬 ${esc(fx.s)}</span>` : '')
+  const T0 = titles[h.key] || (fx.tt ? { t: fx.tt } : null);
+  $('cfx').innerHTML = h.gone ? '' : (h.isEstate ? '<span class="k" style="color:#a6ff8f">🏡 Усадьба</span>' : '') + (T0 ? `<span class="k" style="color:var(--gold)">🏅 ${esc(T0.t)}</span>` : '') + (fx.k ? `<span class="k">❤ ${fx.k}</span>` : '') + (fx.s ? `<span class="k" style="color:#fff">💬 ${esc(fx.s)}</span>` : '')
     + (mine ? '<button type="button" id="bfx">✏️ ТАБЛИЧКА</button><button type="button" id="bshop">⭐ УКРАСИТЬ</button>' : TG && ME ? '<button type="button" id="bknock">🚪 ПОСТУЧАТЬ</button>' : '');
   if ($('bfx')) $('bfx').onclick = () => openFx(h); if ($('bshop')) $('bshop').onclick = () => openShop(h); if ($('bknock')) $('bknock').onclick = () => sendTG({ t: 'knock', n: h.key });
   card.classList.add('show'); history.replaceState(null, '', location.search + '#' + encodeURIComponent(h.key));
@@ -261,7 +262,9 @@ function openFx(h) {
   $('fxgo').onclick = () => sendTG({ t: 'fx', s: $('fxs').value.trim().slice(0, 24), c: col });
   modal.classList.add('show'); closeBtn();
 }
-const SHOP = [['fireworks', '🎆 Салют над домом', 15], ['ufo', '🛸 НЛО над домом', 20], ['rainbow', '🌈 Радужная подсветка', 15], ['xmas', '🎄 Новогодняя ёлка', 10], ['snowman', '⛄ Снеговик во дворе', 10], ['top', '🔦 Дом дня: прожектор и доска почёта на 24 ч', 25], ['estate', '🏡 Усадьба: большой участок (как 4 дома) с забором и садом в Посёлке Усадеб', 100]];
+const SHOP = [['fireworks', '🎆 Салют над домом', 15], ['ufo', '🛸 НЛО над домом', 20], ['rainbow', '🌈 Радужная подсветка', 15], ['xmas', '🎄 Новогодняя ёлка', 10], ['snowman', '⛄ Снеговик во дворе', 10], ['top', '🔦 Дом дня: прожектор и доска почёта на 24 ч', 25], ['estate', '🏡 Усадьба: большой участок (как 4 дома) с забором и садом в Посёлке Усадеб', 100],
+  ['balloons', '🎈 Воздушные шары', 10], ['cat', '🐱 Кот на крыше', 10], ['flag', '🚩 Флаг на крыше', 10], ['lanterns', '🏮 Фонарики', 10], ['flowers', '🌷 Клумба', 10], ['ghost', '👻 Призрак-сосед', 10],
+  ['pool', '🏊 Бассейн во дворе', 15], ['crystal', '💎 Парящий кристалл', 15], ['rocket', '🚀 Ракета у дома', 15], ['halo', '✨ Сияющий нимб', 15]];
 function openShop(h) {
   const have = new Set((fxMap[h.key] || {}).d || []);
   sheet.innerHTML = `<h2>⭐ Украсить дом</h2><p>Украшения остаются у дома навсегда (кроме «Дома дня» — он на сутки). Оплата звёздами Telegram.</p>
@@ -274,7 +277,7 @@ function openShop(h) {
   modal.classList.add('show'); closeBtn();
 }
 
-const PLACE_NAME = { fireworks: '🎆 Салют', ufo: '🛸 НЛО', rainbow: '🌈 Радуга', xmas: '🎄 Ёлка', snowman: '⛄ Снеговик', sign: '💬 Табличка' };
+const PLACE_NAME = { fireworks: '🎆 Салют', ufo: '🛸 НЛО', rainbow: '🌈 Радуга', xmas: '🎄 Ёлка', snowman: '⛄ Снеговик', sign: '💬 Табличка', balloons: '🎈 Шары', cat: '🐱 Кот', flag: '🚩 Флаг', lanterns: '🏮 Фонарики', pool: '🏊 Бассейн', crystal: '💎 Кристалл', rocket: '🚀 Ракета', halo: '✨ Нимб', ghost: '👻 Призрак', flowers: '🌷 Клумба' };
 function openPlace(h, k) {
   const fx = fxMap[h.key] = fxMap[h.key] || {}, old = JSON.stringify(fx.p || {}); fx.p = fx.p || {};
   const v = (fx.p[k] || [0, 0, 1]).slice(); while (v.length < 3) v.push(v.length === 2 ? 1 : 0);
@@ -287,6 +290,47 @@ function openPlace(h, k) {
     clearTimeout(tm); tm = setTimeout(() => city.setFx(fxMap), 60); });
   $('pcancel').onclick = () => { fx.p = JSON.parse(old); city.setFx(fxMap); modal.classList.remove('show'); };
   $('pgo').onclick = () => sendTG({ t: 'place', i: k, p: v.map(x => Math.round(x * 100) / 100) });
+}
+
+// ---------- Неоновый парк: колесо удачи, фонтан желаний, горки ----------
+const PARK_AT = (MILESTONES_DEFAULT.find(m => m.type === 'park') || { at: 2500 }).at;
+let wishes = [];
+const parkOpen = () => /[?&]park=1/.test(location.search) || houses.filter(h => !h.gone).length >= (milestones.find(m => m.type === 'park') || { at: PARK_AT }).at;
+async function loadWishes() { wishes = (await getJSON('wishes.json')) || []; city.setWishes(wishes, parkOpen()); }
+function openPark(what) {
+  if (!parkOpen()) { const left = PARK_AT - houses.filter(h => !h.gone).length;
+    sheet.innerHTML = `<h2>🎡 Неоновый парк</h2><p>Откроется на <b>${PARK_AT.toLocaleString('ru')}</b> подписчиков — осталось <b>${Math.max(0, left).toLocaleString('ru')}</b>!</p>
+      <p>🎡 <b>Колесо удачи</b> — раз в день бесплатно: украшения, подсветка, «Дом дня», редкий титул и джекпот — дом по описанию.<br>⛲ <b>Фонтан желаний</b> — твоё желание засветится над фонтаном.<br>🎢 <b>Горки</b> — полёт над всем городом.</p>
+      <p>Зови друзей — откроем быстрее 👥</p><button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button>`; modal.classList.add('show'); return closeBtn(); }
+  if (what === 'fountain') return openWish(); if (what === 'coaster') return startRide(); return openWheel();
+}
+function openWheel() {
+  const seg = ['🎈', '💡', '🔦', '🐱', '🍀', '🚀', '💎', '🎁'];
+  sheet.innerHTML = `<h2>🎡 Колесо удачи</h2><p>Раз в день бесплатно! Выпадает украшение, подсветка, «Дом дня», редкий титул «🍀 Счастливчик» или джекпот — дом по описанию 🎁</p>
+    <div style="position:relative;width:220px;height:220px;margin:6px auto"><div id="wh" style="width:220px;height:220px;border-radius:50%;border:5px solid #ffd23f;box-shadow:0 0 30px rgba(255,210,63,.6);
+      background:conic-gradient(#ff3d7f 0 12.5%,#5ef2ff 0 25%,#ffd23f 0 37.5%,#a6ff8f 0 50%,#c084fc 0 62.5%,#ff7a1a 0 75%,#ff3d7f 0 87.5%,#5ef2ff 0);transition:transform 2.6s cubic-bezier(.15,.8,.2,1)">
+      ${seg.map((e, i) => `<span style="position:absolute;left:50%;top:50%;font-size:26px;transform:rotate(${i * 45 + 22.5}deg) translate(0,-80px) rotate(${-(i * 45 + 22.5)}deg);margin:-16px 0 0 -14px">${e}</span>`).join('')}</div>
+      <div style="position:absolute;left:50%;top:-10px;margin-left:-11px;width:0;height:0;border:11px solid transparent;border-top:20px solid #fff"></div></div>
+    <div class="btns"><button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button>${TG ? '<button id="spin" type="button">🎡 КРУТИТЬ</button>' : `<a class="btn" href="${esc(BOT_URL)}">КРУТИТЬ В БОТЕ</a>`}</div>`;
+  modal.classList.add('show'); closeBtn();
+  if ($('spin')) $('spin').onclick = () => { $('spin').disabled = true; $('wh').style.transform = `rotate(${1440 + Math.random() * 360}deg)`; setTimeout(() => sendTG({ t: 'spin' }), 2700); };
+}
+function openWish() {
+  sheet.innerHTML = `<h2>⛲ Фонтан желаний</h2><p>Брось монетку (5 ⭐) и загадай желание для города — оно засветится над фонтаном, его увидят все жители. Самые популярные мэрия исполняет!</p>
+    ${wishes.slice(0, 8).map(w => `<div class="cand"><div style="flex:1;min-width:0"><div class="p">⭐ ${esc(w.text)}</div><div class="p" style="font-size:12px">@${esc(w.nick)}</div></div></div>`).join('') || '<p>Желаний пока нет — будь первым! 🪙</p>'}
+    ${TG ? '<input id="wtx" maxlength="80" placeholder="Например: каток на реке зимой">' : ''}
+    <div class="btns"><button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button>${TG ? '<button id="wgo" type="button">🪙 БРОСИТЬ · 5 ⭐</button>' : ''}</div>`;
+  modal.classList.add('show'); closeBtn();
+  if ($('wgo')) $('wgo').onclick = () => { const t = $('wtx').value.trim(); if (t.length < 3) return; sendTG({ t: 'wish', s: t }); };
+}
+function startRide() {
+  modal.classList.remove('show'); card.classList.remove('show');
+  const target = (ME && city.byKey.get(ME)) || null;
+  let stop = document.getElementById('rideStop');
+  if (!stop) { stop = document.createElement('button'); stop.id = 'rideStop'; stop.className = 'btn cta'; stop.style.cssText = 'left:50%;right:auto;transform:translateX(-50%);z-index:6'; document.body.appendChild(stop); }
+  stop.textContent = '🎢 ВЫЙТИ С ГОРОК'; stop.style.display = '';
+  stop.onclick = () => city.rideStop();
+  city.rideStart(target, () => { stop.style.display = 'none'; if (target) focus(target, false); });
 }
 
 // ---------- доска почёта и кандидаты ----------
@@ -343,6 +387,8 @@ function applyAmbience() {
   if (ambChip) { const t = city.dayT; ambChip.textContent = (t > .6 ? '☀️' : t > .05 ? '🌇' : '🌙') + (WX_ICON[city.weather] ? ' ' + WX_ICON[city.weather] : ''); }
 }
 function initAmbience() {
+  if (!$('parkChip')) { const pc = document.createElement('button'); pc.className = 'chip'; pc.id = 'parkChip'; pc.textContent = parkOpen() ? '🎡 ПАРК' : '🎡 ПАРК · СКОРО';
+    pc.onclick = () => { const lm = city.landmarks[1]; if (lm) city.flyTo(lm.position.x, lm.position.z, 7); if (!parkOpen()) openPark('park'); }; $('chips').appendChild(pc); }
   if (!$('honorChip')) { const hc = document.createElement('button'); hc.className = 'chip'; hc.id = 'honorChip'; hc.textContent = '🏆 ДОСКА ПОЧЁТА'; hc.onclick = openHonor; $('chips').appendChild(hc); }
   if (ambChip) { if (!ambChip.isConnected) $('chips').appendChild(ambChip); return; } ambChip = document.createElement('button'); ambChip.className = 'chip klad'; ambChip.title = 'Время суток и погода'; $('chips').appendChild(ambChip);
   ambChip.onclick = openAmbience; applyAmbience(); setInterval(applyAmbience, 20000);

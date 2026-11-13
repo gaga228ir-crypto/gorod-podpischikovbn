@@ -295,10 +295,65 @@ FX_ITEMS = {
     "fireworks": ("🎆 Салют над домом", 15), "snowman": ("⛄ Снеговик во дворе", 10), "xmas": ("🎄 Новогодняя ёлка", 10),
     "ufo": ("🛸 НЛО над домом", 20), "rainbow": ("🌈 Радужная подсветка", 15), "top": ("🔦 Дом дня на 24 часа", 25),
     "estate": ("🏡 Усадьба — участок как 4 дома", 100),
+    "balloons": ("🎈 Воздушные шары", 10), "cat": ("🐱 Кот на крыше", 10), "flag": ("🚩 Флаг на крыше", 10),
+    "lanterns": ("🏮 Фонарики", 10), "pool": ("🏊 Бассейн во дворе", 15), "crystal": ("💎 Парящий кристалл", 15),
+    "rocket": ("🚀 Ракета у дома", 15), "halo": ("✨ Сияющий нимб", 15), "ghost": ("👻 Призрак-сосед", 10), "flowers": ("🌷 Клумба", 10),
+    "wish": ("🪙 Монетка в фонтан желаний", 5),
 }
+PARK_AT = int(E("PARK_AT", "2500"))
+SPIN_COLORS = ["#ff3d7f", "#ffd23f", "#5ef2ff", "#a6ff8f", "#c084fc", "#ff7a1a"]
+
+
+async def park_open():
+    return len((await subscribers())["set"]) >= PARK_AT
+
+
+async def do_spin(m, uid):
+    """🎡 Колесо удачи в Неоновом парке: раз в день бесплатно."""
+    me = await db.linked(uid)
+    if not me:
+        await m.answer("Сначала привяжи ник — «🏠 Мой дом» 🎡", reply_markup=main_menu())
+        return
+    if not await park_open():
+        await m.answer(f"🎡 Колесо удачи заработает, когда откроется Неоновый парк — на {PARK_AT} подписчиков! Зови друзей 👥", reply_markup=city_keyboard(me["nick"]))
+        return
+    day = msk_day()
+    if await db.kv_get(f"spin:{day}:{uid}"):
+        await m.answer("Ты сегодня уже крутил колесо 🎡 Приходи завтра!", reply_markup=city_keyboard(me["nick"]))
+        return
+    await db.kv_set(f"spin:{day}:{uid}", 1)
+    fx = await fx_get(me["nick"])
+    r = random.random()
+    deco = [k for k in DECOR_ITEMS if k not in fx.get("d", [])]
+    if r < .03:
+        await add_ai_gift(uid, me["nick"])
+        prize = "🎁 ДЖЕКПОТ! Бесплатный дом по описанию — открой город → «🎨 Мой дом» → «✨ По описанию»"
+    elif r < .08 and not fx.get("tt"):
+        fx["tt"] = "🍀 Счастливчик"
+        prize = "🏅 Редкий титул «🍀 Счастливчик» — над твоим домом!"
+    elif r < .22:
+        fx["top"] = max(int(fx.get("top", 0)), int(time.time())) + 24 * 3600
+        prize = "🔦 «Дом дня» на 24 часа — прожектор и место на доске почёта"
+    elif r < .32 or not deco:
+        fx["c"] = random.choice(SPIN_COLORS)
+        prize = "💡 Новая цветная подсветка дома"
+    else:
+        item = random.choice(deco)
+        fx["d"] = sorted(set(fx.get("d", [])) | {item})
+        prize = FX_ITEMS[item][0]
+    await fx_set(me["nick"], fx)
+    await m.answer(f"🎡 Колесо крутится… и выпадает:\n\n<b>{prize}</b>!\n\nНа сайте через пару минут. Завтра можно крутить снова 🍀", reply_markup=city_keyboard(me["nick"]))
+
+
+async def wishes_get():
+    try:
+        return json.loads(await db.kv_get("wishes") or "[]")
+    except ValueError:
+        return []
 ESTATE_SLOTS = 36
 MINI_N = 8
-MINI_POOL = ["fireworks", "snowman", "xmas", "ufo", "rainbow"]
+DECOR_ITEMS = ["fireworks", "snowman", "xmas", "ufo", "rainbow", "balloons", "cat", "flag", "lanterns", "pool", "crystal", "rocket", "halo", "ghost", "flowers"]
+MINI_POOL = DECOR_ITEMS
 
 
 def mini_code(day, i):
@@ -376,6 +431,11 @@ async def fx_publish():
     old, sha = await gh_get("fx.json")
     if old != body:
         await gh_put("fx.json", body, f"Дома жителей: {len(out)} с табличками/украшениями", sha)
+    wl = await wishes_get()
+    body = json.dumps(wl[-30:][::-1], ensure_ascii=False, separators=(",", ":"))
+    old, sha = await gh_get("wishes.json")
+    if old != body:
+        await gh_put("wishes.json", body, f"Фонтан желаний: {len(wl)}", sha)
     est = {k[7:]: int(v) for k, v in await db.kv_prefix("estate:")}
     body = json.dumps(est, ensure_ascii=False, separators=(",", ":"))
     old, sha = await gh_get("estates.json")
@@ -1333,6 +1393,21 @@ async def web_app(m: Message, bot: Bot):
             except Exception:
                 pass
         return
+    if data.get("t") == "spin":
+        await do_spin(m, m.from_user.id)
+        return
+    if data.get("t") == "wish":
+        text = re.sub(r"\s+", " ", str(data.get("s") or "")).strip()[:80]
+        if len(text) < 3 or BAD.search(text):
+            await m.answer("Напиши желание словами (3–80 символов, без мата и ссылок) ⛲", reply_markup=city_keyboard(me["nick"]))
+            return
+        if not await park_open():
+            await m.answer(f"⛲ Фонтан желаний откроется вместе с Неоновым парком — на {PARK_AT} подписчиков!", reply_markup=city_keyboard(me["nick"]))
+            return
+        await db.kv_set(f"wishp:{m.from_user.id}", text)
+        await bot.send_invoice(m.chat.id, title="Монетка в фонтан желаний", description=f"Желание «{text}» засветится над фонтаном в Неоновом парке — его увидят все жители.",
+                               payload="f|wish", currency="XTR", prices=[LabeledPrice(label="Монетка", amount=FX_ITEMS["wish"][1])])
+        return
     if data.get("t") == "mini":
         try:
             await claim_mini(m, m.from_user.id, int(data.get("i", -1)), str(data.get("c", "")))
@@ -1453,6 +1528,23 @@ async def paid(m: Message, bot: Bot):
         if not me or item not in FX_ITEMS:
             await bot.refund_star_payment(m.from_user.id, p.telegram_payment_charge_id)
             await m.answer("Не получилось — звёзды вернули.")
+            return
+        if item == "wish":
+            text = await db.kv_get(f"wishp:{m.from_user.id}") or "…"
+            wl = await wishes_get()
+            wl.append({"nick": me["nick"], "text": text, "ts": int(time.time())})
+            await db.kv_set("wishes", json.dumps(wl[-100:], ensure_ascii=False))
+            _fx_dirty.set()
+            try:
+                await db.add_payment(m.from_user.id, me["nick"], p.total_amount, p.telegram_payment_charge_id, {"fx": "wish", "text": text})
+            except RuntimeError as e:
+                log.warning("payment log: %s", e)
+            await m.answer(f"🪙 Плюх! Желание «{text}» засветилось над фонтаном ✨ Самые популярные желания мэрия исполняет!", reply_markup=city_keyboard(me["nick"]))
+            for a in ADMIN_IDS:
+                try:
+                    await bot.send_message(a, f"⛲ Желание от @{me['nick']}: {text}")
+                except Exception:
+                    pass
             return
         if item == "estate":
             slot = await estate_slot_free()

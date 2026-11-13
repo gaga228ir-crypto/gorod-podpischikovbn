@@ -262,6 +262,31 @@ export function makeLandmark(type, locked, title) {
     const jib = new THREE.Mesh(new THREE.BoxGeometry(1.6, .06, .06), cm); jib.position.set(.5, 2.2, 0); crane.add(jib);
     const lamp = new THREE.Mesh(new THREE.SphereGeometry(.04), flat('#ff3b3b', '#ff2020', 3)); lamp.position.set(1.28, 2.24, 0); lamp.userData.blink = true; crane.add(lamp);
     crane.position.set(-.6, 0, -.6); crane.userData.spin = true; G.add(crane);
+  } else if (type === 'park' && !locked) {
+    const grass = new THREE.Mesh(new THREE.BoxGeometry(1.9, .04, 1.9), flat('#1e6b45')); grass.position.y = .02; G.add(grass);
+    const tag = (o, k) => { o.traverse(m => m.userData.park = k); return o; };
+    // колесо удачи (обозрения)
+    const W = new THREE.Group(); W.position.set(-.45, .78, -.35);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(.62, .025, 8, 48), flat('#ff3d7f', '#ff3d7f', 1.4)); W.add(rim);
+    const rim2 = new THREE.Mesh(new THREE.TorusGeometry(.5, .012, 6, 40), flat('#ffd23f', '#ffd23f', 1.2)); W.add(rim2);
+    for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2, sp = new THREE.Mesh(new THREE.BoxGeometry(.012, .62, .012), flat('#c9c3ff')); sp.position.set(Math.cos(a) * .31, Math.sin(a) * .31, 0); sp.rotation.z = a + Math.PI / 2; W.add(sp);
+      const cab = new THREE.Mesh(new THREE.BoxGeometry(.09, .08, .09), flat(['#5ef2ff', '#ffd23f', '#a6ff8f', '#c084fc'][i % 4], ['#5ef2ff', '#ffd23f', '#a6ff8f', '#c084fc'][i % 4], .8)); cab.position.set(Math.cos(a) * .62, Math.sin(a) * .62 - .06, 0); cab.userData.cab = true; W.add(cab); }
+    W.userData.wheelSpin = true; G.add(tag(W, 'wheel'));
+    for (const z of [-.1, .1]) { const leg = new THREE.Mesh(new THREE.BoxGeometry(.04, .85, .04), flat('#8a90b8')); leg.position.set(-.45, .4, -.35 + z); G.add(tag(leg, 'wheel')); }
+    // фонтан желаний
+    const F = new THREE.Group(); F.position.set(.42, 0, .42);
+    F.add(new THREE.Mesh(new THREE.CylinderGeometry(.33, .37, .12, 24), flat('#9aa3b5'))); F.children[0].position.y = .08;
+    const wa = new THREE.Mesh(new THREE.CylinderGeometry(.28, .28, .02, 24), flat('#5ef2ff', '#00d5ff', 1.3)); wa.position.y = .15; F.add(wa);
+    const col = new THREE.Mesh(new THREE.CylinderGeometry(.04, .06, .3, 10), flat('#c9c3ff')); col.position.y = .3; F.add(col);
+    const jet = new THREE.Mesh(new THREE.SphereGeometry(.09, 12, 10), flat('#a8f0ff', '#5ef2ff', 1.6)); jet.position.y = .48; jet.userData.pulse = true; F.add(jet);
+    G.add(tag(F, 'fountain'));
+    // американские горки — маленькая петля с тележкой
+    const pts = []; for (let i = 0; i < 24; i++) { const a = i / 24 * Math.PI * 2; pts.push(new THREE.Vector3(.5 + Math.cos(a) * .38, .25 + Math.sin(a * 2) * .14 + Math.sin(a) * .1, -.25 + Math.sin(a) * .55)); }
+    const curve = new THREE.CatmullRomCurve3(pts, true), track = new THREE.Mesh(new THREE.TubeGeometry(curve, 80, .018, 6, true), flat('#ffd23f', '#ff9a00', 1));
+    G.add(tag(track, 'coaster'));
+    for (let i = 0; i < 8; i++) { const q = curve.getPointAt(i / 8), pl = new THREE.Mesh(new THREE.BoxGeometry(.015, q.y, .015), flat('#8a90b8')); pl.position.set(q.x, q.y / 2, q.z); G.add(tag(pl, 'coaster')); }
+    const cart = new THREE.Mesh(new THREE.BoxGeometry(.1, .06, .07), flat('#ff3d7f', '#ff3d7f', 1.2)); cart.userData.cart = curve; G.add(tag(cart, 'coaster'));
+    const r = rnd(4); for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2 + .3, t = new THREE.Mesh(new THREE.SphereGeometry(.12 + r() * .05, 8, 6), flat('#2fbf71', '#0a4', .15)); t.position.set(Math.cos(a) * .82, .2, Math.sin(a) * .82); G.add(t); }
   } else if (type === 'park') {
     const grass = new THREE.Mesh(new THREE.BoxGeometry(1.9, .04, 1.9), flat('#1e6b45')); grass.position.y = .02; G.add(grass);
     const fount = new THREE.Mesh(new THREE.CylinderGeometry(.35, .4, .12, 20), flat('#9aa3b5')); fount.position.y = .08; G.add(fount);
@@ -669,6 +694,7 @@ export class City3D {
     this.ray.setFromCamera(new THREE.Vector2(x / this.W * 2 - 1, -(y / this.H) * 2 + 1), this.cam);
     if (this.chest && this.ray.intersectObject(this.chest, true).length) return { chest: true };
     if (this.honorG && this.ray.intersectObject(this.honorG, true).length) return { honor: true };
+    { const pk = (this.landmarks || [])[1]; if (pk && this.ray.intersectObject(pk, true).length) { const hit = this.ray.intersectObject(pk, true).find(x => x.object.userData.park); return { park: hit ? hit.object.userData.park : 'park' }; } }
     { const mh = this.ray.intersectObjects((this.extras || []).filter(o => o.userData.miniPos), true); if (mh.length) return { mini: mh[0].object.userData.mini }; }
     if (this.chest && this.treasure && this.ctl.d < 14) { const p = this.project(this.treasure.x, .15, this.treasure.z); if (p && Math.hypot(p[0] - x, p[1] - y) < 26) return { chest: true }; }
     const hits = this.ray.intersectObjects([...this.pickables, ...this.specialG], true);
@@ -682,6 +708,16 @@ export class City3D {
   setHonor(data) { this.honorData = data; this._extrasDirty = true; }
   setCandidates(list) { this.candList = list || []; this._extrasDirty = true; }
   setFx(map) { this.fxMap = map || {}; this._extrasDirty = true; }
+  setWishes(list, open) { this.wishes = list || []; this.parkOpen = !!open; this._extrasDirty = true; }
+  // аттракцион: полёт камеры над городом, в конце — к дому
+  rideStart(target, onEnd) {
+    const pk = (this.landmarks || [])[1], s = pk ? pk.position : new THREE.Vector3(2, 0, 2), e = this.estateCenter;
+    const P = [[s.x + .5, .6, s.z - .25], [s.x + 3, 6, s.z - 6], [s.x - 14, 4, riverZ(s.x - 14) + 1], [s.x - 30, 3, riverZ(s.x - 30)], [s.x - 20, 14, s.z + 20], [s.x + 12, 9, s.z + 26]];
+    if (e) P.push([e.x - 20, 10, e.z + 6], [e.x - 2, 5, e.z + 4]);
+    if (target) P.push([target.x + 6, 6, target.z + 6], [target.x + 2.2, 1.6, target.z + 2.6]);
+    this.ride = { curve: new THREE.CatmullRomCurve3(P.map(q => new THREE.Vector3(...q))), t: 0, dur: 6 + P.length * 2.2, target, onEnd };
+  }
+  rideStop() { if (!this.ride) return; const r = this.ride; this.ride = null; this.camOverride = null; this.cam.fov = 42; this.cam.updateProjectionMatrix(); if (r.target) { this.ctl.tx = this.ctl.x = r.target.x; this.ctl.tz = this.ctl.z = r.target.z; this.ctl.td = this.ctl.d = 7; } r.onEnd && r.onEnd(); }
   setMini(seed, n, taken) { this.mini = { seed, n, taken: new Set(taken || []) }; this._extrasDirty = true; }
   setTitles(map) { this.titles = map || {}; this._extrasDirty = true; }
   houseTop(h) {
@@ -739,12 +775,49 @@ export class City3D {
         for (let i = 0; i < 60; i++) { const v = new THREE.Vector3().randomDirection(); pts.push(v.x, v.y, v.z); const c = new THREE.Color(['#ff3d7f', '#ffd23f', '#5ef2ff', '#a6ff8f'][i % 4]); cols.push(c.r, c.g, c.b); }
         g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
         F0.add(new THREE.Points(g, new THREE.PointsMaterial({ size: .12, map: GLOW_T, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }))); G.add(F0); }
+      if (d.has('balloons')) { const B0 = new THREE.Group(); [['#ff3d7f', -.08, .5], ['#ffd23f', .06, .58], ['#5ef2ff', .0, .66]].forEach(([c, x, y]) => {
+          const b = new THREE.Mesh(new THREE.SphereGeometry(.07, 12, 10), flat(c, c, .5)); b.scale.y = 1.2; b.position.set(x, y, 0); B0.add(b);
+          const st = new THREE.Mesh(new THREE.CylinderGeometry(.003, .003, y, 4), flat('#ffffff')); st.position.set(x / 2, y / 2, 0); B0.add(st); });
+        B0.position.set(.3, top - .05, fz * .2); B0.userData.ufo = null; G.add(place(B0, 'balloons')); }
+      if (d.has('cat')) { const C0 = new THREE.Group(), fur = flat('#f2a65a'); const bd = new THREE.Mesh(new THREE.SphereGeometry(.07, 10, 8), fur); bd.scale.set(1.3, .9, .9); bd.position.y = .06; C0.add(bd);
+        const hd = new THREE.Mesh(new THREE.SphereGeometry(.05, 10, 8), fur); hd.position.set(.08, .12, 0); C0.add(hd);
+        for (const z of [-.025, .025]) { const e = new THREE.Mesh(new THREE.ConeGeometry(.018, .04, 4), fur); e.position.set(.08, .17, z); C0.add(e); }
+        const tl = new THREE.Mesh(new THREE.CylinderGeometry(.01, .01, .12, 5), fur); tl.position.set(-.1, .1, 0); tl.rotation.z = .6; C0.add(tl);
+        C0.position.set(-.12, top - .04, fz * .05); C0.rotation.y = fz > 0 ? -Math.PI / 2 : Math.PI / 2; G.add(place(C0, 'cat')); }
+      if (d.has('flag')) { const F0 = new THREE.Group(); const pl = new THREE.Mesh(new THREE.CylinderGeometry(.008, .008, .5, 6), flat('#d0d0e0')); pl.position.y = .25; F0.add(pl);
+        const cl = new THREE.Mesh(new THREE.PlaneGeometry(.22, .13), new THREE.MeshStandardMaterial({ color: '#ff3d7f', emissive: '#ff3d7f', emissiveIntensity: .4, side: THREE.DoubleSide })); cl.geometry.translate(.11, 0, 0); cl.position.y = .43; cl.userData.flagWave = true; F0.add(cl);
+        F0.position.set(.18, top - .05, -fz * .12); G.add(place(F0, 'flag')); }
+      if (d.has('lanterns')) { const L0 = new THREE.Group(); for (let i = 0; i < 6; i++) { const l = new THREE.Mesh(new THREE.SphereGeometry(.035, 10, 8), flat(i % 2 ? '#ff3b3b' : '#ffb347', i % 2 ? '#ff2020' : '#ff9a00', 1.6)); l.scale.y = 1.3; l.position.set(-.3 + i * .12, -Math.sin(i / 5 * Math.PI) * .05, 0); L0.add(l); }
+        L0.position.set(0, Math.max(.3, top * .55), fz * .42); G.add(place(L0, 'lanterns')); }
+      if (d.has('pool')) { const P0 = new THREE.Group(); const rimP = new THREE.Mesh(new THREE.BoxGeometry(.34, .04, .24), flat('#e8eef6')); rimP.position.y = .02; P0.add(rimP);
+        const wP = new THREE.Mesh(new THREE.BoxGeometry(.3, .02, .2), flat('#3aa0ff', '#00b4ff', 1)); wP.position.y = .045; P0.add(wP); P0.position.set(.36, .03, fz * .42); G.add(place(P0, 'pool')); }
+      if (d.has('crystal')) { const K0 = new THREE.Mesh(new THREE.OctahedronGeometry(.11), new THREE.MeshStandardMaterial({ color: '#c084fc', emissive: '#a855f7', emissiveIntensity: 1.3, metalness: .4, roughness: .2 }));
+        K0.scale.y = 1.6; K0.position.set(0, top + .45, 0); K0.userData.spin = true; G.add(place(K0, 'crystal')); }
+      if (d.has('rocket')) { const R0 = new THREE.Group(); const bd = new THREE.Mesh(new THREE.CylinderGeometry(.06, .07, .36, 12), flat('#e8eef6')); bd.position.y = .22; R0.add(bd);
+        const ns = new THREE.Mesh(new THREE.ConeGeometry(.06, .14, 12), flat('#ff3d7f', '#ff3d7f', .5)); ns.position.y = .47; R0.add(ns);
+        for (let i = 0; i < 3; i++) { const fn = new THREE.Mesh(new THREE.BoxGeometry(.01, .1, .07), flat('#ff3d7f')); const a = i / 3 * Math.PI * 2; fn.position.set(Math.cos(a) * .06, .08, Math.sin(a) * .06); fn.rotation.y = -a; R0.add(fn); }
+        const fl = new THREE.Mesh(new THREE.ConeGeometry(.04, .1, 8), flat('#ffb347', '#ff7a00', 2)); fl.rotation.x = Math.PI; fl.position.y = .0; fl.userData.pulse = true; R0.add(fl);
+        R0.position.set(-.46, .04, fz * .3); G.add(place(R0, 'rocket')); }
+      if (d.has('halo')) { const H0 = new THREE.Group(); const ring = new THREE.Mesh(new THREE.TorusGeometry(.32, .015, 6, 40), flat('#ffd23f', '#ffd23f', 1.8)); ring.rotation.x = Math.PI / 2; H0.add(ring);
+        for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2, st = new THREE.Mesh(new THREE.OctahedronGeometry(.03), flat('#ffffff', '#fff3b0', 2)); st.position.set(Math.cos(a) * .32, 0, Math.sin(a) * .32); H0.add(st); }
+        H0.position.y = top + .3; H0.userData.orbit = true; G.add(place(H0, 'halo')); }
+      if (d.has('ghost')) { const Gh = new THREE.Group(), wm = new THREE.MeshStandardMaterial({ color: '#f4f4ff', emissive: '#b8c6ff', emissiveIntensity: .6, transparent: true, opacity: .85 });
+        const hd = new THREE.Mesh(new THREE.SphereGeometry(.08, 12, 10), wm); hd.position.y = .1; Gh.add(hd); const bd = new THREE.Mesh(new THREE.ConeGeometry(.08, .16, 12, 1, true), wm); bd.rotation.x = Math.PI; bd.position.y = .02; Gh.add(bd);
+        for (const x of [-.025, .025]) { const e = new THREE.Mesh(new THREE.SphereGeometry(.012, 6, 6), flat('#1a1238')); e.position.set(x, .12, .07); Gh.add(e); }
+        Gh.position.set(.42, .5, fz * .2); place(Gh, 'ghost'); Gh.userData.ghost = Gh.position.y; G.add(Gh); }
+      if (d.has('flowers')) { const Fl = new THREE.Group(); const bed = new THREE.Mesh(new THREE.BoxGeometry(.5, .04, .1), flat('#5a3a22')); bed.position.y = .02; Fl.add(bed);
+        for (let i = 0; i < 9; i++) { const f = new THREE.Mesh(new THREE.SphereGeometry(.025, 8, 6), flat(['#ff3d7f', '#ffd23f', '#c084fc', '#ffffff'][i % 4], ['#ff3d7f', '#ffd23f', '#c084fc', '#ffffff'][i % 4], .4)); f.position.set(-.22 + i * .055, .07, (i % 2 ? .02 : -.02)); Fl.add(f); }
+        Fl.position.set(0, .03, fz * .58); G.add(place(Fl, 'flowers')); }
       if (fx.top) { const B = new THREE.Mesh(new THREE.CylinderGeometry(.12, .7, 14, 24, 1, true), new THREE.MeshBasicMaterial({ color: '#ffe9a0', transparent: true, opacity: .06, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
         B.position.y = 7; B.userData.beam = true; G.add(B); }
       if (!G.children.length) continue;
       G.position.set(h.x, 0, h.z); add(G);
     }
-    for (const [nick, T] of Object.entries(this.titles || {})) { const h = this.byKey.get(nick); if (!h || h.gone || !T || !T.t) continue;
+    const allT = { ...this.titles }; for (const [nk, f] of Object.entries(this.fxMap || {})) if (f.tt && !allT[nk]) allT[nk] = { t: f.tt };
+    const pk = (this.landmarks || [])[1];
+    if (pk && this.wishes && this.wishes.length && this.parkOpen) this.wishes.slice(0, 4).forEach((w, i) => { const sg = textSprite('⭐ ' + w.text, { color: '#fff', bg: 'rgba(94,242,255,.35)', scale: .0011, size: 44 });
+      sg.position.set(pk.position.x + .42 + Math.sin(i * 2.1) * .5, 1.0 + i * .28, pk.position.z + .42 + Math.cos(i * 2.1) * .3); add(sg); });
+    for (const [nick, T] of Object.entries(allT)) { const h = this.byKey.get(nick); if (!h || h.gone || !T || !T.t) continue;
       const sg = textSprite('🏅 ' + T.t, { color: '#1a1238', bg: 'rgba(255,210,63,.95)', scale: .0015, size: 48 }); sg.position.set(h.x, this.houseTop(h) + (this.fxMap?.[nick]?.s ? 1.0 : .62), h.z); add(sg); }
     if (this.mini) { const { seed, n, taken } = this.mini, base = this.houses.filter(h => !h.recipe && !h.gone);
       for (let i = 0; i < n && base.length; i++) { if (taken.has(i)) continue; const r0 = rnd(seed ^ Math.imul(i + 1, 2654435761)), h = base[Math.floor(r0() * base.length)];
@@ -820,7 +893,8 @@ export class City3D {
   }
   // ---- кадр ----
   frame(dt) {
-    if (this._extrasDirty) { this.buildExtras(); this.setupShadows(); } if (this._dayDirty) this.applyDay(); this.tickWeather(dt);
+    if (this._extrasDirty) { this.buildExtras(); this.setupShadows(); }
+    if (this.ride) { const r = this.ride; r.t += dt / r.dur; if (r.t >= 1) this.rideStop(); else { const u = r.t * r.t * (3 - 2 * r.t), a = r.curve.getPointAt(u), b = r.curve.getPointAt(Math.min(1, u + .02)); this.camOverride = { p: [a.x, a.y, a.z], t: [b.x, b.y - .3, b.z], fov: 55 }; } } if (this._dayDirty) this.applyDay(); this.tickWeather(dt);
     if (this.shadows) { this.moon.target.position.set(this.ctl.x, 0, this.ctl.z); this.moon.position.copy(this.moon.target.position).addScaledVector(this.sunDir, 70);
       const sz = Math.min(40, Math.max(10, this.ctl.d * .8)); const sc = this.moon.shadow.camera; if (Math.abs(sc.right - sz) > .5) { Object.assign(sc, { left: -sz, right: sz, top: sz, bottom: -sz }); sc.updateProjectionMatrix(); } }
     if (this.clouds) for (const cl of this.clouds) { cl.position.x += dt * cl.userData.v; if (cl.position.x > 160) cl.position.x = -160; }
@@ -853,7 +927,13 @@ export class City3D {
     this.scene.traverse(o => { if (o.userData.blink) o.visible = Math.sin(T * 4) > 0; if (o.userData.spin) o.rotation.y = T * .2; if (o.userData.twinkle) o.material.size = (o.userData.bs || .09) * (1 + Math.sin(T * 5 + (o.userData.ph || 0)) * .22); if (o.userData.pet) o.position.y = Math.abs(Math.sin(T * 6)) * .03; if (o.userData.wave) o.rotation.z = Math.PI - .4 + Math.sin(T * 5) * .45;
       if (o.userData.ufo) { o.position.y = o.userData.ufo + Math.sin(T * 1.6) * .08; o.rotation.y = T * 1.2; }
       if (o.userData.fw != null) { const ph = ((T + o.userData.fw) % 2.6) / 2.6; o.scale.setScalar((.05 + ph * .7) * (o.userData.fwS || 1)); o.children[0].material.opacity = ph < .75 ? 1 : (1 - ph) * 4; }
-      if (o.userData.beam) o.material.opacity = .05 + Math.sin(T * 2) * .025; });
+      if (o.userData.beam) o.material.opacity = .05 + Math.sin(T * 2) * .025;
+      if (o.userData.wheelSpin) { o.rotation.z = T * .25; o.children.forEach(c => { if (c.userData.cab) c.rotation.z = -T * .25; }); }
+      if (o.userData.cart) { const q = o.userData.cart.getPointAt((T * .12) % 1), q2 = o.userData.cart.getPointAt((T * .12 + .01) % 1); o.position.copy(q); o.lookAt(q2.x + o.parent.position.x, q2.y + o.parent.position.y, q2.z + o.parent.position.z); }
+      if (o.userData.pulse) o.scale.setScalar(1 + Math.sin(T * 4) * .25);
+      if (o.userData.ghost != null) { o.position.y = o.userData.ghost + Math.sin(T * 2.2) * .07; o.rotation.y = Math.sin(T) * .6; }
+      if (o.userData.flagWave) o.rotation.y = Math.sin(T * 3) * .35;
+      if (o.userData.orbit) o.rotation.y = T * 1.4; });
     if (this.chest) { const ch = this.chest, near = Math.max(0, 1 - this.treasureDist() / 7) * (c.d < 18 ? 1 : 0);
       ch.position.y = .07 + Math.abs(Math.sin(T * 2.2)) * .04; ch.userData.glow.material.opacity = near * (.55 + Math.sin(T * 3) * .25); ch.userData.spark.visible = near > .05; ch.userData.spark.rotation.y = T * 1.5; }
     if (this.bloom) this.composer.render(); else this.renderer.render(this.scene, this.cam);
