@@ -823,6 +823,13 @@ async def bug_text(m: Message, state: FSMContext):
     me = await db.linked(m.from_user.id)
     who = f"@{me['nick']}" if me else "без привязки"
     tg = f"@{m.from_user.username}" if m.from_user.username else f"id {m.from_user.id}"
+    try:  # копия в базу — чтобы читать идеи/баги без Telegram
+        rep = json.loads(await db.kv_get("reports") or "[]")
+        rep.append({"kind": "idea" if idea else "bug", "tg": tg, "nick": me["nick"] if me else "", "text": (m.text or m.caption or "")[:1000],
+                    "photo": bool(m.photo), "ts": time.strftime("%Y-%m-%d %H:%M", time.gmtime(time.time() + 3 * 3600))})
+        await db.kv_set("reports", json.dumps(rep[-300:], ensure_ascii=False))
+    except Exception as e:
+        log.warning("reports: %s", e)
     for a in ADMIN_IDS:
         try:
             await m.bot.send_message(a, ("💡 <b>Идея для города</b>" if idea else "🐞 <b>Баг</b>") + f"\nОт: {tg} · дом {who}")
