@@ -1715,6 +1715,7 @@ from urllib.parse import parse_qsl
 from aiohttp import web
 
 API_PORT = int(E("API_PORT", "8787"))
+API_STATE = {}  # держим ссылки на задачу и процесс туннеля, чтобы их не собрал сборщик мусора
 
 
 def check_init_data(init_data: str):
@@ -1783,23 +1784,43 @@ async def api_serve(bot):
     if not exe or not GITHUB_TOKEN:
         log.info("cloudflared не найден — мини-приложение работает по-старому (sendData)")
         return
+    logf = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tunnel.log")
     subprocess.run(["taskkill", "/IM", "cloudflared.exe", "/F"], capture_output=True)
-    proc = await asyncio.create_subprocess_exec(exe, "tunnel", "--no-autoupdate", "--url", f"http://127.0.0.1:{API_PORT}",
-                                                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
-    url = None
     while True:
-        line = await proc.stderr.readline()
-        if not line:
-            break
-        mt = re.search(r"https://[a-z0-9-]+\.trycloudflare\.com", line.decode("utf-8", "ignore"))
-        if mt and not url:
-            url = mt.group(0)
-            log.info("туннель: %s", url)
+        # лог туннеля — в файл (не pipe): cloudflared не зависит от того, читаем ли мы его вывод
+        try:
+            open(logf, "w").close()
+        except Exception:
+            pass
+        proc = subprocess.Popen([exe, "tunnel", "--no-autoupdate", "--logfile", logf, "--url", f"http://127.0.0.1:{API_PORT}"],
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        API_STATE["proc"] = proc
+        url = None
+        for _ in range(90):
+            await asyncio.sleep(1)
             try:
-                old, sha = await gh_get("api.json")
-                await gh_put("api.json", json.dumps({"url": url + "/api", "ts": int(time.time())}), "API мини-приложения", sha)
-            except Exception as e:
-                log.warning("api.json: %s", e)
+                mt = re.search(r"https://[a-z0-9-]+\.trycloudflare\.com", open(logf, encoding="utf-8", errors="ignore").read())
+            except Exception:
+                mt = None
+            if mt:
+                url = mt.group(0)
+                break
+            if proc.poll() is not None:
+                break
+        if url:
+            log.info("туннель: %s", url)
+            for _ in range(5):
+                try:
+                    old, sha = await gh_get("api.json")
+                    await gh_put("api.json", json.dumps({"url": url + "/api", "ts": int(time.time())}), "API мини-приложения", sha)
+                    break
+                except Exception as e:
+                    log.warning("api.json: %s", e)
+                    await asyncio.sleep(10)
+        while proc.poll() is None:
+            await asyncio.sleep(5)
+        log.warning("туннель упал (код %s) — перезапускаю через 10 с", proc.returncode)
+        await asyncio.sleep(10)
 
 
 @r.message(F.web_app_data)
@@ -2530,7 +2551,7 @@ async def main():
     asyncio.create_task(handmade_loop(bot))
     asyncio.create_task(menu_backfill(bot))
     asyncio.create_task(program_notice(bot))
-    asyncio.create_task(api_serve(bot))
+    API_STATE["task"] = asyncio.create_task(api_serve(bot))
     asyncio.create_task(sync_loop(bot))
     asyncio.create_task(ai_resume(bot))
     asyncio.create_task(restart_later())
