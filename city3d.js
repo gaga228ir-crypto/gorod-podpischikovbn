@@ -870,7 +870,7 @@ export class City3D {
         const t = `${ICON[pl.kind] || '📍'} ${pl.name}`, w = g.measureText(t).width + 16;
         g.fillStyle = 'rgba(20,60,45,.88)'; g.beginPath(); g.roundRect(p[0] - w / 2, p[1] - 11, w, 22, 11); g.fill(); g.fillStyle = '#b8ffd9'; g.fillText(t, p[0], p[1] + 1); }
     }
-    if (c.d < 22) {
+    if (c.d < 22 && !this.hideNicks) {
       const R = c.d * .7, cand = [];
       for (const h of this.houses) { if (h === this.hi || h.n > (this.growN ?? Infinity)) continue; const dd = Math.hypot(h.x - c.x, h.z - c.z); if (dd < R) cand.push([dd, h]); }
       cand.sort((a, b) => a[0] - b[0]);

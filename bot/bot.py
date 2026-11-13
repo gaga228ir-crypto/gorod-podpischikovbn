@@ -834,7 +834,7 @@ async def apply_start(m: Message, uid: int, state: FSMContext, bot):
         return
     await state.set_state(Mayor.promise)
     await m.answer(f"🙋 <b>Заявка в мэры от @{me['nick']}</b>\n\nНапиши одним сообщением свою программу: что ты сделаешь, если станешь мэром? "
-                   "(до 200 символов, без мата и ссылок)\n\nОтмена — /start")
+                   "(до 800 символов, без мата и ссылок)\n\nОтмена — /start")
 
 
 @r.callback_query(F.data == "cand")
@@ -849,8 +849,8 @@ async def cand_promise(m: Message, state: FSMContext):
     if not text or text.startswith("/"):
         await state.clear()
         return
-    if len(text) > 200 or re.search(r"https?://|t\.me/|@\w{3,}", text):
-        await m.answer("Нужно до 200 символов и без ссылок/упоминаний. Попробуй ещё раз 🙂")
+    if len(text) > 800 or re.search(r"https?://|t\.me/|@\w{3,}", text):
+        await m.answer("Нужно до 800 символов и без ссылок/упоминаний. Попробуй ещё раз 🙂")
         return
     me = await db.linked(m.from_user.id)
     if not me:
@@ -924,6 +924,32 @@ async def do_vote(m: Message, uid: int, cid: int, bot, retry_cb=None):
 async def vote_cb(c: CallbackQuery):
     await c.answer()
     await do_vote(c.message, c.from_user.id, int(c.data.split(":")[1]), c.bot)
+
+
+@r.message(Command("program"))
+async def program_cmd(m: Message):
+    """/program текст — кандидат обновляет свою программу (до 800 символов)."""
+    cd = await db.cand_by_tg(m.from_user.id)
+    if not cd or cd["status"] != "approved":
+        await m.answer("Обновлять программу могут одобренные кандидаты в мэры 🗳")
+        return
+    text = re.sub(r"\s+", " ", (m.text or "").split(maxsplit=1)[1] if len((m.text or "").split()) > 1 else "").strip()
+    if len(text) < 10:
+        await m.answer("Напиши так: <code>/program</code> и дальше свою программу целиком (до 800 символов). Она заменит старую.")
+        return
+    if len(text) > 800 or BAD.search(text):
+        await m.answer("Нужно до 800 символов, без мата, ссылок и упоминаний. Попробуй ещё раз 🙂")
+        return
+    if hasattr(db, "c"):
+        db.c.execute("update candidates set promise=? where id=?", (text, cd["id"]))
+        db.c.commit()
+    _mayor_dirty.set()
+    await m.answer("✅ Программа обновлена — на сайте через пару минут.")
+    for a in ADMIN_IDS:
+        try:
+            await m.bot.send_message(a, f"🗳 @{cd['nick']} обновил программу:\n\n{text}")
+        except Exception:
+            pass
 
 
 @r.message(Command("mayor_noself"))

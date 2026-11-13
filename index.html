@@ -322,7 +322,7 @@ function openHonor() {
 }
 
 // ---------- день/ночь и погода ----------
-const GSET_DEF = { day: 'auto', tz: 'device', wx: 'auto' };
+const GSET_DEF = { day: 'auto', tz: 'device', wx: 'auto', nicks: 'on' };
 let gset = { ...GSET_DEF }; try { Object.assign(gset, JSON.parse(localStorage.getItem('gset') || '{}')); } catch (e) {}
 const TZS = [['device', 'Как на телефоне'], ['2', 'UTC+2 · Калининград'], ['3', 'UTC+3 · Москва, СПб'], ['4', 'UTC+4 · Самара'], ['5', 'UTC+5 · Екатеринбург'], ['6', 'UTC+6 · Омск'], ['7', 'UTC+7 · Новосибирск'], ['8', 'UTC+8 · Иркутск'], ['9', 'UTC+9 · Якутск'], ['10', 'UTC+10 · Владивосток'], ['11', 'UTC+11 · Магадан'], ['12', 'UTC+12 · Камчатка']];
 const localHour = () => { const d = new Date(); if (gset.tz === 'device') return d.getHours() + d.getMinutes() / 60; const h = d.getUTCHours() + d.getUTCMinutes() / 60 + +gset.tz; return (h + 24) % 24; };
@@ -337,7 +337,7 @@ const curWeather = () => gset.wx === 'auto' ? autoWeather() : gset.wx === 'off' 
 const WX_ICON = { clear: '', snow: '❄️', rain: '🌧', fog: '🌫' };
 let ambChip = null;
 function applyAmbience() {
-  city.setDaylight(daylight()); city.setWeather(curWeather());
+  city.setDaylight(daylight()); city.setWeather(curWeather()); city.hideNicks = gset.nicks === 'off';
   if (ambChip) { const t = city.dayT; ambChip.textContent = (t > .6 ? '☀️' : t > .05 ? '🌇' : '🌙') + (WX_ICON[city.weather] ? ' ' + WX_ICON[city.weather] : ''); }
 }
 function initAmbience() {
@@ -347,9 +347,10 @@ function initAmbience() {
 }
 function openAmbience() {
   const opt = (k, v, t) => `<button class="opt${gset[k] === v ? ' on' : ''}" data-k="${k}" data-v="${v}" type="button">${t}</button>`;
-  sheet.innerHTML = `<h2>🌗 Время и погода</h2>
+  sheet.innerHTML = `<h2>⚙️ Настройки города</h2>
     <div class="srow"><span>Время суток</span><div class="opts">${opt('day', 'auto', '🕒 Как в жизни')}${opt('day', 'night', '🌙 Всегда ночь')}${opt('day', 'day', '☀️ Всегда день')}</div></div>
     <div class="srow"><span>Часовой пояс</span><select id="gtz" style="border-radius:12px;padding:10px;font:600 14px Inter,sans-serif">${TZS.map(([v, t]) => `<option value="${v}"${gset.tz === v ? ' selected' : ''}>${t}</option>`).join('')}</select></div>
+    <div class="srow"><span>Ники над домами</span><div class="opts">${opt('nicks', 'on', '👁 Показывать')}${opt('nicks', 'off', '🙈 Скрыть')}</div></div>
     <div class="srow"><span>Погода</span><div class="opts">${opt('wx', 'auto', '🔄 Авто')}${opt('wx', 'off', '🚫 Выкл')}${opt('wx', 'snow', '❄️ Снег')}${opt('wx', 'rain', '🌧 Дождь')}${opt('wx', 'fog', '🌫 Туман')}</div></div>
     <p>«Авто» — погода общая для всех жителей и меняется каждые 3 часа: зимой чаще снег.</p>
     <button class="ghost" id="mclose" type="button">ГОТОВО</button>`;
@@ -408,13 +409,14 @@ function renderElection() {
   chip.onclick = () => {
     const tot = (E.candidates || []).reduce((n, c) => n + (c.votes || 0), 0), open2 = E.stage === 2;
     const cands = (E.candidates || []).map((c, i) => { const pc = tot ? Math.round((c.votes || 0) / tot * 100) : 0;
-      return `<div class="cand"><b>${i + 1}</b><div style="flex:1;min-width:0"><div class="n">@${esc(norm(c.nick))}${E.winner && norm(E.winner) === norm(c.nick) ? ' 👑' : ''}</div><div class="p">${esc(c.promise || '')}</div>`
+      return `<div class="cand"><b>${i + 1}</b><div style="flex:1;min-width:0"><div class="n">@${esc(norm(c.nick))}${E.winner && norm(E.winner) === norm(c.nick) ? ' 👑' : ''}</div><div class="p">${(c.promise || '').length > 170 ? `${esc(c.promise.slice(0, 160))}… <button class="more" type="button" data-full="${esc(c.promise)}" style="background:none;border:0;padding:0;color:var(--gold);font:700 13px Inter,sans-serif;cursor:pointer">читать дальше</button>` : esc(c.promise || '')}</div>`
         + (c.votes != null ? `<div class="vbar"><i style="width:${pc}%"></i></div><div class="p">🗳 ${c.votes} · ${pc}%</div>` : '')
         + `</div><div style="display:flex;flex-direction:column;gap:6px;align-self:center">${city.byKey.get(norm(c.nick)) ? `<button class="vbtn ghost" type="button" data-home="${esc(norm(c.nick))}">🏠 ДОМ</button>` : ''}${open2 && c.vote ? `<a class="btn vbtn tglink" href="${esc(c.vote)}" target="_blank" rel="noopener">ЗА</a>` : ''}</div></div>`; }).join('')
       || (open2 ? '<p>Кандидатов пока нет — стань первым! 🙋</p>' : '');
     sheet.innerHTML = `<h2>${esc(E.title || 'Выборы мэра')}</h2><p>${esc(E.text || '')}</p>${cands}${E.until ? `<p>⏳ До: <b>${esc(E.until)}</b></p>` : ''}
       <div class="btns">${open2 && E.apply ? `<a class="btn tglink" href="${esc(E.apply)}" target="_blank" rel="noopener">🙋 СТАТЬ КАНДИДАТОМ</a>` : ''}${E.link && !open2 ? `<a class="btn" href="${esc(E.link)}" target="_blank" rel="noopener">${esc(E.button || 'УЧАСТВОВАТЬ')}</a>` : ''}<button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button></div>`;
     sheet.querySelectorAll('.tglink').forEach(a => a.onclick = e => { if (TG && tg.openTelegramLink) { e.preventDefault(); tg.openTelegramLink(a.href); } });
+    sheet.querySelectorAll('.more').forEach(b => b.onclick = () => { b.parentElement.textContent = b.dataset.full; });
     sheet.querySelectorAll('[data-home]').forEach(b => b.onclick = () => { const h = city.byKey.get(b.dataset.home); if (h) { modal.classList.remove('show'); focus(h); } });
     modal.classList.add('show'); closeBtn();
   };
