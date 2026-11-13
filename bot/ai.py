@@ -47,7 +47,7 @@ def _num(v, a, b, d):
 
 def clean(parts):
     out = []
-    for q in (parts or [])[:48]:
+    for q in (parts or [])[:120]:
         if not isinstance(q, dict) or q.get("t") not in PART_T:
             continue
         p, s = q.get("p") or [0, 0, 0], q.get("s") or [0.3, 0.3, 0.3]

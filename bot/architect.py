@@ -280,7 +280,7 @@ def build(spec: dict) -> dict:
     if "car" in dec and not S["floating"]:
         b.add("box", .36, 0, .1, .14, .07, .26, acc)
         b.add("box", .36, .07, .08, .12, .06, .14, "#3b4a7a")
-    return {"shape": "custom", "name": S["name"], "lights": S["lights"], "parts": b.parts[:48]}
+    return {"shape": "custom", "name": S["name"], "lights": S["lights"], "parts": b.parts[:120]}
 
 
 PROMPT = f"""Ты — архитектор игрушечного неонового 3D-города. Житель описывает дом мечты, ты выбираешь ПАРАМЕТРЫ здания.

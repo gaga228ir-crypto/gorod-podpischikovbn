@@ -165,7 +165,7 @@ const PART_T = ['box', 'cyl', 'cone', 'sphere', 'dome', 'pyramid', 'torus'];
 const clampN = (v, a, b, d) => { v = +v; return Number.isFinite(v) ? Math.max(a, Math.min(b, v)) : d; };
 export function cleanParts(parts) {
   if (!Array.isArray(parts)) return [];
-  return parts.slice(0, 48).filter(q => q && PART_T.includes(q.t)).map(q => ({
+  return parts.slice(0, 120).filter(q => q && PART_T.includes(q.t)).map(q => ({
     t: q.t, p: [clampN(q.p?.[0], -.5, .5, 0), clampN(q.p?.[1], 0, 2.2, 0), clampN(q.p?.[2], -.5, .5, 0)],
     s: [clampN(q.s?.[0], .02, 1, .3), clampN(q.s?.[1], .02, 1.6, .3), clampN(q.s?.[2], .02, 1, .3)],
     c: /^#[0-9a-f]{6}$/i.test(q.c) ? q.c : '#cccccc', g: clampN(q.g, 0, 1, 0), r: clampN(q.r, -360, 360, 0), w: !!q.w }));
