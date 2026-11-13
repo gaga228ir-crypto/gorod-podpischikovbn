@@ -347,7 +347,7 @@ export class City3D {
   }
   buildStatic() {
     const S = this.scene;
-    const ground = this.ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: '#141832', map: ASPHALT_T, roughness: .92 })); ground.receiveShadow = true; ground.rotation.x = -Math.PI / 2; S.add(ground);
+    const ground = this.ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: '#0b0d1c', map: ASPHALT_T, roughness: .92 })); ground.receiveShadow = true; ground.rotation.x = -Math.PI / 2; S.add(ground);
     // небо для дня: купол с градиентом, ночью прозрачный (видно ночной фон страницы)
     { const cv = document.createElement('canvas'); cv.width = 4; cv.height = 256; const g = cv.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 256);
       gr.addColorStop(0, '#3f8cff'); gr.addColorStop(.42, '#8fc3ff'); gr.addColorStop(.5, '#e3f1ff'); gr.addColorStop(1, '#e3f1ff'); g.fillStyle = gr; g.fillRect(0, 0, 4, 256);
@@ -403,8 +403,8 @@ export class City3D {
     this.places = [];
     for (let bx = -span; bx <= span; bx++) for (let by = -span; by <= span; by++) { const pl = placeAt(bx, by); if (pl && Math.hypot(pl.x - 2, pl.z - 2) < rMax - 1) { this.places.push(pl); blocks.add(bx + ',' + by); } }
     const bl = [...blocks].map(s => s.split(',').map(Number));
-    const side = new THREE.InstancedMesh(new THREE.BoxGeometry(2.3, .04, 2.3), new THREE.MeshStandardMaterial({ color: '#3a3f68', map: PAVE_T, roughness: .85 }), bl.length);
-    const grass = new THREE.InstancedMesh(new THREE.BoxGeometry(2, .06, 2), new THREE.MeshStandardMaterial({ color: '#2d5a48', map: GRASS_T, roughness: 1 }), bl.length);
+    const side = new THREE.InstancedMesh(new THREE.BoxGeometry(2.3, .04, 2.3), new THREE.MeshStandardMaterial({ color: '#7a7fb0', map: PAVE_T, roughness: .85 }), bl.length);
+    const grass = new THREE.InstancedMesh(new THREE.BoxGeometry(2, .06, 2), new THREE.MeshStandardMaterial({ color: '#5aa878', map: GRASS_T, roughness: 1 }), bl.length);
     side.receiveShadow = grass.receiveShadow = true; side.userData.flat = grass.userData.flat = true;
     const M = new THREE.Matrix4(), V3 = new THREE.Vector3();
     bl.forEach(([bx, by], i) => { const [cx, cz] = blockCenter([bx, by]); M.makeTranslation(cx, .02, cz); side.setMatrixAt(i, M); M.makeTranslation(cx, .03, cz); grass.setMatrixAt(i, M); });
@@ -877,7 +877,7 @@ export class City3D {
     this.scene.fog.color.copy(C('#1a1240', fogDay)).lerp(new THREE.Color('#ff9f7a'), dusk * .35);
     this.scene.fog.density = (.0075 - t * .003) * (this.weather === 'fog' ? 3.2 : this.weather === 'rain' ? 1.7 : this.weather === 'snow' ? 1.5 : 1);
     this.sky.visible = t > .01; this.sky.material.opacity = t; this.sky.material.color.copy(new THREE.Color('#ffffff').lerp(new THREE.Color(this.weather === 'clear' ? '#ffffff' : '#b8c2cc'), .8)).lerp(new THREE.Color('#ffc09a'), dusk * .7);
-    this.ground.material.color.copy(C('#141832', '#3a4660')).lerp(new THREE.Color('#e8eef6'), this.snowCover * (.25 + t * .55));
+    this.ground.material.color.copy(C('#0b0d1c', '#262b3a')).lerp(new THREE.Color('#e8eef6'), this.snowCover * (.25 + t * .55));
     this.renderer.toneMappingExposure = 1.05 - t * .1; this.bloomPass.strength = .5 - t * .32;
     const k = 1 - t * .72; // окна и неон днём тусклее
     this.scene.traverse(o => { const ms = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : []; for (const m of ms) { if (m.emissiveIntensity == null || m === this.sky.material) continue;
