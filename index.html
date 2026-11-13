@@ -410,7 +410,10 @@ $('cta').onclick = () => {
 };
 let studio = { tab: GIFT ? 'ai' : 'free', preset: 0, r: { ...CityHouse.PRESETS[0].r } }, preview = null;
 function openStudio() {
-  if (!ME) { sheet.innerHTML = `<h2>Мой дом</h2><p>Сначала привяжи свой ник TikTok в боте — кнопка «🏠 Мой дом».</p><button class="ghost" id="mclose">ЗАКРЫТЬ</button>`; modal.classList.add('show'); closeBtn(); return; }
+  if (!ME) {
+    sheet.innerHTML = TG ? `<h2>Мой дом</h2><p>Город открыт без твоего ника 🤔 Нажми кнопку — бот пришлёт правильную кнопку «🏙 Открыть город» с твоим домом и подарками.</p><p>Если ник ещё не привязан — бот подскажет, как это сделать.</p><div class="btns"><button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button><button id="whoami" type="button">🔄 МОЯ КНОПКА</button></div>`
+      : `<h2>Мой дом</h2><p>Сначала привяжи свой ник TikTok в боте — кнопка «🏠 Мой дом».</p><button class="ghost" id="mclose">ЗАКРЫТЬ</button>`;
+    modal.classList.add('show'); closeBtn(); if ($('whoami')) $('whoami').onclick = () => sendTG({ t: 'me' }); return; }
   const mine = city.byKey.get(ME); if (mine && mine.recipe) studio.r = { ...mine.recipe };
   renderStudio(); modal.classList.add('show');
 }

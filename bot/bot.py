@@ -454,6 +454,32 @@ def city_keyboard(nick="", gift=False):
     return ReplyKeyboardMarkup(resize_keyboard=True, keyboard=[[KeyboardButton(text="🏙 Открыть город", web_app=WebAppInfo(url=city_url(nick, gift)))]])
 
 
+async def ensure_menu(bot, uid, nick):
+    """Личная кнопка меню «Город» с ником жителя (общая кнопка открывает сайт без ника — студия думает, что дом не привязан)."""
+    if not nick:
+        return
+    key = f"menu:{uid}"
+    if await db.kv_get(key) == nick:
+        return
+    try:
+        await bot.set_chat_menu_button(chat_id=uid, menu_button=MenuButtonWebApp(text="Город", web_app=WebAppInfo(url=city_url(nick))))
+        await db.kv_set(key, nick)
+    except Exception as e:
+        log.warning("menu %s: %s", uid, e)
+
+
+async def menu_backfill(bot):
+    """При старте: личные кнопки меню всем привязанным жителям."""
+    await asyncio.sleep(20)
+    if not hasattr(db, "c"):
+        return
+    rows = db.c.execute("select tg_id, nick from residents where status='approved' and tg_id is not null").fetchall()
+    for uid, nick in rows:
+        await ensure_menu(bot, uid, nick)
+        await asyncio.sleep(.2)
+    log.info("кнопки меню: %s жителей", len(rows))
+
+
 def main_menu():
     rows = [[IB(text="🏠 Мой дом", callback_data="home")], [IB(text="👥 Пригласить друга · бонус", callback_data="ref")],
             [IB(text="🗳 Выборы мэра", callback_data="elect")]]
@@ -483,6 +509,9 @@ r = Router()
 async def start(m: Message, state: FSMContext):
     await state.clear()
     arg = (m.text or "").split(maxsplit=1)[1:] or [""]
+    _me = await db.linked(m.from_user.id)
+    if _me:
+        await ensure_menu(m.bot, m.from_user.id, _me["nick"])
     if arg[0].startswith("klad") and arg[0][4:].isdigit():
         await claim_klad(m, m.from_user.id, arg[0][4:])
         return
@@ -1071,6 +1100,11 @@ async def web_app(m: Message, bot: Bot):
         data = json.loads(m.web_app_data.data)
     except ValueError:
         return
+    await ensure_menu(bot, m.from_user.id, me["nick"])
+    if data.get("t") == "me":
+        await m.answer(f"Вот твой город, @{me['nick']} 🏙 Открывай кнопкой «🏙 Открыть город» внизу — там твой дом, студия и подарки.",
+                       reply_markup=city_keyboard(me["nick"], gift=bool(await db.ai_gift(m.from_user.id))))
+        return
     if data.get("t") == "klad":
         await claim_klad(m, m.from_user.id, str(data.get("c", "")))
         return
@@ -1584,6 +1618,7 @@ async def approve_row(bot, row) -> bool:
         await db.patch(row["id"], {"status": "approved", "approved_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
     except RuntimeError:
         return False
+    await ensure_menu(bot, row["tg_id"], row["nick"])
     try:
         await ref_reward(bot, row["tg_id"])
     except Exception as e:
@@ -1672,6 +1707,7 @@ async def main():
     asyncio.create_task(export_loop())
     asyncio.create_task(mayor_loop(bot))
     asyncio.create_task(handmade_loop(bot))
+    asyncio.create_task(menu_backfill(bot))
     asyncio.create_task(sync_loop(bot))
     asyncio.create_task(ai_resume(bot))
     asyncio.create_task(restart_later())
