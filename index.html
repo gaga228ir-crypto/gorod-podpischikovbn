@@ -240,7 +240,14 @@ $('f').addEventListener('submit', e => {
 });
 
 // ---------- взаимодействие с домом ----------
-function sendTG(data) { try { tg.sendData(JSON.stringify(data)); } catch (e) { msg.textContent = 'Открой город кнопкой «🏙 Открыть город» в чате с ботом.'; } }
+function sendTG(data, errEl) {
+  // sendData работает только если город открыт кнопкой «🏙 Открыть город» над клавиатурой (у меню/ссылок есть query_id)
+  if (TG && !(tg.initDataUnsafe && tg.initDataUnsafe.query_id)) { try { tg.sendData(JSON.stringify(data)); return; } catch (e) {} }
+  sheet.innerHTML = `<h2>Почти готово 🙂</h2><p>Город открыт через меню — отсюда Telegram не даёт сохранять. Нажми кнопку: бот пришлёт правильную «🏙 Открыть город» — через неё всё работает.</p>
+    <div class="btns"><button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button><button id="reopen" type="button">🏙 ОТКРЫТЬ ПРАВИЛЬНО</button></div>`;
+  modal.classList.add('show'); closeBtn();
+  $('reopen').onclick = () => { const u = BOT_URL.replace(/\/$/, '') + '?start=city'; try { tg.openTelegramLink(u); tg.close(); } catch (e) { location.href = u; } };
+}
 const FX_COLS = ['', '#ff3d7f', '#ffd23f', '#5ef2ff', '#a6ff8f', '#c084fc', '#ff7a1a'];
 function openFx(h) {
   const fx = fxMap[h.key] || {}; let col = fx.c || '';
@@ -365,7 +372,7 @@ function openKlad() {
     <div class="btns"><button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button>${TG ? '<button id="kgo" type="button">ЗАБРАТЬ ПРИЗ</button>' : deep ? `<a class="btn" href="${esc(deep)}">ЗАБРАТЬ В БОТЕ</a>` : ''}</div>
     ${!TG && !deep ? '<p>Напиши этот код боту города в Telegram.</p>' : ''}`;
   modal.classList.add('show'); closeBtn();
-  if (TG) $('kgo').onclick = () => { try { tg.sendData(JSON.stringify({ t: 'klad', c: KLAD.code })); } catch (e) { $('kerr').textContent = 'Напиши боту: КЛАД-' + KLAD.code; } };
+  if (TG) $('kgo').onclick = () => { try { sendTG({ t: 'klad', c: KLAD.code }); } catch (e) { $('kerr').textContent = 'Напиши боту: КЛАД-' + KLAD.code; } };
 }
 
 // ---------- окно ----------
@@ -422,7 +429,7 @@ function renderStudio() {
   const S = studio, R = S.r, opts = (key, list, fmt) => list.map(v => `<button class="opt ${R[key] === v ? 'on' : ''}" data-k="${key}" data-v="${v}">${fmt(v)}</button>`).join('');
   const sw = (key, list) => list.map(v => `<button class="opt sw ${R[key] === v ? 'on' : ''}" data-k="${key}" data-v="${v}" style="background:${v}"></button>`).join('');
   const dec = new Set(R.decor || []);
-  const go = S.tab === 'free' ? 'ВЫБРАТЬ' : S.tab === 'ai' ? (GIFT ? 'ПОСТРОИТЬ БЕСПЛАТНО 🎁' : `ПОСТРОИТЬ · ${AI_PRICE} ⭐`) : (CUSTOM_PRICE ? 'ОПЛАТИТЬ ' + CUSTOM_PRICE + ' ⭐' : 'СОХРАНИТЬ');
+  const go = S.tab === 'free' ? 'ВЫБРАТЬ' : S.tab === 'ai' ? (GIFT ? 'ПОСТРОИТЬ БЕСПЛАТНО 🎁' : `ПОСТРОИТЬ · ${AI_PRICE} ⭐ / 🎁`) : (CUSTOM_PRICE ? 'ОПЛАТИТЬ ' + CUSTOM_PRICE + ' ⭐' : 'СОХРАНИТЬ');
   sheet.innerHTML = `<div class="studio"><h2>Мой дом · @${esc(ME)}</h2>
     ${S.tab === 'ai' ? '' : '<canvas id="prev" style="width:200px;height:200px"></canvas>'}
     <div class="tabs"><button data-tab="free" class="${S.tab === 'free' ? 'on' : ''}">5 ГОТОВЫХ</button><button data-tab="pro" class="${S.tab === 'pro' ? 'on' : ''}">КОНСТРУКТОР</button><button data-tab="ai" class="${S.tab === 'ai' ? 'on' : ''}">✨ ПО ОПИСАНИЮ</button></div>
@@ -448,7 +455,7 @@ function renderStudio() {
     if (S.tab === 'free') data = { t: 'preset', i: S.preset };
     else if (S.tab === 'ai') { const d = ($('aitext').value || '').trim(); if (d.length < 5) { $('serr').textContent = 'Опиши дом хотя бы парой слов 🙂'; return; } data = { t: 'ai', d }; }
     else data = { t: 'custom', r: { ...CityHouse.normRecipe(R), decor: R.decor || [] } };
-    try { tg.sendData(JSON.stringify(data)); } catch (e) { $('serr').textContent = 'Открой город кнопкой «🏙 Открыть город» внизу чата с ботом — тогда выбор отправится.'; }
+    try { sendTG(data); } catch (e) { $('serr').textContent = 'Открой город кнопкой «🏙 Открыть город» внизу чата с ботом — тогда выбор отправится.'; }
   };
   if (preview) preview.alive = false; preview = null;
   if ($('prev')) { preview = new HousePreview($('prev')); preview.set(R); }

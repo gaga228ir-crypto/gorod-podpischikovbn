@@ -518,6 +518,14 @@ async def start(m: Message, state: FSMContext):
     if arg[0].startswith("vote_") and arg[0][5:].isdigit():
         await do_vote(m, m.from_user.id, int(arg[0][5:]), m.bot)
         return
+    if arg[0] == "city":
+        if not _me:
+            await m.answer("Сначала привяжи ник TikTok — «🏠 Мой дом» 👇", reply_markup=main_menu())
+            return
+        gift = bool(await db.ai_gift(m.from_user.id))
+        await m.answer(f"Вот твой город, @{_me['nick']} 🏙 Открывай кнопкой «🏙 Открыть город» внизу — через неё работают студия, табличка, «постучать» и украшения"
+                       + (" (а ещё тебя ждёт 🎁 бесплатный дом по описанию)." if gift else "."), reply_markup=city_keyboard(_me["nick"], gift=gift))
+        return
     if arg[0] == "cand":
         await apply_start(m, m.from_user.id, state, m.bot)
         return
