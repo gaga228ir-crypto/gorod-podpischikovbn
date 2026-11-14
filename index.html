@@ -136,6 +136,14 @@ body.orbiting .top,body.orbiting #card,body.orbiting #cta{display:none!important
   s.textContent = JSON.stringify({ imports: { three: core, 'three/addons/': loc ? './vendor/addons/' : cdn + 'examples/jsm/' } });
   document.currentScript.after(s);
   if (!loc && window.fetch) fetch(core, { mode: 'cors' }).catch(function () { try { sessionStorage.setItem('local3d', '1'); } catch (e) {} location.reload(); });
+  // все модули 3D — сразу, а не цепочкой «скачал → увидел import → скачал следующий»
+  var add = loc ? './vendor/addons/' : cdn + 'examples/jsm/';
+  ['postprocessing/EffectComposer.js', 'postprocessing/RenderPass.js', 'postprocessing/UnrealBloomPass.js', 'postprocessing/OutputPass.js', 'postprocessing/Pass.js', 'postprocessing/ShaderPass.js', 'postprocessing/MaskPass.js', 'shaders/CopyShader.js', 'shaders/OutputShader.js', 'shaders/LuminosityHighPassShader.js']
+    .forEach(function (f) { var l = document.createElement('link'); l.rel = 'modulepreload'; l.href = add + f; document.head.appendChild(l); });
+  // данные города — тоже сразу, пока качается 3D (getJSON заберёт готовый ответ)
+  window.PRE = {};
+  if (window.fetch) ['subscribers.json', 'milestones.json', 'election.json', 'estates.json', 'recipes.json', 'special.json', 'fx.json', 'meta.json', 'duma.json', 'titles.json', 'klad.json', 'wishes.json']
+    .forEach(function (f) { PRE[f] = fetch(f + '?v=' + Date.now()).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; }); });
 })();
 </script>
 <script type="module">
@@ -163,7 +171,7 @@ const norm = s => String(s || '').trim().replace(/^@+/, '').toLowerCase();
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const withTimeout = (ms) => { const c = new AbortController(); setTimeout(() => c.abort(), ms); return c.signal; };
 const api = (path) => fetch(SUPABASE_URL + '/rest/v1/' + path, { signal: withTimeout(6000), headers: SUPABASE_ANON_KEY.startsWith('sb_') ? { apikey: SUPABASE_ANON_KEY } : { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } });
-const getJSON = async (f) => { try { const r = await fetch(f + '?v=' + Date.now(), { signal: withTimeout(15000) }); return r.ok ? await r.json() : null; } catch (e) { return null; } };
+const getJSON = async (f) => { if (window.PRE && PRE[f]) { const p = PRE[f]; delete PRE[f]; const v = await p; if (v != null) return v; } try { const r = await fetch(f + '?v=' + Date.now(), { signal: withTimeout(15000) }); return r.ok ? await r.json() : null; } catch (e) { return null; } };
 
 // ---------- ошибки с телефонов жителей → бот (site_errors.jsonl) ----------
 let errSent = 0;
@@ -214,13 +222,15 @@ function buildCity() {
 async function loadSpecial(byKey) {
   // 1) recipes.json рядом с сайтом — его выкладывает бот, открывается без VPN; 2) Supabase, если указан
   const apply = rows => { let n = 0; for (const r of rows || []) { const ex = byKey.get(norm(r.nick)), nr = r.recipe && CityHouse.normRecipe(r.recipe); if (ex && nr && !ex.gone) { ex.recipe = { ...r.recipe, ...nr }; n++; } } return n; };
-  const rec = await getJSON('recipes.json'); specialRows = (rec || []).filter(r => r.recipe && r.recipe.name && byKey.has(norm(r.nick)));
-  let n = apply(await getJSON('special.json')) + apply(rec); // special.json — дома по пожеланиям из комментов
-  if (SUPABASE_URL) { try { n += apply(await (await api('residents?select=nick,recipe&status=eq.approved&recipe=not.is.null')).json()); } catch (e) {} }
+  // всё качаем одновременно (раньше по очереди — через VPN каждый шаг ждал предыдущий)
+  const supa = SUPABASE_URL ? api('residents?select=nick,recipe&status=eq.approved&recipe=not.is.null').then(r => r.json()).catch(() => null) : null;
+  const [rec, spec, fx, mt, dm, tt, sb] = await Promise.all([getJSON('recipes.json'), getJSON('special.json'), getJSON('fx.json'), getJSON('meta.json'), getJSON('duma.json'), getJSON('titles.json'), supa]);
+  specialRows = (rec || []).filter(r => r.recipe && r.recipe.name && byKey.has(norm(r.nick)));
+  const n = apply(spec) + apply(rec) + apply(sb); // special.json — дома по пожеланиям из комментов
   if (n) buildCity();
-  fxMap = (await getJSON('fx.json')) || {}; city.setFx(fxMap); loadWishes();
-  meta = (await getJSON('meta.json')) || {}; duma = (await getJSON('duma.json')) || []; renderSocialChips();
-  titles = (await getJSON('titles.json')) || {}; city.setTitles(titles);
+  fxMap = fx || {}; city.setFx(fxMap); loadWishes();
+  meta = mt || {}; duma = dm || []; renderSocialChips();
+  titles = tt || {}; city.setTitles(titles);
   updateHonor();
 }
 function renderProgress() {
