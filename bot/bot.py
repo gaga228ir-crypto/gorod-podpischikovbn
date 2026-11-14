@@ -2025,10 +2025,41 @@ async def api_handler(req):
     return web.json_response({"ok": True, "msgs": clean, "invoice": m.invoice, "me": mine}, headers=cors)
 
 
+SITE_ERR_LOG = Path(__file__).parent / "site_errors.jsonl"  # ошибки сайта с телефонов жителей (читает Claude), в git не идёт
+_err_seen: dict = {}
+
+
+async def site_err_handler(req):
+    """Сайт присылает текст JS-ошибки (text/plain, без preflight). Пишем в site_errors.jsonl, не чаще 20 в минуту."""
+    cors = {"Access-Control-Allow-Origin": "*"}
+    if req.method != "POST":
+        return web.Response(headers=cors)
+    now = time.time()
+    for k in [k for k, t in _err_seen.items() if now - t > 60]:
+        _err_seen.pop(k, None)
+    if len(_err_seen) >= 20:
+        return web.Response(text="busy", headers=cors)
+    try:
+        raw = (await req.content.read(3000)).decode("utf-8", "replace")
+        d = json.loads(raw) if raw.startswith("{") else {"msg": raw}
+    except Exception:
+        return web.Response(text="bad", headers=cors)
+    _err_seen[f"{now}:{len(_err_seen)}"] = now
+    row = {"ts": dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "ua": (req.headers.get("User-Agent") or "")[:200]}
+    row.update({k: str(v)[:1500] for k, v in d.items() if k in ("msg", "src", "line", "stack", "me", "kind", "gl", "url")})
+    try:
+        with open(SITE_ERR_LOG, "a", encoding="utf-8") as f:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+    return web.Response(text="ok", headers=cors)
+
+
 async def api_serve(bot):
     app = web.Application()
     app["bot"] = bot
     app.router.add_route("*", "/api", api_handler)
+    app.router.add_route("*", "/err", site_err_handler)
     app.router.add_route("*", "/px/{tail:.*}", pixel_proxy)
     runner = web.AppRunner(app)
     await runner.setup()

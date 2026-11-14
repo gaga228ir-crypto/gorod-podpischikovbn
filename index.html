@@ -153,6 +153,21 @@ const withTimeout = (ms) => { const c = new AbortController(); setTimeout(() => 
 const api = (path) => fetch(SUPABASE_URL + '/rest/v1/' + path, { signal: withTimeout(6000), headers: SUPABASE_ANON_KEY.startsWith('sb_') ? { apikey: SUPABASE_ANON_KEY } : { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } });
 const getJSON = async (f) => { try { const r = await fetch(f + '?v=' + Date.now(), { signal: withTimeout(15000) }); return r.ok ? await r.json() : null; } catch (e) { return null; } };
 
+// ---------- ошибки с телефонов жителей → бот (site_errors.jsonl) ----------
+let errSent = 0;
+function reportErr(kind, e, extra) {
+  if (errSent++ > 5) return;
+  const go = async () => { try {
+    if (typeof API === 'undefined' || !API) { try { await loadAPI(); } catch (x) {} }
+    if (typeof API === 'undefined' || !API) return;
+    const me = new URLSearchParams(location.search).get('me') || '';
+    const body = JSON.stringify({ kind, msg: String(e && e.message || e), stack: String(e && e.stack || '').slice(0, 1200), me, url: location.href.slice(0, 200), ...(extra || {}) });
+    fetch(API.replace(/\/api$/, '/err'), { method: 'POST', body, headers: { 'Content-Type': 'text/plain' }, keepalive: true }).catch(() => {});
+  } catch (x) {} };
+  setTimeout(go, 0);
+}
+addEventListener('error', e => reportErr('error', e.error || e.message, { src: e.filename, line: e.lineno }));
+addEventListener('unhandledrejection', e => reportErr('promise', e.reason));
 let city;
 try { city = new City3D($('c'), $('lbl')); } catch (e) { location.replace('2d.html' + location.search + location.hash); throw e; }
 window.city = city;
@@ -220,9 +235,15 @@ const up = e => { ptrs.delete(e.pointerId); if (ptrs.size < 2) two = null; cv.cl
 cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
 cv.addEventListener('wheel', e => { e.preventDefault(); city.zoom(Math.exp(e.deltaY * .0012)); }, { passive: false });
 
-let last = performance.now();
-function loop(now) { const dt = Math.min(.05, (now - last) / 1000); last = now; city.frame(dt); requestAnimationFrame(loop); }
+let last = performance.now(), frameErrs = 0;
+// цикл не должен умирать от одной ошибки: раньше исключение в city.frame останавливало карту навсегда («не двигается»)
+function loop(now) { requestAnimationFrame(loop); const dt = Math.min(.05, (now - last) / 1000); last = now;
+  try { city.frame(dt); } catch (e) { if (frameErrs++ < 3) reportErr('frame', e); } }
 requestAnimationFrame(loop);
+// потеря WebGL (слабый телефон, мало памяти) — перезагружаем город один раз, потом переходим на 2D
+cv.addEventListener('webglcontextlost', e => { e.preventDefault(); reportErr('glLost', new Error('webglcontextlost'));
+  let n = 0; try { n = +sessionStorage.getItem('glLost') || 0; sessionStorage.setItem('glLost', n + 1); } catch (x) {}
+  setTimeout(() => location.replace((n ? '2d.html' : location.pathname) + location.search + location.hash), 600); });
 
 // ---------- карточка, поиск, поделиться ----------
 const card = $('card'), msg = $('msg');
