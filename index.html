@@ -399,7 +399,7 @@ async function sendTG(data, errEl) {
           await new Promise(r => setTimeout(r, k < 2 ? 1500 : 5000)); await loadAPI(); } }
       if (!j.ok && j.err === 'auth') { toastMsg('Не получилось узнать тебя 🤔 Закрой город и открой снова из бота.'); return; }
       if (!j.ok) { toastMsg('Что-то пошло не так на стороне бота 😕 Попробуй ещё раз через минуту.'); reportErr('api', new Error(j.err || 'not ok')); return; }
-      if (j.ok) { modal.classList.remove('show');
+      if (j.ok) { if (data.t !== 'hide') modal.classList.remove('show');
         if (j.invoice) { tg.openInvoice(j.invoice, st => { if (st === 'paid') toastMsg('Спасибо! ⭐ Уже ставим — в городе через пару минут.'); }); return; }
         const t = (j.msgs || []).filter(Boolean).join('\n\n'); if (t) toastMsg(t); optimistic(data);
         if (j.me && j.me.fx) { fxMap[j.me.nick] = Object.assign(fxMap[j.me.nick] || {}, j.me.fx); city.setFx(fxMap); if (city.hi) focus(city.hi, false); }
@@ -428,17 +428,23 @@ function openFx(h) {
 const SHOP = [['fireworks', '🎆 Салют над домом', 15], ['ufo', '🛸 НЛО над домом', 20], ['rainbow', '🌈 Радужная подсветка', 15], ['xmas', '🎄 Новогодняя ёлка', 10], ['snowman', '⛄ Снеговик во дворе', 10], ['top', '🔦 Дом дня: прожектор и доска почёта на 24 ч', 25], ['estate', '🏡 Усадьба: большой участок (как 4 дома) с забором и садом в Посёлке Усадеб', 100],
   ['balloons', '🎈 Воздушные шары', 10], ['cat', '🐱 Кот на крыше', 10], ['flag', '🚩 Флаг на крыше', 10], ['lanterns', '🏮 Фонарики', 10], ['flowers', '🌷 Клумба', 10], ['ghost', '👻 Призрак-сосед', 10],
   ['pool', '🏊 Бассейн во дворе', 15], ['crystal', '💎 Парящий кристалл', 15], ['rocket', '🚀 Ракета у дома', 15], ['halo', '✨ Сияющий нимб', 15]];
+const hideBtn = (h, k) => h.key !== ME ? '' : `<button type="button" class="ghost" data-hide="${k}">${new Set((fxMap[h.key] || {}).off || []).has(k) ? '↩️ ВЕРНУТЬ' : '🙈 СНЯТЬ'}</button>`;
+function bindHide(h) {
+  sheet.querySelectorAll('[data-hide]').forEach(b => b.onclick = () => { const k = b.dataset.hide, f = fxMap[ME] = fxMap[ME] || {}, o = new Set(f.off || []);
+    o.has(k) ? o.delete(k) : o.add(k); f.off = [...o]; city.setFx(fxMap); b.textContent = o.has(k) ? '↩️ ВЕРНУТЬ' : '🙈 СНЯТЬ'; sendTG({ t: 'hide', i: k }); });
+}
 function openShop(h) {
   const have = new Set((fxMap[h.key] || {}).d || []);
   sheet.innerHTML = `<h2>⭐ Украсить дом</h2><p>Украшения остаются у дома навсегда (кроме «Дома дня» — он на сутки). Оплата звёздами Telegram. <b style="color:#1a9cc0">💎 Кто поддержал город на 50+ ⭐ — получает значок «Меценат»</b> над домом.</p>
     <p>У тебя: <b style="color:var(--goldt)">🪙 ${(fxMap[h.key] || {}).co || 0} неонок</b> — их дают за «🪙 Бонус дня» в боте, клад, сундуки и стуки.</p>
-    ${SHOP.map(([k, t, p]) => `<div class="shop"><span>${t}</span>${have.has(k) || (k === 'estate' && h.isEstate) ? (k === 'top' || k === 'estate' ? '<b style="color:var(--goldt)">✓ есть</b>' : `<button type="button" class="ghost" data-place="${k}">⚙️ РАЗМЕСТИТЬ</button>`) : `<button type="button" data-buy="${k}">${p} ⭐</button>${k !== 'estate' ? `<button type="button" class="ghost" data-buyc="${k}">${p * 5} 🪙</button>` : ''}`}</div>`).join('')}
-    ${((fxMap[h.key] || {}).rf || (fxMap[h.key] || {}).rf64) ? '<div class="shop"><span>🎨 Флаг-рисунок</span><button type="button" class="ghost" data-place="roof">⚙️ РАЗМЕСТИТЬ</button></div>' : ''}
-    ${(fxMap[h.key] || {}).s ? '<div class="shop"><span>💬 Табличка над домом</span><button type="button" class="ghost" data-place="sign">⚙️ РАЗМЕСТИТЬ</button></div>' : ''}
+    ${SHOP.map(([k, t, p]) => `<div class="shop"><span>${t}</span>${have.has(k) || (k === 'estate' && h.isEstate) ? (k === 'top' || k === 'estate' ? '<b style="color:var(--goldt)">✓ есть</b>' : `<button type="button" class="ghost" data-place="${k}">⚙️ РАЗМЕСТИТЬ</button>${hideBtn(h, k)}`) : `<button type="button" data-buy="${k}">${p} ⭐</button>${k !== 'estate' ? `<button type="button" class="ghost" data-buyc="${k}">${p * 5} 🪙</button>` : ''}`}</div>`).join('')}
+    ${((fxMap[h.key] || {}).rf || (fxMap[h.key] || {}).rf64) ? '<div class="shop"><span>🎨 Флаг-рисунок</span><button type="button" class="ghost" data-place="roof">⚙️ РАЗМЕСТИТЬ</button>' + hideBtn(h, 'roof') + '</div>' : ''}
+    ${(fxMap[h.key] || {}).s ? '<div class="shop"><span>💬 Табличка над домом</span><button type="button" class="ghost" data-place="sign">⚙️ РАЗМЕСТИТЬ</button>' + hideBtn(h, 'sign') + '</div>' : ''}
     <div class="btns"><button class="ghost" id="seeEst" type="button">👀 ПОСЁЛОК УСАДЕБ</button><button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button></div>`;
   sheet.querySelectorAll('[data-buy]').forEach(b => b.onclick = () => sendTG({ t: 'buy', i: b.dataset.buy }));
   sheet.querySelectorAll('[data-buyc]').forEach(b => b.onclick = () => sendTG({ t: 'buyc', i: b.dataset.buyc }));
   sheet.querySelectorAll('[data-place]').forEach(b => b.onclick = () => openPlace(h, b.dataset.place));
+  bindHide(h);
   if ($('seeEst')) $('seeEst').onclick = () => { modal.classList.remove('show'); const c = city.estateCenter; if (c) city.flyTo(c.x, c.z, 16); };
   modal.classList.add('show'); closeBtn();
 }
@@ -446,10 +452,10 @@ function openShop(h) {
 const PLACE_NAME = { fireworks: '🎆 Салют', ufo: '🛸 НЛО', rainbow: '🌈 Радуга', xmas: '🎄 Ёлка', snowman: '⛄ Снеговик', sign: '💬 Табличка', balloons: '🎈 Шары', cat: '🐱 Кот', flag: '🚩 Флаг', lanterns: '🏮 Фонарики', pool: '🏊 Бассейн', crystal: '💎 Кристалл', rocket: '🚀 Ракета', halo: '✨ Нимб', ghost: '👻 Призрак', flowers: '🌷 Клумба', roof: '🎨 Флаг' };
 function openPlace(h, k) {
   const fx = fxMap[h.key] = fxMap[h.key] || {}, old = JSON.stringify(fx.p || {}); fx.p = fx.p || {};
-  const v = (fx.p[k] || [0, 0, 1]).slice(); while (v.length < 3) v.push(v.length === 2 ? 1 : 0);
+  const p0 = fx.p[k] || [], v = [+p0[0] || 0, +p0[1] || 0, p0[2] == null ? 1 : +p0[2], +p0[3] || 0];
   const row = (i, label, min, max, step) => `<div class="srow"><span>${label}: <b id="pv${i}">${(+v[i]).toFixed(2)}</b></span><input type="range" data-i="${i}" min="${min}" max="${max}" step="${step}" value="${v[i]}" style="padding:0;background:none"></div>`;
   sheet.innerHTML = `<h2>⚙️ ${PLACE_NAME[k] || k}</h2><p>Двигай ползунки — украшение сразу двигается у твоего дома. Потом нажми «Сохранить».</p>
-    ${k === 'rainbow' ? '' : row(0, '↔️ Влево / вправо', -.7, .7, .05)}${k === 'rainbow' ? '' : row(1, '↕️ Ниже / выше', -1, 2.5, .05)}${row(2, '🔍 Размер', .4, 2.5, .1)}
+    ${k === 'rainbow' ? '' : row(0, '↔️ Влево / вправо', -.7, .7, .05)}${k === 'rainbow' ? '' : row(1, '↕️ Ниже / выше', -1, 2.5, .05)}${k === 'rainbow' ? '' : row(3, '↗️ Вперёд / назад', -.7, .7, .05)}${row(2, '🔍 Размер', .4, 2.5, .1)}
     <div class="btns"><button class="ghost" id="pcancel" type="button">ОТМЕНА</button><button id="pgo" type="button">СОХРАНИТЬ</button></div>`;
   modal.classList.add('show', 'placing'); city.focus(h, true); let tm = 0;
   sheet.querySelectorAll('input[type=range]').forEach(r => r.oninput = () => { v[+r.dataset.i] = +r.value; $('pv' + r.dataset.i).textContent = (+r.value).toFixed(2); fx.p[k] = v.slice();
@@ -549,6 +555,7 @@ function openProfile() {
   const h = city.byKey.get(ME); if (!h) { toastMsg('Дом не найден — привяжи ник в боте: «🏠 Мой дом»'); return; }
   const fx = fxMap[ME] || {}, T0 = titles[ME] || (fx.tt ? { t: fx.tt } : null), off = new Set(fx.off || []), ad = city.address(h);
   const mine = SHOP.filter(([k]) => (fx.d || []).includes(k) && k !== 'top' && k !== 'estate');
+  if (fx.rf || fx.rf64) mine.push(['roof', '🎨 Флаг-рисунок']); if (fx.s) mine.push(['sign', '💬 Табличка над домом']);
   sheet.innerHTML = `<h2>👤 @${esc(ME)}</h2><p>📍 ${esc(ad.text)} · ${esc(ad.district)}${h.isEstate ? ' · 🏡 Усадьба' : ''}</p>
     <p><b style="color:#ffd23f">🪙 ${fx.co || 0} неонок</b>${fx.k ? ` · ❤ ${fx.k} стуков` : ''}${T0 ? ` · 🏅 ${esc(T0.t)}` : ''}${fx.mc ? ' · 💎 Меценат' : ''}${(fx.f || []).length ? ` · 👫 ${fx.f.length}` : ''}</p>
     <div class="btns" style="flex-wrap:wrap"><button type="button" id="pGo">🏠 ПОКАЗАТЬ ДОМ</button><button type="button" class="ghost" id="pLook">🔄 ОСМОТРЕТЬ</button></div>
@@ -566,8 +573,7 @@ function openProfile() {
   if ($('pLeave')) $('pLeave').onclick = () => sendTG({ t: 'leave' });
   sheet.querySelectorAll('[data-kick]').forEach(x => x.onclick = () => sendTG({ t: 'kick', n: x.dataset.kick }));
   sheet.querySelectorAll('[data-esz]').forEach(b => b.onclick = () => { sheet.querySelectorAll('[data-esz]').forEach(x => x.classList.toggle('on', x === b)); sendTG({ t: 'esz', s: +b.dataset.esz }); });
-  sheet.querySelectorAll('[data-hide]').forEach(b => b.onclick = () => { const k = b.dataset.hide, f = fxMap[ME] = fxMap[ME] || {}, o = new Set(f.off || []);
-    o.has(k) ? o.delete(k) : o.add(k); f.off = [...o]; city.setFx(fxMap); b.textContent = '…'; sendTG({ t: 'hide', i: k }); });
+  bindHide(h);
   modal.classList.add('show'); closeBtn();
 }
 function openEstates() {

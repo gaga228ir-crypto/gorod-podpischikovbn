@@ -673,16 +673,16 @@ export class City3D {
     // таблички, подсветка, украшения жителей (fx.json от бота)
     for (const [nick, fx] of Object.entries(this.fxMap || {})) {
       const h = this.byKey.get(nick); if (!h || h.gone) continue;
-      const G = new THREE.Group(), fz = 1, top = this.houseTop(h), PL = k => { const v = (fx.p && fx.p[k]) || []; return [+v[0] || 0, +v[1] || 0, +v[2] || 1]; };
-      const place = (o, k) => { const [px, py, ps] = PL(k); o.position.x += px; o.position.y += py; o.scale.multiplyScalar(ps); return o; };
+      const G = new THREE.Group(), fz = 1, top = this.houseTop(h), PL = k => { const v = (fx.p && fx.p[k]) || []; return [+v[0] || 0, +v[1] || 0, +v[2] || 1, +v[3] || 0]; }, OFF = new Set(fx.off || []);
+      const place = (o, k) => { const [px, py, ps, pz] = PL(k); o.position.x += px; o.position.y += py; o.position.z += pz; o.scale.multiplyScalar(ps); return o; };
       if (fx.c) { const ring = new THREE.Mesh(new THREE.RingGeometry(.5, .6, 40), new THREE.MeshBasicMaterial({ color: fx.c, transparent: true, opacity: .9, toneMapped: false, side: THREE.DoubleSide }));
         ring.rotation.x = -Math.PI / 2; ring.position.y = .035; G.add(ring); }
-      if (fx.s) { const sg = textSprite('💬 ' + fx.s, { color: '#fff', bg: 'rgba(255,61,127,.9)', scale: .0016, size: 48 }); sg.position.y = top + .55; G.add(place(sg, 'sign')); }
+      if (fx.s && !OFF.has('sign')) { const sg = textSprite('💬 ' + fx.s, { color: '#fff', bg: 'rgba(255,61,127,.9)', scale: .0016, size: 48 }); sg.position.y = top + .55; G.add(place(sg, 'sign')); }
       const d = new Set(fx.d || []), nowS = Date.now() / 1000; for (const o of fx.off || []) d.delete(o);
       if (fx.lent && fx.lent.u > nowS) d.delete(fx.lent.i);
       if (fx.bor && fx.bor.u > nowS) d.add(fx.bor.i);
       const RFS = fx.rf64 && fx.rf64.length === 4096 ? fx.rf64 : fx.rf;
-      if (RFS && (RFS.length === 64 || RFS.length === 225 || RFS.length === 4096)) { const PAL = FLAG_PAL, N = Math.round(Math.sqrt(RFS.length)), C = N > 15 ? 4 : 8, S = N * C;
+      if (RFS && !OFF.has('roof') && (RFS.length === 64 || RFS.length === 225 || RFS.length === 4096)) { const PAL = FLAG_PAL, N = Math.round(Math.sqrt(RFS.length)), C = N > 15 ? 4 : 8, S = N * C;
         const tex = canvasTex(S, S, g => { for (let i = 0; i < N * N; i++) { const c = PAL[parseInt(RFS[i], 32)]; if (!c) continue; g.fillStyle = c; g.fillRect((i % N) * C, Math.floor(i / N) * C, C, C); } });
         tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter;
         const RF = new THREE.Group(); const pole = new THREE.Mesh(new THREE.CylinderGeometry(.01, .01, .8, 6), flat('#d0d0e0')); pole.position.y = .4; RF.add(pole);
@@ -707,7 +707,7 @@ export class City3D {
         const cab = new THREE.Mesh(new THREE.SphereGeometry(.09, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), flat('#8fd4ff', '#5ef2ff', .8)); cab.position.y = .03; U.add(cab);
         const beam = new THREE.Mesh(new THREE.ConeGeometry(.22, .7, 20, 1, true), new THREE.MeshBasicMaterial({ color: '#a6ff8f', transparent: true, opacity: .18, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
         beam.position.y = -.37; U.add(beam); U.position.y = top + .9; place(U, 'ufo'); U.userData.ufo = U.position.y; G.add(U); }
-      if (d.has('fireworks')) { const F0 = new THREE.Group(); F0.position.y = top + 1.2; F0.userData.fw = Math.random() * 3; { const [px, py, ps] = PL('fireworks'); F0.position.x += px; F0.position.y += py; F0.userData.fwS = ps; } const g = new THREE.BufferGeometry(), pts = [], cols = [];
+      if (d.has('fireworks')) { const F0 = new THREE.Group(); F0.position.y = top + 1.2; F0.userData.fw = Math.random() * 3; { const [px, py, ps, pz] = PL('fireworks'); F0.position.x += px; F0.position.y += py; F0.position.z += pz; F0.userData.fwS = ps; } const g = new THREE.BufferGeometry(), pts = [], cols = [];
         for (let i = 0; i < 60; i++) { const v = new THREE.Vector3().randomDirection(); pts.push(v.x, v.y, v.z); const c = new THREE.Color(['#ff3d7f', '#ffd23f', '#5ef2ff', '#a6ff8f'][i % 4]); cols.push(c.r, c.g, c.b); }
         g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
         F0.add(new THREE.Points(g, new THREE.PointsMaterial({ size: .12, map: GLOW_T, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }))); G.add(F0); }

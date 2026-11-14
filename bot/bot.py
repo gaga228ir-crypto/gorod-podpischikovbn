@@ -682,13 +682,13 @@ async def social_action(m, bot, me, data):
     elif t == "hide":  # снять / вернуть своё украшение (остаётся купленным)
         item = str(data.get("i") or "")
         fx = await fx_get(me["nick"])
-        if item not in fx.get("d", []):
+        if item not in fx.get("d", []) and not (item == "roof" and (fx.get("rf") or fx.get("rf64"))) and not (item == "sign" and fx.get("s")):
             return
         off = set(fx.get("off", []))
         off ^= {item}
         fx["off"] = sorted(off)
         await fx_set(me["nick"], fx)
-        await m.answer(f"{FX_ITEMS[item][0] if item in FX_ITEMS else item}: {'снято — вернуть можно в «Мой дом»' if item in off else 'снова у дома'} ✅", reply_markup=kb)
+        await m.answer(f"{FX_ITEMS[item][0] if item in FX_ITEMS else {'roof': '🎨 Флаг', 'sign': '💬 Табличка'}.get(item, item)}: {'снято — вернуть можно в «Мой дом»' if item in off else 'снова у дома'} ✅", reply_markup=kb)
     elif t == "cohab":  # 🏘 общий дом: хозяин зовёт друга жить вместе (идея думы «дома на несколько жильцов»)
         target = norm_nick(str(data.get("n") or ""))
         err = await cohab_check(me["nick"], target)
@@ -2570,15 +2570,16 @@ async def web_app(m: Message, bot: Bot):
     if data.get("t") == "place":
         item = str(data.get("i") or "")
         fx = await fx_get(me["nick"])
-        if not ((item in FX_ITEMS and item != "top" and item in fx.get("d", [])) or (item == "sign" and fx.get("s"))):
+        if not ((item in FX_ITEMS and item != "top" and item in fx.get("d", [])) or (item == "sign" and fx.get("s")) or (item == "roof" and (fx.get("rf") or fx.get("rf64")))):
             await m.answer("Сначала поставь это украшение у дома 🙂", reply_markup=city_keyboard(me["nick"]))
             return
         try:
-            x, y, sc = (float(v) for v in (list(data.get("p") or []) + [0, 0, 1])[:3])
+            pv = list(data.get("p") or [])[:4]
+            x, y, sc, z = (float(v) for v in pv + [0, 0, 1, 0][len(pv):])
         except (TypeError, ValueError):
             return
         clamp = lambda v, a, b: round(max(a, min(b, v)), 2)
-        fx.setdefault("p", {})[item] = [clamp(x, -.7, .7), clamp(y, -1, 2.5), clamp(sc, .4, 2.5)]
+        fx.setdefault("p", {})[item] = [clamp(x, -.7, .7), clamp(y, -1, 2.5), clamp(sc, .4, 2.5), clamp(z, -.7, .7)]
         await fx_set(me["nick"], fx)
         await m.answer("Готово! ⚙️ Украшение на новом месте — в городе через пару минут.", reply_markup=city_keyboard(me["nick"]))
         return
