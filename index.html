@@ -125,7 +125,17 @@ body.orbiting .top,body.orbiting #card,body.orbiting #cta{display:none!important
 <div class="modal" id="modal"><div class="sheet" id="sheet"></div></div>
 
 <script src="houses.js"></script>
-<script type="importmap">{"imports":{"three":"./vendor/three.module.min.js","three/addons/":"./vendor/addons/"}}</script>
+<script>
+/* 3D-движок: со сжатого CDN (≈170 КБ вместо 690, кэшируется на телефоне). Если CDN недоступен — своя копия из vendor/. */
+(function () {
+  var loc = /[?&]local3d=1/.test(location.search); try { loc = loc || sessionStorage.getItem('local3d') === '1'; } catch (e) {}
+  var cdn = 'https://cdn.jsdelivr.net/npm/three@0.170.0/', core = loc ? './vendor/three.module.min.js' : cdn + 'build/three.module.min.js';
+  var s = document.createElement('script'); s.type = 'importmap';
+  s.textContent = JSON.stringify({ imports: { three: core, 'three/addons/': loc ? './vendor/addons/' : cdn + 'examples/jsm/' } });
+  document.currentScript.after(s);
+  if (!loc && window.fetch) fetch(core, { mode: 'cors' }).catch(function () { try { sessionStorage.setItem('local3d', '1'); } catch (e) {} location.reload(); });
+})();
+</script>
 <script type="module">
 import { City3D, HousePreview, BIZ } from './city3d.js';
 /* ===================== НАСТРОЙКИ ===================== */
