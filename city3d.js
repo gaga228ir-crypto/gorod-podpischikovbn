@@ -383,6 +383,30 @@ function planCity() {
   roads.push(...est.roads); // улочки посёлка — после участков города, чтобы вдоль них не строились дома
   return { T, roads, lots, est, lms, places };
 }
+// улицы только там, где есть дома: обрезаем хвосты за последним заселённым участком (жители: «дороги из ниоткуда в никуда»).
+// Улица остаётся целиком, если она соединяет перекрёстки; ветка, от которой отходит нужная улица, тянется до неё.
+function trimRoads(roads, lots, houses) {
+  const cum = roads.map(rd => { const c = [0]; for (let i = 1; i < rd.pts.length; i++) c.push(c[i - 1] + Math.hypot(rd.pts[i][0] - rd.pts[i - 1][0], rd.pts[i][1] - rd.pts[i - 1][1])); return c; });
+  const G = new Grid(1); roads.forEach((rd, ri) => { const P = rd.pts, C = cum[ri]; for (let i = 0; i < P.length - 1; i++) { const L = C[i + 1] - C[i] || 1;
+    for (let t = 0; t <= L; t += .25) { const k = t / L; G.add(P[i][0] + (P[i + 1][0] - P[i][0]) * k, P[i][1] + (P[i + 1][1] - P[i][1]) * k, [ri, C[i] + t]); } } });
+  const onOther = (ri, x, z) => { let best = null, bd = .45;
+    G.near(x, z, .5, v => { if (v[0] === ri) return; const rd = roads[v[0]], C = cum[v[0]]; let i = 0; while (i < C.length - 2 && C[i + 1] < v[1]) i++; const L = C[i + 1] - C[i] || 1, k = (v[1] - C[i]) / L;
+      const px = rd.pts[i][0] + (rd.pts[i + 1][0] - rd.pts[i][0]) * k, pz = rd.pts[i][1] + (rd.pts[i + 1][1] - rd.pts[i][1]) * k, d = Math.hypot(px - x, pz - z); if (d < bd) { bd = d; best = v; } }); return best; };
+  const need = roads.map(rd => rd.est || Math.hypot(rd.pts[0][0] - rd.pts[rd.pts.length - 1][0], rd.pts[0][1] - rd.pts[rd.pts.length - 1][1]) < .01 ? Infinity : -1); // кольцо и посёлок — как есть
+  for (const h of houses) { const l = lots[h.lot]; if (l && l.ri != null && need[l.ri] !== Infinity) need[l.ri] = Math.max(need[l.ri], l.t + .9); }
+  const ends = roads.map((rd, ri) => [onOther(ri, ...rd.pts[0]), onOther(ri, ...rd.pts[rd.pts.length - 1])]);
+  for (let pass = 0; pass < 6; pass++) { let ch = false;
+    roads.forEach((rd, ri) => { if (need[ri] < 0) return; const full = need[ri] >= cum[ri][cum[ri].length - 1] - .01;
+      // нужная улица держит ту, от которой отходит; если доходит до конца — и ту, в которую упирается
+      for (const [e, use] of [[ends[ri][0], true], [ends[ri][1], full]]) if (e && use && need[e[0]] !== Infinity && need[e[0]] < e[1]) { need[e[0]] = e[1]; ch = true; } });
+    // хвост короче 2.5 до перекрёстка — дотягиваем, чтобы улица не обрывалась у самого перекрёстка
+    roads.forEach((rd, ri) => { const L = cum[ri][cum[ri].length - 1]; if (need[ri] >= 0 && need[ri] < L && ends[ri][1] && L - need[ri] < 2.5) { need[ri] = L; ch = true; } });
+    if (!ch) break; }
+  return roads.map((rd, ri) => { const C = cum[ri], n = need[ri]; if (n === Infinity) return rd; if (n < 0) return null; if (n >= C[C.length - 1]) return rd;
+    const pts = [rd.pts[0]]; for (let i = 1; i < rd.pts.length; i++) { if (C[i] < n) { pts.push(rd.pts[i]); continue; } const k = (n - C[i - 1]) / (C[i] - C[i - 1] || 1);
+      pts.push([rd.pts[i - 1][0] + (rd.pts[i][0] - rd.pts[i - 1][0]) * k, rd.pts[i - 1][1] + (rd.pts[i][1] - rd.pts[i - 1][1]) * k]); break; }
+    return { ...rd, pts, ys: null, cum: null }; }).filter(rd => rd && rd.pts.length > 1);
+}
 // точка на ломаной улицы: s — расстояние от начала, off — сдвиг вбок
 function alongRoad(T, rd, s, off, out) {
   if (!rd.cum) { rd.cum = [0]; for (let i = 1; i < rd.pts.length; i++) rd.cum.push(rd.cum[i - 1] + Math.hypot(rd.pts[i][0] - rd.pts[i - 1][0], rd.pts[i][1] - rd.pts[i - 1][1])); roadY(T, rd); }
@@ -459,7 +483,7 @@ export class City3D {
     const town = this.houses.filter(h => !h.isEstate && !h.guest);
     let Rm = PLAZA_R + 8; for (const h of town) Rm = Math.max(Rm, h.d); Rm += 3; this.Rm = Rm; this.span = Rm / 3; this.rMax = Rm;
     // улицы, тротуары, фонари
-    const roads = this.roads = clipRoads(this.map.roads, Rm);
+    const roads = this.roads = clipRoads(trimRoads(this.map.roads, lots, this.houses), Rm);
     for (const m of buildRoadMeshes(T, roads)) add(m);
     const lampsB = buildLamps(T, roads); for (const m of lampsB.meshes) add(m);
     // обычные дома и дворы (особые — ниже, своими моделями)
@@ -520,7 +544,8 @@ export class City3D {
       const at = (p, lx, ly, lz) => { const c = Math.cos(p.rot), sn = Math.sin(p.rot); return new THREE.Vector3(p.x + lx * c + lz * sn, T.H(p.x, p.z) + ly, p.z - lx * sn + lz * c); };
       for (let i = 0; i < est.plots.length; i++) { if (taken.has(i)) continue; const p = est.plots[i]; q.setFromAxisAngle(Y, p.rot);
         for (const [lx, lz, sx, sz] of [[0, 1.3, 2.6, .05], [0, -1.3, 2.6, .05], [1.3, 0, .05, 2.6], [-1.3, 0, .05, 2.6]]) fx.push([at(p, lx, .05, lz), q.clone(), new THREE.Vector3(sx, .1, sz)]);
-        lawn.push([at(p, 0, .012, 0), q.clone(), new THREE.Vector3(2.5, .02, 2.5)]);
+        { const hs = [[0, 0], [1.25, 1.25], [-1.25, 1.25], [1.25, -1.25], [-1.25, -1.25], [0, 1.25], [0, -1.25], [1.25, 0], [-1.25, 0]].map(([lx, lz]) => { const v = at(p, lx, 0, lz); return T.H(v.x, v.z); }), lo = Math.min(...hs) - .15, hi = Math.max(...hs) + .03;
+          const c = at(p, 0, 0, 0); c.y = (lo + hi) / 2; lawn.push([c, q.clone(), new THREE.Vector3(2.5, hi - lo, 2.5)]); } // газон толщиной по уклону — не мерцает с землёй
         posts.push([at(p, .9, .25, 1.15), q.clone(), new THREE.Vector3(.05, .5, .05)]); boards.push([at(p, .9, .45, 1.17), q.clone(), new THREE.Vector3(.42, .2, .03)]);
         const sg = textSprite('Свободно · 100⭐', { color: '#1a1238', bg: 'rgba(255,255,255,.92)', scale: .0011, size: 44 }); sg.position.copy(at(p, .9, .8, 1.15)); add(sg); }
       for (const [list, m] of [[fx, fenceM], [lawn, lawnM], [posts, postM], [boards, boardM]]) if (list.length) { const im = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), m, list.length);
