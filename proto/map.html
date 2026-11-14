@@ -16,7 +16,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:#cfe8fb;font-family:In
 <script type="importmap">{"imports":{"three":"../vendor/three.module.min.js","three/addons/":"../vendor/addons/"}}</script>
 <script type="module">
 import * as THREE from 'three';
-import { VARIANTS, Terrain, buildRoads, buildLots, buildScene, makeEnv } from './map3d.js';
+import { VARIANTS, Terrain, buildRoads, buildLots, buildScene, makeEnv } from '../map3d.js';
 const q = new URLSearchParams(location.search), vk = VARIANTS[q.get('v')] ? q.get('v') : 'valley', V = VARIANTS[vk], COUNT = +(q.get('n') || 2300);
 for (const k in VARIANTS) { const a = document.createElement('a'); a.href = '?v=' + k; a.textContent = VARIANTS[k].name; if (k === vk) a.className = 'on'; document.getElementById('hud').appendChild(a); }
 const t0 = performance.now();

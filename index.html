@@ -276,7 +276,7 @@ const card = $('card'), msg = $('msg');
 function pick(x, y) { const h = city.pick(x, y); if (h && h.park) return openPark(h.park); if (h && h.honor) return openHonor(); if (h && h.mini != null) return openMini(h.mini); if (h && h.chest) return kladOver() ? kladChip.onclick() : openKlad(); if (h) focus(h, false); }
 function focus(h, fly = true) {
   city.focus(h, fly);
-  if (fly && h.isEstate) toastMsg('🏡 Этот дом переехал в Посёлок Усадеб за рекой. Вернуться в город — кнопка «🏙 В ГОРОД».');
+  if (fly && h.isEstate) toastMsg('🏡 Этот дом переехал в Посёлок Усадеб у озера. Вернуться в город — кнопка «🏙 В ГОРОД».');
   $('cnick').textContent = h.label;
   $('csub').textContent = h.gone ? `Дом №${h.n.toLocaleString('ru')} · заброшен: житель отписался 😢 Подпишись снова — свет вернётся` : `Дом №${h.n.toLocaleString('ru')}${h.recipe ? ' · особый дом' : ''}${h.recipe && h.recipe.biz && BIZ[h.recipe.biz] ? ' · ' + BIZ[h.recipe.biz][0].toLowerCase() : ''}`;
   const ad = city.address(h); $('csub').textContent = `📍 ${ad.text} · ${ad.district} · ` + $('csub').textContent;
@@ -662,9 +662,9 @@ function startOrbit(h) { stopOrbit(); if (!h) return;
   document.body.classList.add('orbiting'); orbit = { raf: 0, t0: performance.now() };
   const step = () => { if (!orbit) return; city.ctl.taz += .0055; orbit.raf = requestAnimationFrame(step); }; step();
   setTimeout(() => addEventListener('pointerdown', stopOrbit, { once: true }), 300); }
-// кнопка «В город», когда камера улетела в Посёлок Усадеб (он за рекой, далеко от центра)
-$('toCity').onclick = () => { city.flyTo(2, 2, 26); $('toCity').classList.remove('show'); };
-setInterval(() => { const c = city.ctl, far = c && Math.hypot(c.tx - 2, c.tz - 2) > (city.span || 18) * 3 + 10; $('toCity').classList.toggle('show', !!far); }, 700);
+// кнопка «В город», когда камера улетела в Посёлок Усадеб (он за озером, далеко от центра)
+$('toCity').onclick = () => { city.flyTo(0, 0, 34); $('toCity').classList.remove('show'); };
+setInterval(() => { const c = city.ctl, far = c && (city.estateCenter && Math.hypot(c.tx - city.estateCenter.x, c.tz - city.estateCenter.z) < 16); $('toCity').classList.toggle('show', !!far); }, 700);
 const closeBtn = () => { $('mclose').onclick = () => modal.classList.remove('show'); };
 
 // ---------- выборы ----------
