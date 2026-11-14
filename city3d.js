@@ -135,6 +135,7 @@ function bodyGeo(floors, w = FOOT, d = FOOT) {
 const bodyMat = (lights = 'warm', wall) => new THREE.MeshStandardMaterial({ color: wall || '#ffffff', map: WALL_T, emissiveMap: EMIS_T, emissive: LIGHT_C[lights] || LIGHT_C.warm, emissiveIntensity: 1.05, roughness: .85 });
 const flat = (c, em, ei = 1) => new THREE.MeshStandardMaterial({ color: c, flatShading: true, roughness: .7, emissive: em || '#000', emissiveIntensity: ei });
 function roofGeo(r = FOOT * .78, h = .34) { const g = new THREE.ConeGeometry(r, h, 4, 1); g.rotateY(Math.PI / 4); g.translate(0, h / 2, 0); return g; }
+export const FLAG_PAL = ['', '#ffffff', '#1a1238', '#ff3d7f', '#ffd23f', '#5ef2ff', '#a6ff8f', '#c084fc', '#ff7a1a', '#000000', '#4a4f5c', '#9aa1ad', '#d9dde3', '#e02a2a', '#8b1a2e', '#ff9ec4', '#ffb27a', '#fff3a6', '#b8862e', '#7a4a22', '#f1c6a0', '#c88a5f', '#2e9d4f', '#135c34', '#2bb5d8', '#2b6fb5', '#17307a', '#7a4fd0', '#45207a', '#2fc0a0', '#ff6b6b', '#ffd9e8']; // флаг: 0 — пусто, символы 0-9a-v
 function textSprite(text, { size = 64, color = '#fff', bg = 'rgba(12,8,36,.85)', pad = 18, font = '800', scale = .006 } = {}) {
   const c = document.createElement('canvas'), g = c.getContext('2d'); g.font = `${font} ${size}px Unbounded, Inter, sans-serif`;
   const w = Math.ceil(g.measureText(text).width) + pad * 2, h = size + pad * 2; c.width = w; c.height = h;
@@ -650,12 +651,13 @@ export class City3D {
       const d = new Set(fx.d || []), nowS = Date.now() / 1000; for (const o of fx.off || []) d.delete(o);
       if (fx.lent && fx.lent.u > nowS) d.delete(fx.lent.i);
       if (fx.bor && fx.bor.u > nowS) d.add(fx.bor.i);
-      if (fx.rf && (fx.rf.length === 64 || fx.rf.length === 225)) { const PAL = ['', '#ffffff', '#1a1238', '#ff3d7f', '#ffd23f', '#5ef2ff', '#a6ff8f', '#c084fc', '#ff7a1a'], N = fx.rf.length === 64 ? 8 : 15, S = N * 8;
-        const tex = canvasTex(S, S, g => { for (let i = 0; i < N * N; i++) { const c = PAL[+fx.rf[i]]; if (!c) continue; g.fillStyle = c; g.fillRect((i % N) * 8, Math.floor(i / N) * 8, 8, 8); } });
+      const RFS = fx.rf64 && fx.rf64.length === 4096 ? fx.rf64 : fx.rf;
+      if (RFS && (RFS.length === 64 || RFS.length === 225 || RFS.length === 4096)) { const PAL = FLAG_PAL, N = Math.round(Math.sqrt(RFS.length)), C = N > 15 ? 4 : 8, S = N * C;
+        const tex = canvasTex(S, S, g => { for (let i = 0; i < N * N; i++) { const c = PAL[parseInt(RFS[i], 32)]; if (!c) continue; g.fillStyle = c; g.fillRect((i % N) * C, Math.floor(i / N) * C, C, C); } });
         tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter;
-        const RF = new THREE.Group(); const pole = new THREE.Mesh(new THREE.CylinderGeometry(.008, .008, .62, 6), flat('#d0d0e0')); pole.position.y = .31; RF.add(pole);
-        const pan = new THREE.Mesh(new THREE.PlaneGeometry(.3, .3), new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide, toneMapped: false }));
-        pan.geometry.translate(.16, 0, 0); pan.position.y = .45; pan.userData.flagWave = true; RF.add(pan);
+        const RF = new THREE.Group(); const pole = new THREE.Mesh(new THREE.CylinderGeometry(.01, .01, .8, 6), flat('#d0d0e0')); pole.position.y = .4; RF.add(pole);
+        const pan = new THREE.Mesh(new THREE.PlaneGeometry(.42, .42), new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide, toneMapped: false }));
+        pan.geometry.translate(.22, 0, 0); pan.position.y = .57; pan.userData.flagWave = true; RF.add(pan);
         RF.position.set(-.18, top - .05, fz * .12); G.add(place(RF, 'roof')); }
       if (d.has('rainbow')) { const RB = new THREE.Group(); ['#ff3d7f', '#ffd23f', '#a6ff8f', '#5ef2ff', '#c084fc'].forEach((c, i) => { const r = new THREE.Mesh(new THREE.RingGeometry(.62 + i * .05, .66 + i * .05, 40), new THREE.MeshBasicMaterial({ color: c, toneMapped: false, side: THREE.DoubleSide }));
         r.rotation.x = -Math.PI / 2; r.position.y = .03 + i * .002; RB.add(r); }); G.add(place(RB, 'rainbow')); }
