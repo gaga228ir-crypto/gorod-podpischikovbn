@@ -383,7 +383,7 @@ function toastMsg(t) { let el = document.getElementById('toastM'); if (!el) { el
     document.body.appendChild(el); } el.textContent = t; el.style.opacity = 1; clearTimeout(el._t); el._t = setTimeout(() => el.style.opacity = 0, 4200); }
 function optimistic(d) { const me = fxMap[ME] = fxMap[ME] || {};
   if (d.t === 'knock') { const f = fxMap[d.n] = fxMap[d.n] || {}; f.k = (f.k || 0) + 1; }
-  if (d.t === 'fx') { me.s = d.s; me.c = d.c; } if (d.t === 'place') { me.p = me.p || {}; me.p[d.i] = d.p; } if (d.t === 'roof') { if (d.p64) me.rf64 = d.p64; else { me.rf = d.p; delete me.rf64; } }
+  if (d.t === 'fx') { me.s = d.s; me.c = d.c; } if (d.t === 'place') { me.p = me.p || {}; me.p[d.i] = d.p; } if (d.t === 'esz') me.es = d.s; if (d.t === 'roof') { if (d.p64) me.rf64 = d.p64; else { me.rf = d.p; delete me.rf64; } }
   city.setFx(fxMap); if (city.hi) focus(city.hi, false); }
 async function sendTG(data, errEl) {
   if (TG && tg.initData && (API || await loadAPI())) {
@@ -550,6 +550,7 @@ function openProfile() {
     <p><b style="color:#ffd23f">🪙 ${fx.co || 0} неонок</b>${fx.k ? ` · ❤ ${fx.k} стуков` : ''}${T0 ? ` · 🏅 ${esc(T0.t)}` : ''}${fx.mc ? ' · 💎 Меценат' : ''}${(fx.f || []).length ? ` · 👫 ${fx.f.length}` : ''}</p>
     <div class="btns" style="flex-wrap:wrap"><button type="button" id="pGo">🏠 ПОКАЗАТЬ ДОМ</button><button type="button" class="ghost" id="pLook">🔄 ОСМОТРЕТЬ</button></div>
     <div class="btns" style="flex-wrap:wrap"><button type="button" class="ghost" id="pSign">✏️ ТАБЛИЧКА</button><button type="button" class="ghost" id="pRoof">🎨 ФЛАГ</button><button type="button" class="ghost" id="pShop">⭐ УКРАСИТЬ</button><button type="button" class="ghost" id="pEst">🏡 УСАДЬБЫ</button></div>
+    ${h.isEstate ? `<div class="srow"><span>Размер дома в усадьбе (бесплатно)</span><div class="opts">${[[1, '🏠 Обычный'], [2, '🏡 Большой'], [3, '🏰 Огромный']].map(([v, t]) => `<button class="opt${(fx.es || 1) === v ? ' on' : ''}" data-esz="${v}" type="button">${t}</button>`).join('')}</div></div>` : ''}
     <p><b>Мои украшения</b> — можно снять и вернуть в любой момент, они остаются твоими.</p>
     ${mine.map(([k, t]) => `<div class="shop"><span style="${off.has(k) ? 'opacity:.45' : ''}">${t}</span><button type="button" class="ghost" data-hide="${k}">${off.has(k) ? '↩️ ВЕРНУТЬ' : '🙈 СНЯТЬ'}</button></div>`).join('') || '<p>Пока нет — загляни в «⭐ УКРАСИТЬ».</p>'}
     <button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button>`;
@@ -557,6 +558,7 @@ function openProfile() {
   $('pGo').onclick = go; $('pLook').onclick = () => { go(); startOrbit(h); };
   $('pSign').onclick = () => { go(); setTimeout(() => $('bfx') && $('bfx').click(), 50); };
   $('pRoof').onclick = () => openRoof(h); $('pShop').onclick = () => openShop(h); $('pEst').onclick = openEstates;
+  sheet.querySelectorAll('[data-esz]').forEach(b => b.onclick = () => { sheet.querySelectorAll('[data-esz]').forEach(x => x.classList.toggle('on', x === b)); sendTG({ t: 'esz', s: +b.dataset.esz }); });
   sheet.querySelectorAll('[data-hide]').forEach(b => b.onclick = () => { const k = b.dataset.hide, f = fxMap[ME] = fxMap[ME] || {}, o = new Set(f.off || []);
     o.has(k) ? o.delete(k) : o.add(k); f.off = [...o]; city.setFx(fxMap); b.textContent = '…'; sendTG({ t: 'hide', i: k }); });
   modal.classList.add('show'); closeBtn();

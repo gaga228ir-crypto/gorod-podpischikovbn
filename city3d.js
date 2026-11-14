@@ -162,7 +162,7 @@ const PART_T = ['box', 'cyl', 'cone', 'sphere', 'dome', 'pyramid', 'torus'];
 const clampN = (v, a, b, d) => { v = +v; return Number.isFinite(v) ? Math.max(a, Math.min(b, v)) : d; };
 export function cleanParts(parts) {
   if (!Array.isArray(parts)) return [];
-  return parts.slice(0, 120).filter(q => q && PART_T.includes(q.t)).map(q => ({
+  return parts.slice(0, 200).filter(q => q && PART_T.includes(q.t)).map(q => ({
     t: q.t, p: [clampN(q.p?.[0], -.5, .5, 0), clampN(q.p?.[1], 0, 2.2, 0), clampN(q.p?.[2], -.5, .5, 0)],
     s: [clampN(q.s?.[0], .02, 1, .3), clampN(q.s?.[1], .02, 1.6, .3), clampN(q.s?.[2], .02, 1, .3)],
     c: /^#[0-9a-f]{6}$/i.test(q.c) ? q.c : '#cccccc', g: clampN(q.g, 0, 1, 0), r: clampN(q.r, -360, 360, 0), w: !!q.w }));
@@ -330,22 +330,35 @@ export function districtOf(x, z) {
   const d = Math.hypot(x, z); if (d < 12) return 'Центр';
   const s = Math.floor((Math.atan2(z, x) + Math.PI) / (Math.PI * 2) * 8) % 8; return (d < 34 ? DIST_IN : DIST_OUT)[s];
 }
-const ESTATE_N = 36;
+const ESTATE_N = 36, ESTATE_K = { 1: 1.8, 2: 2.3, 3: 2.8 };
 // места на карте выбираются один раз: посёлок усадеб (до улиц — туда улицы не идут), рубежи у площади, парки/фонтаны по городу
 function planCity() {
   const V = VARIANTS.lake, T = new Terrain(V), r = rnd(77);
   const flat = (x, z) => !T.wet(x, z) && T.slope(x, z) < .45 && T.H(x, z) < 5;
   // посёлок усадеб — на дальнем берегу озера, где ровнее всего
+  // посёлок: 3 улочки, вдоль них участки 3.1×3.1 фасадами к улочке (6 рядов × 7), сбоку — дорога в город
+  const PW = 3.1, PD = 3.1, LW = .6, PITCH = 2 * PD + LW + .5;
   let best = null; const dir = Math.atan2(LAKE.z, LAKE.x);
-  for (let a = -1.3; a <= 1.3; a += .1) for (let dd = 24; dd <= 38; dd += 2) { const cx = LAKE.x + Math.cos(dir + a) * dd, cz = LAKE.z + Math.sin(dir + a) * dd; let ok = 0;
-    for (let i = -3; i <= 3; i++) for (let j = -3; j <= 3; j++) if (flat(cx + i * 2.5, cz + j * 2.5)) ok++;
+  for (let a = -1.3; a <= 1.3; a += .1) for (let dd = 26; dd <= 42; dd += 2) { const cx = LAKE.x + Math.cos(dir + a) * dd, cz = LAKE.z + Math.sin(dir + a) * dd; let ok = 0;
+    for (let i = -4; i <= 4; i++) for (let j = -4; j <= 4; j++) if (flat(cx + i * 2.8, cz + j * 2.8)) ok++;
     if (!best || ok > best.ok) best = { x: cx, z: cz, ok }; }
-  const est = { x: best.x, z: best.z, r: 10, plots: [] }, ra = Math.atan2(LAKE.z - est.z, LAKE.x - est.x); // фасадами к озеру
-  for (let i = -3; i <= 3; i++) for (let j = -3; j <= 3; j++) { const x = est.x + i * 2.5, z = est.z + j * 2.5; let ok = true;
-    for (const [u, v] of [[0, 0], [-.9, -.9], [.9, .9], [-.9, .9], [.9, -.9]]) if (!flat(x + u, z + v)) ok = false;
-    if (ok) est.plots.push({ x, z, rot: Math.atan2(Math.cos(ra), Math.sin(ra)) }); }
+  const ra = Math.atan2(LAKE.z - best.z, LAKE.x - best.x), Vx = Math.cos(ra), Vz = Math.sin(ra), Ux = -Vz, Uz = Vx;
+  const at = (u, v) => [best.x + Ux * u + Vx * v, best.z + Uz * u + Vz * v];
+  const est = { x: best.x, z: best.z, r: 16, plots: [], roads: [] };
+  for (const lv of [-PITCH, 0, PITCH]) for (const side of [-1, 1]) for (let k = -3; k <= 3; k++) { const u = k * PW, v = lv + side * (LW / 2 + PD / 2), [x, z] = at(u, v); let ok = true;
+    for (const [du, dv] of [[0, 0], [-1.3, -1.3], [1.3, 1.3], [-1.3, 1.3], [1.3, -1.3]]) { const [qx, qz] = at(u + du, v + dv); if (!flat(qx, qz)) ok = false; }
+    if (ok) est.plots.push({ x, z, rot: Math.atan2(-side * Vx, -side * Vz), lane: lv }); }
   est.plots.sort((a, b) => Math.hypot(a.x - est.x, a.z - est.z) - Math.hypot(b.x - est.x, b.z - est.z)); est.plots.length = Math.min(est.plots.length, ESTATE_N);
+  const U0 = -3.5 * PW - LW / 2, U1 = 3.5 * PW;
+  for (const lv of [-PITCH, 0, PITCH]) est.roads.push({ pts: [at(U0, lv), at(U1, lv)], w: .5, kind: 'lane', est: true });
+  const spine = { pts: [], w: .55, kind: 'street', est: true }; for (let v = -PITCH; v <= PITCH + .01; v += PITCH / 3) spine.pts.push(at(U0, v)); est.roads.push(spine);
   const roads = buildRoads(T, V.seed, [{ x: est.x, z: est.z, r: est.r + 1.5 }]);
+  { // дорога в город: от ближайшего конца «хребта» к ближайшей точке городских улиц, по суше
+    let bd = 1e9, A = null, B = null;
+    for (const e of [spine.pts[0], spine.pts[spine.pts.length - 1], at(U0, 0)]) for (const rd of roads) for (const q of rd.pts) { const d = Math.hypot(q[0] - e[0], q[1] - e[1]); if (d < bd && Math.hypot(q[0] - est.x, q[1] - est.z) > est.r) { bd = d; A = e; B = q; } }
+    if (A && bd < 40) { const n = Math.max(2, Math.ceil(bd / 1.5)), pts = []; let ok = true;
+      for (let k = 0; k <= n; k++) { const x = A[0] + (B[0] - A[0]) * k / n, z = A[1] + (B[1] - A[1]) * k / n; if (T.wet(x, z)) ok = false; pts.push([x, z]); }
+      if (ok) est.roads.push({ pts, w: .55, kind: 'street', est: true }); } }
   const rp = new Grid(2); for (const rd of roads) for (let i = 0; i < rd.pts.length - 1; i++) { const [a, b] = [rd.pts[i], rd.pts[i + 1]];
     for (let t = 0; t <= 1; t += .25) rp.add(a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, rd.w]); }
   const taken = [{ x: est.x, z: est.z, r: est.r }];
@@ -367,6 +380,7 @@ function planCity() {
   const by = new Map(); lots.forEach((l, i) => { l.idx = i; const k = l.ri + ':' + l.sd; (by.get(k) || by.set(k, []).get(k)).push(l); });
   for (const [k, arr] of by) { arr.sort((a, b) => a.t - b.t); const sd = +k.split(':')[1]; arr.forEach((l, j) => { l.num = 2 * j + (sd < 0 ? 1 : 2); l.prev = j ? arr[j - 1].idx : -1; l.next = j + 1 < arr.length ? arr[j + 1].idx : -1; }); }
   for (const l of lots) { const opp = by.get(l.ri + ':' + -l.sd); l.opp = -1; if (opp) { let bd = 1.6; for (const o of opp) if (Math.abs(o.t - l.t) < bd) { bd = Math.abs(o.t - l.t); l.opp = o.idx; } } }
+  roads.push(...est.roads); // улочки посёлка — после участков города, чтобы вдоль них не строились дома
   return { T, roads, lots, est, lms, places };
 }
 // точка на ломаной улицы: s — расстояние от начала, off — сдвиг вбок
@@ -493,12 +507,21 @@ export class City3D {
         const path = new THREE.Mesh(new THREE.BoxGeometry(.3, .01, .9), flat('#c9a46a')); path.position.set(0, .01, .55); Yd.add(path);
         ['#ff3d7f', '#ffd23f', '#c084fc', '#5ef2ff'].forEach((c, i) => { for (let k = 0; k < 5; k++) { const fl = new THREE.Mesh(new THREE.SphereGeometry(.035, 6, 5), flat(c)); fl.position.set(-.85 + k * .07, .05, -.3 + i * .09); Yd.add(fl); const fr = fl.clone(); fr.position.x = .57 + k * .07; Yd.add(fr); } });
         const pond = new THREE.Mesh(new THREE.CircleGeometry(.2, 20), new THREE.MeshStandardMaterial({ color: '#5fbfee', roughness: .05 })); pond.rotation.x = -Math.PI / 2; pond.position.set(-.7, .015, -.72); Yd.add(pond);
-        add(Yd); }
+        Yd.scale.setScalar(1.3); add(Yd); }
       add(g); this.specialG.push(g); }
     this.places.push({ kind: 'estate', name: 'Посёлок Усадеб', x: est.x, z: est.z, y: T.H(est.x, est.z) }); this.estateCenter = this.places[this.places.length - 1];
     { const taken = new Set(this.houses.filter(h => h.isEstate).map(h => h.estate));
-      for (let i = 1, shown = 0; i < est.plots.length && shown < 6; i++) { if (taken.has(i)) continue; const p = est.plots[i];
-        const sg = textSprite('🏡 Свободно · 100 звёзд', { color: '#1a1238', bg: 'rgba(166,255,143,.9)', scale: .0042, size: 44 }); sg.position.set(p.x, T.H(p.x, p.z) + 1.1, p.z); add(sg); shown++; } }
+      // свободные участки: низкий забор-контур, газон и табличка на столбике
+      const fenceM = flat('#e8dcc4'), lawnM = flat('#8fd17a'), postM = flat('#9b6b3d'), boardM = flat('#fff6dc');
+      const fx = [], lawn = [], posts = [], boards = [], q = new THREE.Quaternion(), Y = new THREE.Vector3(0, 1, 0), M4 = new THREE.Matrix4(), one = new THREE.Vector3(1, 1, 1);
+      const at = (p, lx, ly, lz) => { const c = Math.cos(p.rot), sn = Math.sin(p.rot); return new THREE.Vector3(p.x + lx * c + lz * sn, T.H(p.x, p.z) + ly, p.z - lx * sn + lz * c); };
+      for (let i = 0; i < est.plots.length; i++) { if (taken.has(i)) continue; const p = est.plots[i]; q.setFromAxisAngle(Y, p.rot);
+        for (const [lx, lz, sx, sz] of [[0, 1.3, 2.6, .05], [0, -1.3, 2.6, .05], [1.3, 0, .05, 2.6], [-1.3, 0, .05, 2.6]]) fx.push([at(p, lx, .05, lz), q.clone(), new THREE.Vector3(sx, .1, sz)]);
+        lawn.push([at(p, 0, .012, 0), q.clone(), new THREE.Vector3(2.5, .02, 2.5)]);
+        posts.push([at(p, .9, .25, 1.15), q.clone(), new THREE.Vector3(.05, .5, .05)]); boards.push([at(p, .9, .45, 1.17), q.clone(), new THREE.Vector3(.42, .2, .03)]);
+        const sg = textSprite('Свободно · 100⭐', { color: '#1a1238', bg: 'rgba(255,255,255,.92)', scale: .0011, size: 44 }); sg.position.copy(at(p, .9, .8, 1.15)); add(sg); }
+      for (const [list, m] of [[fx, fenceM], [lawn, lawnM], [posts, postM], [boards, boardM]]) if (list.length) { const im = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), m, list.length);
+        list.forEach(([pos, qq, sc], i) => im.setMatrixAt(i, M4.compose(pos, qq, sc))); im.castShadow = m !== lawnM; add(im); } }
     // на старом месте дома, переехавшего в усадьбу, — указатель
     for (const h of this.houses) if (h.isEstate && h.oldX != null) { const sg = textSprite('🏡 ' + h.label + ' → Посёлок Усадеб', { color: '#1a1238', bg: 'rgba(166,255,143,.92)', scale: .0016, size: 46 }); sg.position.set(h.oldX, h.oldY + 1.15, h.oldZ); add(sg); }
     // брошенные дома: табличка «ПРОДАЁТСЯ»
@@ -621,6 +644,9 @@ export class City3D {
     return (r && r.shape === 'skyscraper' ? 2 : 1) * (h.top || (h.floors || 2) * FH + .35);
   }
   buildExtras() {
+    // размер дома в усадьбе (fx.es: 1 обычный, 2 большой, 3 огромный) — выбирает хозяин
+    for (const g of this.specialG || []) { const h = g.userData.house; if (!h || !h.isEstate) continue; const k = ESTATE_K[(this.fxMap?.[h.key] || {}).es] || ESTATE_K[1];
+      if (g.userData.k !== k) { g.scale.setScalar(k); g.userData.k = k; h.top = (g.userData.top || .6) * k; } }
     this._extrasDirty = false; if (!this.houses.length) return;
     for (const o of this.extras || []) { this.scene.remove(o); o.traverse(m => { m.geometry?.dispose?.(); if (m.material?.map) m.material.map.dispose(); }); } this.extras = [];
     const add = o => { this.scene.add(o); this.extras.push(o); return o; };
