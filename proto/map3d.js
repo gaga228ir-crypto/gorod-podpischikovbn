@@ -208,10 +208,41 @@ export function buildScene(scene, T, roads, lots, count, seed) {
   tm.castShadow = true; const TGC = ['#3f8a4a', '#4f9a50', '#2f7a46', '#5aa65a', '#6aa84f'];
   trees.forEach(([x, y, z, s], i) => { Pv.set(x, y, z); S.set(s, s, s); Q.identity(); M.compose(Pv, Q, S); tm.setMatrixAt(i, M); km.setMatrixAt(i, M); tm.setColorAt(i, c.set(TGC[i % TGC.length])); });
   scene.add(tm, km);
-  // площадь в центре с фонтаном
-  const y0 = T.H(0, 0);
-  const sq = new THREE.Mesh(new THREE.CylinderGeometry(PLAZA_R - .42, PLAZA_R - .3, .12, 48), new THREE.MeshStandardMaterial({ color: '#e7dcc6', roughness: .9 })); sq.position.y = y0 + .05; sq.receiveShadow = true; scene.add(sq);
-  const fn = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.2, .3, 24), new THREE.MeshStandardMaterial({ color: '#cfd8e0' })); fn.position.y = y0 + .2; scene.add(fn);
-  const fw = new THREE.Mesh(new THREE.CylinderGeometry(.95, .95, .05, 24), new THREE.MeshStandardMaterial({ color: '#69c0ee', roughness: .1 })); fw.position.y = y0 + .36; scene.add(fw);
+  // площадь в центре: плитка, газоны с клумбами, дорожки к проспектам, фонари, скамейки, фонтан
+  scene.add(buildPlaza(T.H(0, 0), roads));
   return { houses, trees: trees.length };
+}
+
+function buildPlaza(y0, roads) {
+  const g = new THREE.Group(), PR = PLAZA_R - .42;
+  const tile = document.createElement('canvas'); tile.width = tile.height = 512; const cx = tile.getContext('2d');
+  cx.fillStyle = '#e9e0cf'; cx.fillRect(0, 0, 512, 512); cx.strokeStyle = 'rgba(150,130,100,.35)'; cx.lineWidth = 2;
+  for (let rr = 20; rr < 256; rr += 22) { cx.beginPath(); cx.arc(256, 256, rr, 0, 7); cx.stroke(); const n = Math.round(rr / 6); for (let k = 0; k < n; k++) { const a = k / n * 6.283; cx.beginPath(); cx.moveTo(256 + Math.cos(a) * rr, 256 + Math.sin(a) * rr); cx.lineTo(256 + Math.cos(a) * (rr + 22), 256 + Math.sin(a) * (rr + 22)); cx.stroke(); } }
+  const tex = new THREE.CanvasTexture(tile); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
+  const disk = new THREE.Mesh(new THREE.CircleGeometry(PR, 64), new THREE.MeshStandardMaterial({ map: tex, roughness: .9 })); disk.rotation.x = -Math.PI / 2; disk.position.y = y0 + .1; disk.receiveShadow = true; g.add(disk);
+  const curb = new THREE.Mesh(new THREE.TorusGeometry(PR, .06, 6, 64), new THREE.MeshStandardMaterial({ color: '#c9bfae' })); curb.rotation.x = -Math.PI / 2; curb.position.y = y0 + .1; g.add(curb);
+  // направления проспектов → дорожки; между ними газоны с клумбами
+  const aves = roads.filter(r => r.kind === 'ave' && r.pts.length > 2 && Math.hypot(...r.pts[0]) < PLAZA_R + .1).map(r => Math.atan2(r.pts[0][1], r.pts[0][0])).sort((a, b) => a - b);
+  const lawn = new THREE.MeshStandardMaterial({ color: '#7cc35c', roughness: 1, side: THREE.DoubleSide }), FL = ['#ff6b8b', '#ffd23f', '#ff9f43', '#c56cf0', '#ffffff'];
+  aves.forEach((a, i) => { const b = i + 1 < aves.length ? aves[i + 1] : aves[0] + 6.2832, gap = .28, a0 = a + gap, a1 = b - gap; if (a1 <= a0) return;
+    const sh = new THREE.RingGeometry(1.9, PR - .55, 24, 1, a0, a1 - a0), m = new THREE.Mesh(sh, lawn); m.rotation.x = Math.PI / 2; m.position.y = y0 + .13; m.receiveShadow = true; g.add(m);
+    const am = (a0 + a1) / 2;
+    for (let k = 0; k < 9; k++) { const ak = a0 + (a1 - a0) * (.2 + .6 * k / 8), rr = 3.1 + .35 * Math.sin(k * 1.7), f = new THREE.Mesh(new THREE.SphereGeometry(.13, 8, 6), new THREE.MeshStandardMaterial({ color: FL[(i + k) % FL.length], roughness: .8 }));
+      f.position.set(Math.cos(ak) * rr, y0 + .2, Math.sin(ak) * rr); f.scale.y = .6; g.add(f); }
+    // дерево и скамейка в каждом газоне
+    const t = new THREE.Mesh(new THREE.SphereGeometry(.42, 10, 8), new THREE.MeshStandardMaterial({ color: '#4f9a50', flatShading: true })); t.position.set(Math.cos(am) * 4.3, y0 + .95, Math.sin(am) * 4.3); t.castShadow = true; g.add(t);
+    const tr = new THREE.Mesh(new THREE.CylinderGeometry(.06, .08, .6, 6), new THREE.MeshStandardMaterial({ color: '#7a5a3c' })); tr.position.set(t.position.x, y0 + .4, t.position.z); g.add(tr);
+    const bench = new THREE.Mesh(new THREE.BoxGeometry(.5, .08, .16), new THREE.MeshStandardMaterial({ color: '#a8743f' })); bench.position.set(Math.cos(am) * 1.65, y0 + .22, Math.sin(am) * 1.65); bench.rotation.y = -am + Math.PI / 2; g.add(bench); });
+  // фонари по кругу
+  const pole = new THREE.CylinderGeometry(.03, .04, .9, 6), lampM = new THREE.MeshStandardMaterial({ color: '#3b3f4a' }), bulbM = new THREE.MeshStandardMaterial({ color: '#fff6d8', emissive: '#ffe9a8', emissiveIntensity: .6 });
+  for (let k = 0; k < 12; k++) { const a = k / 12 * 6.2832 + .13, p = new THREE.Mesh(pole, lampM); p.position.set(Math.cos(a) * (PR - .3), y0 + .55, Math.sin(a) * (PR - .3)); g.add(p);
+    const bl = new THREE.Mesh(new THREE.SphereGeometry(.09, 8, 6), bulbM); bl.position.set(p.position.x, y0 + 1.05, p.position.z); g.add(bl); }
+  // фонтан: чаша, вода, колонна, струи
+  const stone = new THREE.MeshStandardMaterial({ color: '#d7dde3', roughness: .6 }), water = new THREE.MeshStandardMaterial({ color: '#5fbfee', roughness: .05, metalness: .1, emissive: '#1b6a99', emissiveIntensity: .15 });
+  const bowl = new THREE.Mesh(new THREE.CylinderGeometry(1.35, 1.45, .32, 32), stone); bowl.position.y = y0 + .26; bowl.castShadow = true; g.add(bowl);
+  const wat = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, .04, 32), water); wat.position.y = y0 + .41; g.add(wat);
+  const col = new THREE.Mesh(new THREE.CylinderGeometry(.14, .2, .7, 12), stone); col.position.y = y0 + .75; g.add(col);
+  const top = new THREE.Mesh(new THREE.CylinderGeometry(.5, .32, .14, 20), stone); top.position.y = y0 + 1.1; g.add(top);
+  const jet = new THREE.Mesh(new THREE.ConeGeometry(.42, .6, 16, 1, true), new THREE.MeshStandardMaterial({ color: '#bfe8ff', transparent: true, opacity: .55, side: THREE.DoubleSide })); jet.position.y = y0 + 1.35; jet.rotation.x = Math.PI; g.add(jet);
+  return g;
 }
