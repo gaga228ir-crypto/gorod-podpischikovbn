@@ -17,7 +17,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (BufferedInputFile, CallbackQuery, InlineKeyboardButton as IB, InlineKeyboardMarkup,
                            InputMediaPhoto, KeyboardButton, LabeledPrice, MenuButtonWebApp, Message,
-                           PreCheckoutQuery, ReplyKeyboardMarkup, WebAppInfo, BotCommand)
+                           PreCheckoutQuery, ReplyKeyboardMarkup, WebAppInfo, BotCommand,
+                           BotCommandScopeAllGroupChats, BotCommandScopeAllPrivateChats)
 
 import cards
 import tiktok
@@ -360,6 +361,31 @@ def coin_price(item):
 
 
 r = Router()
+GROUPS = {"group", "supergroup"}
+
+
+@r.message.outer_middleware()
+async def group_silence(handler, m: Message, data):
+    """В чате жителей бот молчит: только журнал + бегущая строка. Пропускаем лишь команды админа."""
+    if m.chat.type not in GROUPS:
+        return await handler(m, data)
+    if m.from_user and is_admin(m.from_user.id) and (m.text or "").startswith("/"):
+        return await handler(m, data)
+    chat_log(m)
+    chat_feed(m)
+
+
+@r.callback_query.outer_middleware()
+async def group_silence_cb(handler, c: CallbackQuery, data):
+    """Кнопки под сообщениями в группе не работают (их там быть не должно)."""
+    if c.message and c.message.chat.type in GROUPS and not is_admin(c.from_user.id):
+        try:
+            await c.answer()
+        except Exception:
+            pass
+        return
+    return await handler(c, data)
+
 
 
 async def coins_add(nick, n):
@@ -1707,9 +1733,10 @@ def chat_log(m: Message):
         log.warning("chat_log: %s", e)
 
 
-@r.message(F.chat.type.in_({"group", "supergroup"}) & F.text & ~F.text.startswith("/"))
-async def chat_feed(m: Message):
-    chat_log(m)
+def chat_feed(m: Message):
+    """Текст из чата жителей → chat_feed.json (бегущая строка на стриме). Вызывается из group_silence."""
+    if not m.text or m.text.startswith("/"):
+        return
     if not CHAT_ID or str(m.chat.id) != str(CHAT_ID) or not m.from_user or m.from_user.is_bot:
         return
     text = re.sub(r"\s+", " ", m.text).strip()
@@ -1724,10 +1751,6 @@ async def chat_feed(m: Message):
         pass
 
 
-@r.message(F.chat.type.in_({"group", "supergroup"}) & ~F.text)
-async def chat_media(m: Message):
-    """Фото/стикеры/голосовые в чате — тоже в журнал (у фото с багами важна подпись)."""
-    chat_log(m)
 
 
 
@@ -2785,7 +2808,11 @@ async def main():
             return True
         log.error("ошибка: %s", event.exception)
         return True
-    await bot.set_my_commands([BotCommand(command="start", description="Главное меню"), BotCommand(command="home", description="Мой дом")])
+    # меню команд — только в личке; в группах и по умолчанию списка нет, чтобы в чате жителей не тыкали
+    await bot.delete_my_commands()
+    await bot.delete_my_commands(scope=BotCommandScopeAllGroupChats())
+    await bot.set_my_commands([BotCommand(command="start", description="Главное меню"), BotCommand(command="home", description="Мой дом")],
+                              scope=BotCommandScopeAllPrivateChats())
     await bot.set_chat_menu_button(menu_button=MenuButtonWebApp(text="Город", web_app=WebAppInfo(url=SITE_URL)))
     log.info("Бот запущен · база: %s", "Supabase" if isinstance(db, DB) else "локальный файл gorod.db")
     global _bot_username
