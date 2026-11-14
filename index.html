@@ -302,7 +302,15 @@ function optimistic(d) { const me = fxMap[ME] = fxMap[ME] || {};
   city.setFx(fxMap); if (city.hi) focus(city.hi, false); }
 async function sendTG(data, errEl) {
   if (TG && tg.initData && (API || await loadAPI())) {
-    try { let j; try { j = await apiPost(data); } catch (e) { const was = API; if (await loadAPI() === was) throw e; j = await apiPost(data); }
+    try { let j = null;
+      // туннель к боту иногда переподключается и меняет адрес: не молчим, а ждём новый адрес и повторяем (до ~40 с)
+      for (let k = 0; k < 8 && !j; k++) {
+        try { j = await apiPost(data); } catch (e) {
+          if (k === 0) toastMsg('🔌 Переподключаемся к городу… Подожди немного, нажатие не пропадёт.');
+          if (k === 7) { reportErr('api', e, { api: API }); throw e; }
+          await new Promise(r => setTimeout(r, k < 2 ? 1500 : 5000)); await loadAPI(); } }
+      if (!j.ok && j.err === 'auth') { toastMsg('Не получилось узнать тебя 🤔 Закрой город и открой снова из бота.'); return; }
+      if (!j.ok) { toastMsg('Что-то пошло не так на стороне бота 😕 Попробуй ещё раз через минуту.'); reportErr('api', new Error(j.err || 'not ok')); return; }
       if (j.ok) { modal.classList.remove('show');
         if (j.invoice) { tg.openInvoice(j.invoice, st => { if (st === 'paid') toastMsg('Спасибо! ⭐ Уже ставим — в городе через пару минут.'); }); return; }
         const t = (j.msgs || []).filter(Boolean).join('\n\n'); if (t) toastMsg(t); optimistic(data);
