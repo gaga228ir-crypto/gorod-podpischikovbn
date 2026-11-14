@@ -864,9 +864,9 @@ export class City3D {
     const pill = (x, y, text, big, gold) => {
       g.font = `${big ? 800 : 600} ${big ? 15 : 12}px ${big ? 'Unbounded' : 'Inter'}, sans-serif`;
       const w = g.measureText(text).width + (big ? 22 : 14), h = big ? 28 : 22;
-      g.fillStyle = gold ? '#ffd23f' : 'rgba(255,255,255,.92)'; g.beginPath(); g.roundRect(x - w / 2, y - h - 6, w, h, h / 2); g.fill();
-      g.beginPath(); g.moveTo(x - 5, y - 7); g.lineTo(x + 5, y - 7); g.lineTo(x, y); g.fill();
-      g.fillStyle = '#1a1238'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, x, y - 6 - h / 2 + 1);
+      g.fillStyle = gold ? '#ffc83d' : 'rgba(255,255,255,.94)'; g.shadowColor = 'rgba(29,43,68,.25)'; g.shadowBlur = 6; g.beginPath(); g.roundRect(x - w / 2, y - h - 6, w, h, h / 2); g.fill();
+      g.beginPath(); g.moveTo(x - 5, y - 7); g.lineTo(x + 5, y - 7); g.lineTo(x, y); g.fill(); g.shadowBlur = 0;
+      g.fillStyle = '#1d2b44'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, x, y - 6 - h / 2 + 1);
     };
     // названия районов — когда смотрим на город сверху
     if (c.d > 24 && this.districts && !this.noLmLabels) {
@@ -874,8 +874,8 @@ export class City3D {
       const used = [];
       for (const d of [...this.districts].sort((u, v) => v.n - u.n)) { const p = this.project(d.x, this.gy(d.x, d.z) + 1.2, d.z); if (!p || p[0] < -80 || p[0] > this.W + 80 || p[1] < 0 || p[1] > this.H) continue;
         if (used.some(q => Math.abs(q[0] - p[0]) < 190 && Math.abs(q[1] - p[1]) < 30)) continue; used.push(p);
-        const big = d.name === 'Центр'; g.font = `800 ${big ? 17 : 14}px Unbounded, sans-serif`; g.lineWidth = 4; g.strokeStyle = `rgba(12,8,36,${.85 * a})`;
-        const t = d.name.toUpperCase(); g.strokeText(t, p[0], p[1]); g.fillStyle = big ? `rgba(255,210,63,${a})` : `rgba(255,140,220,${.95 * a})`; g.fillText(t, p[0], p[1]); }
+        const big = d.name === 'Центр'; g.font = `800 ${big ? 17 : 14}px Unbounded, sans-serif`; g.lineWidth = 5; g.lineJoin = 'round'; g.strokeStyle = this.dayT > .4 ? `rgba(255,255,255,${.9 * a})` : `rgba(12,16,40,${.85 * a})`;
+        const t = d.name.toUpperCase(); g.strokeText(t, p[0], p[1]); g.fillStyle = this.dayT > .4 ? (big ? `rgba(194,124,0,${a})` : `rgba(29,43,68,${.9 * a})`) : (big ? `rgba(255,210,63,${a})` : `rgba(230,236,255,${.95 * a})`); g.fillText(t, p[0], p[1]); }
     }
     // названия мест (парки, площади, памятники) — на среднем плане
     if (c.d > 5 && c.d < 40 && this.places && !this.noLmLabels) {
@@ -884,7 +884,7 @@ export class City3D {
       for (const pl of this.places) { if (Math.hypot(pl.x - c.x, pl.z - c.z) > R) continue; const p = this.project(pl.x, (pl.y || 0) + 1.1, pl.z); if (!p) continue;
         if (used.some(q => Math.abs(q[0] - p[0]) < 150 && Math.abs(q[1] - p[1]) < 26)) continue; used.push(p);
         const t = `${ICON[pl.kind] || '📍'} ${pl.name}`, w = g.measureText(t).width + 16;
-        g.fillStyle = 'rgba(20,60,45,.88)'; g.beginPath(); g.roundRect(p[0] - w / 2, p[1] - 11, w, 22, 11); g.fill(); g.fillStyle = '#b8ffd9'; g.fillText(t, p[0], p[1] + 1); }
+        g.fillStyle = 'rgba(255,255,255,.92)'; g.beginPath(); g.roundRect(p[0] - w / 2, p[1] - 11, w, 22, 11); g.fill(); g.fillStyle = '#2e7d4a'; g.fillText(t, p[0], p[1] + 1); }
     }
     if (c.d < 22 && !this.hideNicks) {
       const R = c.d * .7, cand = [];
