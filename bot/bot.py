@@ -689,6 +689,17 @@ async def social_action(m, bot, me, data):
         fx["off"] = sorted(off)
         await fx_set(me["nick"], fx)
         await m.answer(f"{FX_ITEMS[item][0] if item in FX_ITEMS else item}: {'снято — вернуть можно в «Мой дом»' if item in off else 'снова у дома'} ✅", reply_markup=kb)
+    elif t == "esz":  # размер дома в усадьбе: 1 обычный, 2 большой, 3 огромный (бесплатно)
+        sz = int(data.get("s", 1)) if str(data.get("s", "1")).isdigit() else 1
+        if sz not in (1, 2, 3):
+            return
+        if await db.kv_get(f"estate:{me['nick']}") is None:
+            await m.answer("Размер можно выбрать только для дома в усадьбе 🏡", reply_markup=kb)
+            return
+        fx = await fx_get(me["nick"])
+        fx["es"] = sz
+        await fx_set(me["nick"], fx)
+        await m.answer(f"🏡 Размер дома в усадьбе: {['', 'обычный', 'большой', 'огромный'][sz]}. На сайте через пару минут.", reply_markup=kb)
     elif t == "roof":
         if data.get("p64"):
             px = re.sub(r"[^0-9a-v]", "", str(data.get("p64")))[:FLAG64 * FLAG64]
@@ -2440,7 +2451,7 @@ async def web_app(m: Message, bot: Bot):
         await fx_set(me["nick"], fx)
         await m.answer(f"🪙 Куплено: {FX_ITEMS[item][0]} за {price} неонок. Осталось 🪙 {fx['co']}.", reply_markup=city_keyboard(me["nick"]))
         return
-    if data.get("t") in ("cvote", "ivote", "friend", "gift", "roof", "borrow", "hide"):
+    if data.get("t") in ("cvote", "ivote", "friend", "gift", "roof", "borrow", "hide", "esz"):
         await social_action(m, bot, me, data)
         return
     if data.get("t") == "spin":
@@ -2702,7 +2713,8 @@ async def build_ai(bot, oid):
                     pass
 
         try:
-            rec = await ai.generate(o["text"], OLLAMA_URL, OLLAMA_MODEL, progress=prog)
+            big = await db.kv_get(f"estate:{o['nick']}") is not None  # дом в усадьбе — собираем богаче
+            rec = await ai.generate(o["text"], OLLAMA_URL, OLLAMA_MODEL, progress=prog, big=big)
             log.info("ИИ: дом #%s собран, деталей: %s — рисую превью", oid, len(rec["parts"]))
             last_edit[0] = 0
             await prog(f"собран ({len(rec['parts'])} деталей), рисую превью…")

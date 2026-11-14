@@ -47,7 +47,7 @@ def _num(v, a, b, d):
 
 def clean(parts):
     out = []
-    for q in (parts or [])[:120]:
+    for q in (parts or [])[:200]:
         if not isinstance(q, dict) or q.get("t") not in PART_T:
             continue
         p, s = q.get("p") or [0, 0, 0], q.get("s") or [0.3, 0.3, 0.3]
@@ -81,11 +81,11 @@ def log_raw(text):
         pass
 
 
-async def generate(text: str, url: str, model: str, progress=None) -> dict:
+async def generate(text: str, url: str, model: str, progress=None, big: bool = False) -> dict:
     """→ рецепт {'shape':'custom','name','lights','parts'}; RuntimeError, если Ollama недоступна или ответ плохой."""
     msgs = [{"role": "system", "content": architect.PROMPT},
             {"role": "user", "content": ARCH_USER}, {"role": "assistant", "content": json.dumps(ARCH_EXAMPLE, ensure_ascii=False)},
-            {"role": "user", "content": text}]
+            {"role": "user", "content": text + ("\n\n(Это большая усадьба: сделай дом богаче — больше этажей и башен, балконы, гирлянды, сад, до 10 украшений.)" if big else "")}]
     last = "пустой ответ"
     async with httpx.AsyncClient(timeout=900, trust_env=False) as c:
         for attempt in range(4):
@@ -144,7 +144,7 @@ async def generate(text: str, url: str, model: str, progress=None) -> dict:
                     await progress(f"вариант {attempt + 1} не разобрался, пробую ещё…")
                 continue
             if isinstance(j, dict) and j.get("type"):
-                return architect.build(j)
+                return architect.build(j, big)
             last = "в ответе нет параметров здания"
     raise RuntimeError("нейросеть не собрала дом: " + last)
 

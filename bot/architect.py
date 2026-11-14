@@ -11,6 +11,8 @@ DECOR = ["garland", "tree", "flag", "antenna", "sign", "graffiti", "balcony", "c
 LIGHTS = ["warm", "cool", "pink", "green"]
 
 MAX_Y = 2.2
+MAX_PARTS = 120
+MAX_PARTS_ESTATE = 200  # дом в усадьбе — больше деталей
 
 
 def _hex(v, d):
@@ -62,13 +64,13 @@ def _int(v, a, b, d):
         return d
 
 
-def norm(spec: dict) -> dict:
+def norm(spec: dict, big: bool = False) -> dict:
     s = spec if isinstance(spec, dict) else {}
     pick = lambda k, opts, d: s.get(k) if s.get(k) in opts else d
     mat = pick("material", MATERIALS, "brick")
     mw, mr, ma, _ = MAT[mat]
     floors = _int(s.get("floors"), 1, 9, 2)
-    decor = [x for x in (s.get("decor") or []) if x in DECOR][:6] if isinstance(s.get("decor"), list) else []
+    decor = [x for x in (s.get("decor") or []) if x in DECOR][:10 if big else 6] if isinstance(s.get("decor"), list) else []
     return {"name": str(s.get("name") or "Дом по описанию")[:40], "type": pick("type", TYPES, "house"), "floors": floors,
             "material": mat, "roof": pick("roof", ROOFS, "pyramid"), "towers": _int(s.get("towers"), 0, 4, 0),
             "wall": _hex(s.get("wall"), mw), "roofColor": _hex(s.get("roofColor"), mr), "accent": _hex(s.get("accent"), ma),
@@ -90,8 +92,8 @@ def _roof(b, kind, x, y, z, w, d, c, acc):
     return b.add("pyramid", x, y, z, w * 1.1, min(.42, w * .6), d * 1.1, c)
 
 
-def build(spec: dict) -> dict:
-    S = norm(spec)
+def build(spec: dict, big: bool = False) -> dict:
+    S = norm(spec, big)
     b, T, F = B(), S["type"], S["floors"]
     wall, roof, acc, mat = S["wall"], S["roofColor"], S["accent"], S["material"]
     wg = MAT[mat][3]
@@ -280,7 +282,53 @@ def build(spec: dict) -> dict:
     if "car" in dec and not S["floating"]:
         b.add("box", .36, 0, .1, .14, .07, .26, acc)
         b.add("box", .36, .07, .08, .12, .06, .14, "#3b4a7a")
-    return {"shape": "custom", "name": S["name"], "lights": S["lights"], "parts": b.parts[:120]}
+    if big and not S["floating"]:
+        estate_grounds(b, S, y0, front, W, D, top)
+    return {"shape": "custom", "name": S["name"], "lights": S["lights"], "parts": b.parts[:MAX_PARTS_ESTATE if big else MAX_PARTS]}
+
+
+def estate_grounds(b, S, y0, front, W, D, top):
+    """Усадьба: крыльцо с колоннами, оконные рамы, сад — живая изгородь, клумбы, фонари, фонтан, дорожка."""
+    wall, roof, acc = S["wall"], S["roofColor"], S["accent"]
+    T = S["type"]
+    trim = _mix(wall, .45)
+    if T in ("house", "mansion", "temple", "castle", "shop", "tower"):
+        # крыльцо: ступени, площадка, 2 колонны, навес
+        b.add("box", 0, 0, front + .07, .3, .03, .12, _mix(wall, -.25))
+        b.add("box", 0, .03, front + .05, .26, .02, .08, _mix(wall, -.15))
+        for xx in (-.11, .11):
+            b.add("cyl", xx, .05, front + .08, .035, .22, .035, trim)
+        b.add("box", 0, .27, front + .07, .3, .03, .14, roof)
+        # рамы окон по фасаду (светлые полосы)
+        for f in range(min(S["floors"], 3)):
+            for xx in (-W / 2 + .1, W / 2 - .1):
+                b.add("box", xx, y0 + .06 + f * .2, front + .012, .1, .1, .01, trim)
+                b.add("box", xx, y0 + .075 + f * .2, front + .016, .07, .07, .01, "#ffe7a3", .9)
+    # живая изгородь по краям участка (сзади и с боков)
+    hedge = "#2f7a3e"
+    for i in range(5):
+        b.add("box", -.4 + i * .2, 0, -.47, .19, .1, .06, hedge)
+    for zz in (-.3, -.1, .1):
+        for xx in (-.47, .47):
+            b.add("box", xx, 0, zz, .06, .1, .19, hedge)
+    # дорожка к крыльцу
+    for k in range(3):
+        b.add("box", 0, 0, min(.49, front + .16 + k * .09), .14, .012, .07, "#d9c29a")
+    # клумбы у крыльца
+    flowers = ["#ff3d7f", "#ffd23f", "#c084fc", "#ff7a1a"]
+    for xx in (-.3, .3):
+        b.add("box", xx, 0, .42, .16, .03, .08, "#6b4a2b")
+        for k in range(4):
+            b.add("sphere", xx - .055 + k * .037, .03, .42, .035, .035, .035, flowers[(k + (xx > 0)) % 4], .2)
+    # фонари на въезде
+    for xx in (-.2, .2):
+        y = b.add("cyl", xx, 0, .47, .02, .22, .02, "#3a3f55")
+        b.add("sphere", xx, y, .47, .06, .06, .06, "#fff1b0", 1)
+    # маленький фонтан сбоку
+    b.add("cyl", .38, 0, .25, .16, .04, .16, _mix(acc, -.3))
+    b.add("cyl", .38, .04, .25, .12, .01, .12, "#5fbfee", .4)
+    y = b.add("cyl", .38, .04, .25, .03, .1, .03, trim)
+    b.add("sphere", .38, y, .25, .05, .05, .05, "#bfeaff", .5)
 
 
 PROMPT = f"""Ты — архитектор игрушечного неонового 3D-города. Житель описывает дом мечты, ты выбираешь ПАРАМЕТРЫ здания.
