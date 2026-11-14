@@ -689,6 +689,40 @@ async def social_action(m, bot, me, data):
         fx["off"] = sorted(off)
         await fx_set(me["nick"], fx)
         await m.answer(f"{FX_ITEMS[item][0] if item in FX_ITEMS else item}: {'снято — вернуть можно в «Мой дом»' if item in off else 'снова у дома'} ✅", reply_markup=kb)
+    elif t == "cohab":  # 🏘 общий дом: хозяин зовёт друга жить вместе (идея думы «дома на несколько жильцов»)
+        target = norm_nick(str(data.get("n") or ""))
+        err = await cohab_check(me["nick"], target)
+        if err:
+            await m.answer(err, reply_markup=kb)
+            return
+        ow = await db.by_nick(target)
+        if not ow or not ow[0].get("tg_id"):
+            await m.answer(f"@{target} ещё не привязал дом в боте 🙂", reply_markup=kb)
+            return
+        await m.answer(f"🏘 Приглашение жить вместе отправлено @{target}!", reply_markup=kb)
+        try:
+            await bot.send_message(ow[0]["tg_id"], f"🏘 @{me['nick']} зовёт тебя жить вместе в одном доме!\n\n"
+                                   f"Твой ник появится на его доме, а на месте твоего дома будет указатель «живёт у @{me['nick']}». "
+                                   "Твой дом, украшения и неонки сохранятся — выехать можно в любой момент.",
+                                   reply_markup=InlineKeyboardMarkup(inline_keyboard=[[IB(text="✅ Переехать", callback_data=f"chy:{me['nick']}"), IB(text="❌ Нет", callback_data="chn")]]))
+        except Exception:
+            pass
+    elif t in ("leave", "kick"):  # выехать из общего дома / хозяин выселяет жильца
+        guest = me["nick"] if t == "leave" else norm_nick(str(data.get("n") or ""))
+        host = await db.kv_get(f"home:{guest}")
+        if not host or (t == "kick" and host != me["nick"]):
+            await m.answer("Такого жильца нет 🙂", reply_markup=kb)
+            return
+        await db.kv_set(f"home:{guest}", None)
+        _fx_dirty.set()
+        other = host if t == "leave" else guest
+        await m.answer(f"🏠 Готово: @{guest} снова живёт в своём доме. На сайте через пару минут.", reply_markup=kb)
+        ow = await db.by_nick(other)
+        if ow and ow[0].get("tg_id"):
+            try:
+                await bot.send_message(ow[0]["tg_id"], f"🏠 @{guest} выехал из общего дома." if t == "leave" else f"🏠 @{host} попросил тебя выехать из общего дома — ты снова в своём доме.")
+            except Exception:
+                pass
     elif t == "esz":  # размер дома в усадьбе: 1 обычный, 2 большой, 3 огромный (бесплатно)
         sz = int(data.get("s", 1)) if str(data.get("s", "1")).isdigit() else 1
         if sz not in (1, 2, 3):
@@ -761,6 +795,55 @@ async def friend_ok(c: CallbackQuery):
             await c.bot.send_message(ow[0]["tg_id"], f"👫 @{me['nick']} принял дружбу! Между вашими домами загорелась неоновая нить.")
         except Exception:
             pass
+
+
+COHAB_MAX = 3  # жильцов у хозяина, кроме него самого
+
+
+async def cohab_check(host, guest):
+    """Можно ли guest переехать к host. Возвращает текст ошибки или ''."""
+    if not guest or guest == host:
+        return "Позвать можно только друга 🙂"
+    if guest not in (await fx_get(host)).get("f", []):
+        return f"Сначала подружитесь с @{guest} — кнопка «👫 ДРУЖИТЬ» в его карточке."
+    if await db.kv_get(f"home:{host}"):
+        return "Ты сам живёшь в общем доме у друга — сначала выедь (👤 Мой дом)."
+    if await db.kv_get(f"home:{guest}"):
+        return f"@{guest} уже живёт в общем доме."
+    if await db.kv_get(f"estate:{guest}") is not None:
+        return f"У @{guest} усадьба — переехать к тебе он не может."
+    if [k for k, v in await db.kv_prefix("home:") if v == guest]:
+        return f"У @{guest} уже свои жильцы."
+    if len([1 for k, v in await db.kv_prefix("home:") if v == host]) >= COHAB_MAX:
+        return f"В доме уже {COHAB_MAX} жильца — больше не поместится 🏘"
+    return ""
+
+
+@r.callback_query(F.data.startswith("chy:"))
+async def cohab_yes(c: CallbackQuery):
+    await c.answer()
+    me = await db.linked(c.from_user.id)
+    host = c.data[4:]
+    if not me:
+        return
+    err = await cohab_check(host, me["nick"])
+    if err:
+        return await c.message.edit_text("Не получилось: " + err)
+    await db.kv_set(f"home:{me['nick']}", host)
+    _fx_dirty.set()
+    await c.message.edit_text(f"🏘 Ты живёшь вместе с @{host}! Твой ник уже на его доме (на сайте через пару минут). Выехать — «👤 Мой дом» на сайте.")
+    ow = await db.by_nick(host)
+    if ow and ow[0].get("tg_id"):
+        try:
+            await c.bot.send_message(ow[0]["tg_id"], f"🏘 @{me['nick']} переехал к тебе! Теперь вы живёте в одном доме.")
+        except Exception:
+            pass
+
+
+@r.callback_query(F.data == "chn")
+async def cohab_no(c: CallbackQuery):
+    await c.answer()
+    await c.message.edit_text("Ок, остаёшься в своём доме 🙂")
 
 
 @r.callback_query(F.data == "frno")
@@ -1119,6 +1202,11 @@ async def fx_publish():
     old, sha = await gh_get("wishes.json")
     if old != body:
         await gh_put("wishes.json", body, f"Фонтан желаний: {len(wl)}", sha)
+    homes = {k[5:]: v for k, v in await db.kv_prefix("home:")}  # общие дома: жилец → хозяин
+    body = json.dumps(homes, ensure_ascii=False, separators=(",", ":"))
+    old, sha = await gh_get("homes.json")
+    if old != body:
+        await gh_put("homes.json", body, f"Общие дома: {len(homes)}", sha)
     est = {k[7:]: int(v) for k, v in await db.kv_prefix("estate:")}
     body = json.dumps(est, ensure_ascii=False, separators=(",", ":"))
     old, sha = await gh_get("estates.json")
@@ -2451,7 +2539,7 @@ async def web_app(m: Message, bot: Bot):
         await fx_set(me["nick"], fx)
         await m.answer(f"🪙 Куплено: {FX_ITEMS[item][0]} за {price} неонок. Осталось 🪙 {fx['co']}.", reply_markup=city_keyboard(me["nick"]))
         return
-    if data.get("t") in ("cvote", "ivote", "friend", "gift", "roof", "borrow", "hide", "esz"):
+    if data.get("t") in ("cvote", "ivote", "friend", "gift", "roof", "borrow", "hide", "esz", "cohab", "leave", "kick"):
         await social_action(m, bot, me, data)
         return
     if data.get("t") == "spin":
