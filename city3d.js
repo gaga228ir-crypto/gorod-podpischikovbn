@@ -454,7 +454,9 @@ export class City3D {
       if (pl) { h.oldX = h.x; h.oldZ = h.z; h.oldY = T.H(h.x, h.z); Object.assign(h, { x: pl.x, z: pl.z, y: T.H(pl.x, pl.z), rot: pl.rot, isEstate: true, special: true, fp: null });
         if (!h.recipe) h.recipe = { shape: 'house', floors: 2, wall: WALLS[hash(h.key) % WALLS.length], roof: ROOFS[hash(h.key + 'r') % ROOFS.length], decor: ['garland', 'tree'] }; } }
     this.byKey = new Map(this.houses.map(h => [h.key, h]));
-    const town = this.houses.filter(h => !h.isEstate);
+    for (const h of this.houses) { const H = h.home && !h.gone && !h.isEstate ? this.byKey.get(h.home) : null; if (!H || H === h || H.home || H.gone) continue;
+      h.oldX = h.x; h.oldZ = h.z; h.oldY = T.H(h.x, h.z); Object.assign(h, { x: H.x, z: H.z, guest: true, host: H, special: false }); (H.residents ||= []).push(h.key); }
+    const town = this.houses.filter(h => !h.isEstate && !h.guest);
     let Rm = PLAZA_R + 8; for (const h of town) Rm = Math.max(Rm, h.d); Rm += 3; this.Rm = Rm; this.span = Rm / 3; this.rMax = Rm;
     // улицы, тротуары, фонари
     const roads = this.roads = clipRoads(this.map.roads, Rm);
@@ -509,6 +511,7 @@ export class City3D {
         const pond = new THREE.Mesh(new THREE.CircleGeometry(.2, 20), new THREE.MeshStandardMaterial({ color: '#5fbfee', roughness: .05 })); pond.rotation.x = -Math.PI / 2; pond.position.set(-.7, .015, -.72); Yd.add(pond);
         Yd.scale.setScalar(1.3); add(Yd); }
       add(g); this.specialG.push(g); }
+    for (const h of this.houses) if (h.guest) { h.y = h.host.y; h.top = h.host.top; }
     this.places.push({ kind: 'estate', name: 'Посёлок Усадеб', x: est.x, z: est.z, y: T.H(est.x, est.z) }); this.estateCenter = this.places[this.places.length - 1];
     { const taken = new Set(this.houses.filter(h => h.isEstate).map(h => h.estate));
       // свободные участки: низкий забор-контур, газон и табличка на столбике
@@ -523,6 +526,7 @@ export class City3D {
       for (const [list, m] of [[fx, fenceM], [lawn, lawnM], [posts, postM], [boards, boardM]]) if (list.length) { const im = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), m, list.length);
         list.forEach(([pos, qq, sc], i) => im.setMatrixAt(i, M4.compose(pos, qq, sc))); im.castShadow = m !== lawnM; add(im); } }
     // на старом месте дома, переехавшего в усадьбу, — указатель
+    for (const h of this.houses) if (h.guest) { const sg = textSprite('🏘 ' + h.label + ' → живёт у ' + h.host.label, { color: '#1a1238', bg: 'rgba(255,214,107,.95)', scale: .0016, size: 46 }); sg.position.set(h.oldX, h.oldY + .6, h.oldZ); add(sg); }
     for (const h of this.houses) if (h.isEstate && h.oldX != null) { const sg = textSprite('🏡 ' + h.label + ' → Посёлок Усадеб', { color: '#1a1238', bg: 'rgba(166,255,143,.92)', scale: .0016, size: 46 }); sg.position.set(h.oldX, h.oldY + 1.15, h.oldZ); add(sg); }
     // брошенные дома: табличка «ПРОДАЁТСЯ»
     const gone = town.filter(h => h.gone);
@@ -595,11 +599,11 @@ export class City3D {
     for (const g of this.specialG || []) { const s = sc(g.userData.house); g.visible = s > 0; g.scale.setScalar(Math.max(s, 1e-4) * (g.userData.k || 1)); }
   }
   // «Неоновая улица, 45 · Пиксельный квартал»
-  address(h) { if (h.isEstate) return { street: 'Посёлок Усадеб', num: h.estate + 1, district: 'у озера', text: `Посёлок Усадеб, участок №${h.estate + 1}` };
+  address(h) { if (h.guest) { const a = this.address(h.host); return { ...a, text: 'общий дом у ' + h.host.label + ' · ' + a.text }; } if (h.isEstate) return { street: 'Посёлок Усадеб', num: h.estate + 1, district: 'у озера', text: `Посёлок Усадеб, участок №${h.estate + 1}` };
     const rd = this.map.roads[h.ri] || { kind: 'street' }, name = rd.kind === 'street' ? ST_F[h.ri % ST_F.length] + ' улица' : rd.kind === 'ave' ? ST_M[h.ri % ST_M.length] + ' проспект' : ST_M[(h.ri * 7) % ST_M.length] + ' переулок';
     return { street: name, num: h.num, district: h.district || districtOf(h.x, h.z), text: `${name}, ${h.num}` }; }
   // соседи по улице слева/справа и дом напротив (через дорогу)
-  neighbors(h) { if (h.isEstate || h.lot == null) return []; const L = this.map.lots[h.lot], get = i => { const o = i >= 0 ? this.houses[i] : null; return o && !o.isEstate ? o : null; }, out = [];
+  neighbors(h) { if (h.guest) return this.neighbors(h.host); if (h.isEstate || h.lot == null) return []; const L = this.map.lots[h.lot], get = i => { const o = i >= 0 ? this.houses[i] : null; return o && !o.isEstate ? o : null; }, out = [];
     const a = get(L.prev), b = get(L.next), o = get(L.opp);
     if (a) out.push({ h: a, rel: 'слева' }); if (b) out.push({ h: b, rel: 'справа' }); if (o) out.push({ h: o, rel: 'напротив' }); return out; }
   focus(h, fly = true) { this.hi = h; this.hiT = this.T; if (h && fly) { this.ctl.tx = h.x; this.ctl.tz = h.z; this.ctl.td = 7; } }
@@ -919,10 +923,10 @@ export class City3D {
     }
     if (c.d < 22 && !this.hideNicks && lm !== 'none') {
       const R = c.d * .7, cand = [];
-      for (const h of this.houses) { if (h === this.hi || h.n > (this.growN ?? Infinity)) continue; const dd = Math.hypot(h.x - c.x, h.z - c.z); if (dd < R) cand.push([dd, h]); }
+      for (const h of this.houses) { if (h === this.hi || h.guest || h.n > (this.growN ?? Infinity)) continue; const dd = Math.hypot(h.x - c.x, h.z - c.z); if (dd < R) cand.push([dd, h]); }
       cand.sort((a, b) => a[0] - b[0]);
       const placed = [];
-      for (const [, h] of cand.slice(0, 40)) { const p = this.project(h.x, (h.y || 0) + h.top + .05, h.z); if (!p) continue; if (placed.some(q => Math.abs(q[0] - p[0]) < 70 && Math.abs(q[1] - p[1]) < 24)) continue; placed.push(p); pill(p[0], p[1], h.label, false, false); }
+      for (const [, h] of cand.slice(0, 40)) { const p = this.project(h.x, (h.y || 0) + h.top + .05, h.z); if (!p) continue; if (placed.some(q => Math.abs(q[0] - p[0]) < 70 && Math.abs(q[1] - p[1]) < 24)) continue; placed.push(p); pill(p[0], p[1], h.residents ? `${h.label} 🏘+${h.residents.length}` : h.label, false, false); }
       if (c.d < 9) for (const o of this.ppl) { if (Math.hypot(o.x - c.x, o.z - c.z) > 3 || !o.nick) continue; const p = this.project(o.x, o.y + .3, o.z); if (p) pill(p[0], p[1], o.nick, false, false); }
     }
     if (this.hi) { const h = this.hi, p = this.project(h.x, (h.y || 0) + h.top + .05, h.z); if (p) { pill(p[0], p[1] - 4 - Math.abs(Math.sin(this.T * 4)) * 6, h.label, true, true);

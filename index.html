@@ -201,7 +201,7 @@ html[data-theme=dark] .studio canvas{background:linear-gradient(#26305a,#1a2244)
     .forEach(function (f) { var l = document.createElement('link'); l.rel = 'modulepreload'; l.href = add + f; document.head.appendChild(l); });
   // данные города — тоже сразу, пока качается 3D (getJSON заберёт готовый ответ)
   window.PRE = {};
-  if (window.fetch) ['subscribers.json', 'milestones.json', 'election.json', 'estates.json', 'recipes.json', 'special.json', 'fx.json', 'meta.json', 'duma.json', 'titles.json', 'klad.json', 'wishes.json']
+  if (window.fetch) ['subscribers.json', 'milestones.json', 'election.json', 'estates.json', 'homes.json', 'recipes.json', 'special.json', 'fx.json', 'meta.json', 'duma.json', 'titles.json', 'klad.json', 'wishes.json']
     .forEach(function (f) { PRE[f] = fetch(f + '?v=' + Date.now()).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; }); });
 })();
 </script>
@@ -255,14 +255,14 @@ window.city = city;
 let houses = [], milestones = MILESTONES_DEFAULT, election = null;
 const loadStep = (p, t) => { $('lbarI').style.width = p + '%'; if ($('lpct')) $('lpct').textContent = Math.round(p) + '%'; if (t) $('ltxt').textContent = t; };
 const hideLoad = () => { loadStep(100); setTimeout(() => $('load').classList.add('hide'), 250); setTimeout(() => $('load').remove(), 900); };
-let baseList = [], hallInfo = null, specialRows = [], fxMap = {}, titles = {}, estates = {}, meta = {}, duma = [];
+let baseList = [], hallInfo = null, specialRows = [], fxMap = {}, titles = {}, estates = {}, homes = {}, meta = {}, duma = [];
 async function loadCity() {
   loadStep(20, 'Загружаем жителей…');
-  const [base, ms, el, est] = await Promise.all([getJSON('subscribers.json'), getJSON('milestones.json'), getJSON('election.json'), getJSON('estates.json')]); estates = est || {};
+  const [base, ms, el, est, hm] = await Promise.all([getJSON('subscribers.json'), getJSON('milestones.json'), getJSON('election.json'), getJSON('estates.json'), getJSON('homes.json')]); estates = est || {}; homes = hm || {};
   loadStep(60, 'Строим дома…');
   const src = Array.isArray(base) && base.length ? base : FALLBACK, byKey = new Map();
   for (const n of src) { const gone = String(n).startsWith('~'), k = norm(String(n).replace(/^~/, '')); if (k && !byKey.has(k)) { const it = { nick: '@' + k, key: k, recipe: null, gone }; byKey.set(k, it); baseList.push(it); } }
-  baseList.forEach(it => { if (estates[it.key] != null) it.estate = +estates[it.key]; });
+  baseList.forEach(it => { if (estates[it.key] != null) it.estate = +estates[it.key]; if (homes[it.key]) it.home = homes[it.key]; });
   baseList.forEach((it, i) => it.label = HIDE.test(it.key) && !/^user\d+$/.test(it.key) ? 'Житель №' + (i + 1) : it.nick);
   if (Array.isArray(ms) && ms.length) milestones = ms;
   election = el; hallInfo = election && election.winner ? { open: true, title: 'Ратуша · мэр @' + norm(election.winner) } : null;
@@ -340,7 +340,10 @@ function focus(h, fly = true) {
   $('csub').textContent = h.gone ? `Дом №${h.n.toLocaleString('ru')} · заброшен: житель отписался 😢 Подпишись снова — свет вернётся` : `Дом №${h.n.toLocaleString('ru')}${h.recipe ? ' · особый дом' : ''}${h.recipe && h.recipe.biz && BIZ[h.recipe.biz] ? ' · ' + BIZ[h.recipe.biz][0].toLowerCase() : ''}`;
   const ad = city.address(h); $('csub').textContent = `📍 ${ad.text} · ${ad.district} · ` + $('csub').textContent;
   const nb = city.neighbors(h).filter(o => !o.h.gone); $('cnb').innerHTML = nb.length ? 'Соседи: ' + nb.map((o, i) => `${o.rel} <button data-i="${i}">${esc(o.h.label)}</button>`).join(' · ') : '';
-  $('cnb').querySelectorAll('button').forEach(b => b.onclick = () => focus(nb[+b.dataset.i].h));
+  const res = h.guest ? [h.host.key, ...(h.host.residents || [])] : h.residents ? [h.key, ...h.residents] : null;
+  if (res) $('cnb').innerHTML = `🏘 Общий дом: ${res.map(k => `<button data-k="${esc(k)}">@${esc(k)}</button>`).join(' · ')}` + ($('cnb').innerHTML ? '<br>' + $('cnb').innerHTML : '');
+  $('cnb').querySelectorAll('button[data-k]').forEach(b => b.onclick = () => { const o = city.byKey.get(b.dataset.k); if (o) focus(o, false); });
+  $('cnb').querySelectorAll('button[data-i]').forEach(b => b.onclick = () => focus(nb[+b.dataset.i].h));
   $('cedit').style.display = (TG && h.key === ME) ? '' : 'none';
   const fx = fxMap[h.key] || {}, mine = TG && h.key === ME;
   const T0 = titles[h.key] || (fx.tt ? { t: fx.tt } : null);
@@ -349,11 +352,11 @@ function focus(h, fly = true) {
     + (contestOn() && fx.cv ? `<span class="k" style="color:var(--goldt)">🏆 ${fx.cv}</span>` : '')
     + (mine ? `<span class="k" style="color:#ffd23f">🪙 ${fx.co || 0}</span><button type="button" id="bfx">✏️ ТАБЛИЧКА</button><button type="button" id="bshop">⭐ УКРАСИТЬ</button><button type="button" id="broof">🎨 ФЛАГ</button>`
       : TG && ME ? '<button type="button" id="bknock">🚪 ПОСТУЧАТЬ</button><button type="button" id="bborrow">🦝 ОДОЛЖИТЬ</button>'
-        + (((fxMap[ME] || {}).f || []).includes(h.key) ? '<button type="button" id="bgift">🎁 ПОДАРИТЬ</button>' : '<button type="button" id="bfriend">👫 ДРУЖИТЬ</button>')
+        + (((fxMap[ME] || {}).f || []).includes(h.key) ? '<button type="button" id="bgift">🎁 ПОДАРИТЬ</button>' + (!h.guest && !h.residents && !homes[ME] ? '<button type="button" id="bcohab">🏘 ПОЗВАТЬ ЖИТЬ КО МНЕ</button>' : '') : '<button type="button" id="bfriend">👫 ДРУЖИТЬ</button>')
         + (contestOn() ? '<button type="button" id="bcvote" style="background:var(--gold);color:#1a1238">🏆 ГОЛОС</button>' : '') : '');
   const on = (id, fn) => { if ($(id)) $(id).onclick = fn; };
   on('broof', () => openRoof(h)); on('bborrow', () => sendTG({ t: 'borrow', n: h.key })); on('bfriend', () => sendTG({ t: 'friend', n: h.key }));
-  on('bgift', () => openGift(h)); on('bcvote', () => sendTG({ t: 'cvote', n: h.key }));
+  on('bgift', () => openGift(h)); on('bcohab', () => sendTG({ t: 'cohab', n: h.key })); on('bcvote', () => sendTG({ t: 'cvote', n: h.key }));
   if ($('bfx')) $('bfx').onclick = () => openFx(h); if ($('bshop')) $('bshop').onclick = () => openShop(h); if ($('bknock')) $('bknock').onclick = () => sendTG({ t: 'knock', n: h.key });
   card.classList.add('show'); history.replaceState(null, '', location.search + '#' + encodeURIComponent(h.key));
 }
@@ -550,6 +553,8 @@ function openProfile() {
     <p><b style="color:#ffd23f">🪙 ${fx.co || 0} неонок</b>${fx.k ? ` · ❤ ${fx.k} стуков` : ''}${T0 ? ` · 🏅 ${esc(T0.t)}` : ''}${fx.mc ? ' · 💎 Меценат' : ''}${(fx.f || []).length ? ` · 👫 ${fx.f.length}` : ''}</p>
     <div class="btns" style="flex-wrap:wrap"><button type="button" id="pGo">🏠 ПОКАЗАТЬ ДОМ</button><button type="button" class="ghost" id="pLook">🔄 ОСМОТРЕТЬ</button></div>
     <div class="btns" style="flex-wrap:wrap"><button type="button" class="ghost" id="pSign">✏️ ТАБЛИЧКА</button><button type="button" class="ghost" id="pRoof">🎨 ФЛАГ</button><button type="button" class="ghost" id="pShop">⭐ УКРАСИТЬ</button><button type="button" class="ghost" id="pEst">🏡 УСАДЬБЫ</button></div>
+    ${h.guest ? `<div class="shop"><span>🏘 Живёшь в общем доме у ${esc(h.host.label)}</span><button type="button" class="ghost" id="pLeave">🚪 ВЫЕХАТЬ</button></div>` : ''}
+    ${(h.residents || []).map(k => `<div class="shop"><span>🏘 Живёт с тобой: @${esc(k)}</span><button type="button" class="ghost" data-kick="${esc(k)}">ВЫСЕЛИТЬ</button></div>`).join('')}
     ${h.isEstate ? `<div class="srow"><span>Размер дома в усадьбе (бесплатно)</span><div class="opts">${[[1, '🏠 Обычный'], [2, '🏡 Большой'], [3, '🏰 Огромный']].map(([v, t]) => `<button class="opt${(fx.es || 1) === v ? ' on' : ''}" data-esz="${v}" type="button">${t}</button>`).join('')}</div></div>` : ''}
     <p><b>Мои украшения</b> — можно снять и вернуть в любой момент, они остаются твоими.</p>
     ${mine.map(([k, t]) => `<div class="shop"><span style="${off.has(k) ? 'opacity:.45' : ''}">${t}</span><button type="button" class="ghost" data-hide="${k}">${off.has(k) ? '↩️ ВЕРНУТЬ' : '🙈 СНЯТЬ'}</button></div>`).join('') || '<p>Пока нет — загляни в «⭐ УКРАСИТЬ».</p>'}
@@ -558,6 +563,8 @@ function openProfile() {
   $('pGo').onclick = go; $('pLook').onclick = () => { go(); startOrbit(h); };
   $('pSign').onclick = () => { go(); setTimeout(() => $('bfx') && $('bfx').click(), 50); };
   $('pRoof').onclick = () => openRoof(h); $('pShop').onclick = () => openShop(h); $('pEst').onclick = openEstates;
+  if ($('pLeave')) $('pLeave').onclick = () => sendTG({ t: 'leave' });
+  sheet.querySelectorAll('[data-kick]').forEach(x => x.onclick = () => sendTG({ t: 'kick', n: x.dataset.kick }));
   sheet.querySelectorAll('[data-esz]').forEach(b => b.onclick = () => { sheet.querySelectorAll('[data-esz]').forEach(x => x.classList.toggle('on', x === b)); sendTG({ t: 'esz', s: +b.dataset.esz }); });
   sheet.querySelectorAll('[data-hide]').forEach(b => b.onclick = () => { const k = b.dataset.hide, f = fxMap[ME] = fxMap[ME] || {}, o = new Set(f.off || []);
     o.has(k) ? o.delete(k) : o.add(k); f.off = [...o]; city.setFx(fxMap); b.textContent = '…'; sendTG({ t: 'hide', i: k }); });
