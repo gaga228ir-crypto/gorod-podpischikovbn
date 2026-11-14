@@ -141,7 +141,7 @@ function textSprite(text, { size = 64, color = '#fff', bg = 'rgba(12,8,36,.85)',
   g.font = `${font} ${size}px Unbounded, Inter, sans-serif`; g.fillStyle = bg; g.beginPath(); g.roundRect(0, 0, w, h, h / 2); g.fill();
   g.fillStyle = color; g.textBaseline = 'middle'; g.textAlign = 'center'; g.fillText(text, w / 2, h / 2 + 2);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
-  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthWrite: false, transparent: true })); s.scale.set(w * scale, h * scale, 1); return s;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthWrite: false, transparent: true })); s.scale.set(w * scale, h * scale, 1); s.layers.set(1); return s; // слой 1 — надписи (можно скрыть)
 }
 function emojiSprite(e, s = .26) {
   const t = canvasTex(128, 128, (g) => { g.font = '96px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(e, 64, 72); });
@@ -382,7 +382,7 @@ export class City3D {
     const R = this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
     R.setPixelRatio(Math.min(devicePixelRatio || 1, 1.6)); R.outputColorSpace = THREE.SRGBColorSpace; R.toneMapping = THREE.NeutralToneMapping; R.toneMappingExposure = 1.12;
     const S = this.scene = new THREE.Scene(); S.fog = new THREE.Fog('#dcebf5', 90, 230);
-    this.cam = new THREE.PerspectiveCamera(42, 1, .1, 900);
+    this.cam = new THREE.PerspectiveCamera(42, 1, .1, 900); this.cam.layers.enable(1); this.labelMode = 'all';
     const hemi = this.hemi = new THREE.HemisphereLight('#e4f2ff', '#8d9f78', 1.05); S.add(hemi);
     const moon = this.moon = new THREE.DirectionalLight('#fff0d4', 2.7); moon.position.set(-35, 75, 30); S.add(moon); S.add(moon.target);
     this.sunDir = new THREE.Vector3(-35, 75, 30).normalize();
@@ -859,6 +859,8 @@ export class City3D {
       else if (this.fpsN / this.fpsT < 28 && this.bloom) { this.bloom = false; } this.fpsT = 0; this.fpsN = 0; }
   }
   project(x, y, z) { this.v.set(x, y, z).project(this.cam); return this.v.z > 1 ? null : [(this.v.x + 1) / 2 * this.W, (1 - this.v.y) / 2 * this.H]; }
+  // надписи: 'all' — все, 'nicks' — только ники, 'none' — без надписей (идея из думы)
+  setLabels(m) { this.labelMode = m; if (m === 'all') this.cam.layers.enable(1); else this.cam.layers.disable(1); }
   drawLabels() {
     const g = this.lg, c = this.ctl; g.clearRect(0, 0, this.W, this.H);
     const pill = (x, y, text, big, gold) => {
@@ -869,7 +871,8 @@ export class City3D {
       g.fillStyle = '#1d2b44'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, x, y - 6 - h / 2 + 1);
     };
     // названия районов — когда смотрим на город сверху
-    if (c.d > 24 && this.districts && !this.noLmLabels) {
+    const lm = this.labelMode;
+    if (c.d > 24 && this.districts && !this.noLmLabels && lm === 'all') {
       const a = Math.min(1, (c.d - 24) / 10); g.textAlign = 'center'; g.textBaseline = 'middle';
       const used = [];
       for (const d of [...this.districts].sort((u, v) => v.n - u.n)) { const p = this.project(d.x, this.gy(d.x, d.z) + 1.2, d.z); if (!p || p[0] < -80 || p[0] > this.W + 80 || p[1] < 0 || p[1] > this.H) continue;
@@ -878,7 +881,7 @@ export class City3D {
         const t = d.name.toUpperCase(); g.strokeText(t, p[0], p[1]); g.fillStyle = this.dayT > .4 ? (big ? `rgba(194,124,0,${a})` : `rgba(29,43,68,${.9 * a})`) : (big ? `rgba(255,210,63,${a})` : `rgba(230,236,255,${.95 * a})`); g.fillText(t, p[0], p[1]); }
     }
     // названия мест (парки, площади, памятники) — на среднем плане
-    if (c.d > 5 && c.d < 40 && this.places && !this.noLmLabels) {
+    if (c.d > 5 && c.d < 40 && this.places && !this.noLmLabels && lm === 'all') {
       const R = c.d * 1.1, used = []; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = '700 12px Inter, sans-serif';
       const ICON = { park: '🌳', square: '⭐', fountain: '⛲', playground: '🎠', art: '💗', monument: '🗿', estate: '🏡' };
       for (const pl of this.places) { if (Math.hypot(pl.x - c.x, pl.z - c.z) > R) continue; const p = this.project(pl.x, (pl.y || 0) + 1.1, pl.z); if (!p) continue;
@@ -886,7 +889,7 @@ export class City3D {
         const t = `${ICON[pl.kind] || '📍'} ${pl.name}`, w = g.measureText(t).width + 16;
         g.fillStyle = 'rgba(255,255,255,.92)'; g.beginPath(); g.roundRect(p[0] - w / 2, p[1] - 11, w, 22, 11); g.fill(); g.fillStyle = '#2e7d4a'; g.fillText(t, p[0], p[1] + 1); }
     }
-    if (c.d < 22 && !this.hideNicks) {
+    if (c.d < 22 && !this.hideNicks && lm !== 'none') {
       const R = c.d * .7, cand = [];
       for (const h of this.houses) { if (h === this.hi || h.n > (this.growN ?? Infinity)) continue; const dd = Math.hypot(h.x - c.x, h.z - c.z); if (dd < R) cand.push([dd, h]); }
       cand.sort((a, b) => a[0] - b[0]);
@@ -906,7 +909,7 @@ export class HousePreview {
     this.r.outputColorSpace = THREE.SRGBColorSpace; this.r.toneMapping = THREE.ACESFilmicToneMapping;
     this.s = new THREE.Scene(); this.s.add(new THREE.HemisphereLight('#8f7bff', '#1a1035', 1.1)); const d = new THREE.DirectionalLight('#9fb4ff', 1); d.position.set(-3, 5, 2); this.s.add(d);
     const pad = new THREE.Mesh(new THREE.BoxGeometry(1.5, .06, 1.5), new THREE.MeshStandardMaterial({ color: '#1d3b3a' })); pad.position.y = -.03; this.s.add(pad);
-    this.c = new THREE.PerspectiveCamera(35, 1, .1, 50); this.g = null; this.alive = true;
+    this.c = new THREE.PerspectiveCamera(35, 1, .1, 50); this.c.layers.enable(1); this.g = null; this.alive = true;
     const loop = (t) => { if (!this.alive || !canvas.isConnected) { this.r.dispose(); return; } if (this.g) this.g.rotation.y = t / 2400; this.r.render(this.s, this.c); requestAnimationFrame(loop); }; requestAnimationFrame(loop);
   }
   set(rec) { if (this.g) this.s.remove(this.g); this.g = makeHouse(rec); this.s.add(this.g); const h = Math.max(1.2, this.g.userData.top + .3); this.c.position.set(2.2, h * .8 + .6, 2.2 + h * .25); this.c.lookAt(0, h * .38, 0); }

@@ -615,7 +615,7 @@ function openHonor() {
 }
 
 // ---------- день/ночь и погода ----------
-const GSET_DEF = { day: 'auto', tz: 'device', wx: 'auto', nicks: 'on', ui: 'auto' };
+const GSET_DEF = { day: 'auto', tz: 'device', wx: 'auto', nicks: 'on', ui: 'auto', labels: 'all' };
 let gset = { ...GSET_DEF }; try { Object.assign(gset, JSON.parse(localStorage.getItem('gset') || '{}')); } catch (e) {}
 const TZS = [['device', 'Как на телефоне'], ['2', 'UTC+2 · Калининград'], ['3', 'UTC+3 · Москва, СПб'], ['4', 'UTC+4 · Самара'], ['5', 'UTC+5 · Екатеринбург'], ['6', 'UTC+6 · Омск'], ['7', 'UTC+7 · Новосибирск'], ['8', 'UTC+8 · Иркутск'], ['9', 'UTC+9 · Якутск'], ['10', 'UTC+10 · Владивосток'], ['11', 'UTC+11 · Магадан'], ['12', 'UTC+12 · Камчатка']];
 const localHour = () => { const d = new Date(); if (gset.tz === 'device') return d.getHours() + d.getMinutes() / 60; const h = d.getUTCHours() + d.getUTCMinutes() / 60 + +gset.tz; return (h + 24) % 24; };
@@ -630,7 +630,7 @@ const curWeather = () => gset.wx === 'auto' ? autoWeather() : gset.wx === 'off' 
 const WX_ICON = { clear: '', snow: '❄️', rain: '🌧', fog: '🌫' };
 let ambChip = null;
 function applyAmbience() {
-  city.setDaylight(daylight()); city.setWeather(curWeather()); city.hideNicks = gset.nicks === 'off'; applyTheme(gset.ui, city.dayT < .35);
+  city.setDaylight(daylight()); city.setWeather(curWeather()); city.hideNicks = gset.nicks === 'off' && gset.labels === 'all'; city.setLabels(gset.labels); applyTheme(gset.ui, city.dayT < .35);
   if (ambChip) { const t = city.dayT; ambChip.textContent = (t > .6 ? '☀️' : t > .05 ? '🌇' : '🌙') + (WX_ICON[city.weather] ? ' ' + WX_ICON[city.weather] : ''); }
 }
 function initAmbience() {
@@ -648,12 +648,12 @@ function openAmbience() {
     <div class="srow"><span>Оформление меню</span><div class="opts">${opt('ui', 'auto', '🕒 Авто: днём светлое, ночью тёмное')}${opt('ui', 'light', '☀️ Светлое')}${opt('ui', 'dark', '🌙 Тёмное')}${opt('ui', 'old', '💜 Старый неоновый')}</div></div>
     <div class="srow"><span>Время суток</span><div class="opts">${opt('day', 'auto', '🕒 Как в жизни')}${opt('day', 'night', '🌙 Всегда ночь')}${opt('day', 'day', '☀️ Всегда день')}</div></div>
     <div class="srow"><span>Часовой пояс</span><select id="gtz" style="border-radius:12px;padding:10px;font:600 14px Inter,sans-serif">${TZS.map(([v, t]) => `<option value="${v}"${gset.tz === v ? ' selected' : ''}>${t}</option>`).join('')}</select></div>
-    <div class="srow"><span>Ники над домами</span><div class="opts">${opt('nicks', 'on', '👁 Показывать')}${opt('nicks', 'off', '🙈 Скрыть')}</div></div>
+    <div class="srow"><span>Надписи на карте</span><div class="opts">${opt('labels', 'all', '👁 Все')}${opt('labels', 'nicks', '🏠 Только ники')}${opt('labels', 'none', '🙈 Без надписей')}</div></div>
     <div class="srow"><span>Погода</span><div class="opts">${opt('wx', 'auto', '🔄 Авто')}${opt('wx', 'off', '🚫 Выкл')}${opt('wx', 'snow', '❄️ Снег')}${opt('wx', 'rain', '🌧 Дождь')}${opt('wx', 'fog', '🌫 Туман')}</div></div>
     <p>«Авто» — погода общая для всех жителей и меняется каждые 3 часа: зимой чаще снег.</p>
     <button class="ghost" id="mclose" type="button">ГОТОВО</button>`;
   const save = () => { try { localStorage.setItem('gset', JSON.stringify(gset)); } catch (e) {} applyAmbience(); };
-  sheet.querySelectorAll('.opt').forEach(b => b.onclick = () => { gset[b.dataset.k] = b.dataset.v; sheet.querySelectorAll(`.opt[data-k="${b.dataset.k}"]`).forEach(x => x.classList.toggle('on', x === b)); save(); });
+  sheet.querySelectorAll('.opt').forEach(b => b.onclick = () => { gset[b.dataset.k] = b.dataset.v; if (b.dataset.k === 'labels') gset.nicks = 'on'; sheet.querySelectorAll(`.opt[data-k="${b.dataset.k}"]`).forEach(x => x.classList.toggle('on', x === b)); save(); });
   $('gtz').onchange = e => { gset.tz = e.target.value; save(); };
   modal.classList.add('show'); closeBtn();
 }
