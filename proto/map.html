@@ -25,7 +25,7 @@ const R = new THREE.WebGLRenderer({ canvas: document.getElementById('c'), antial
 R.toneMapping = THREE.NeutralToneMapping; R.toneMappingExposure = 1.12; R.shadowMap.enabled = true; R.shadowMap.type = THREE.PCFSoftShadowMap;
 const scene = new THREE.Scene(); const E = makeEnv(R); scene.environment = E.env; scene.add(E.dome); scene.fog = new THREE.Fog('#dcebf5', 90, 230);
 const res = buildScene(scene, T, roads, lots, COUNT, V.seed);
-scene.add(new THREE.HemisphereLight('#dbeeff', '#7d8f6a', .7));
+scene.add(new THREE.HemisphereLight('#e4f2ff', '#8d9f78', 1.05));
 const sun = new THREE.DirectionalLight('#fff0d4', 2.7); sun.position.set(-35, 75, 30); sun.castShadow = true; sun.shadow.mapSize.set(4096, 4096);
 const sc = sun.shadow.camera; sc.left = sc.bottom = -80; sc.right = sc.top = 80; sc.near = 1; sc.far = 220; sun.shadow.bias = -.0006; sun.shadow.normalBias = .03; scene.add(sun, sun.target);
 const cam = new THREE.PerspectiveCamera(40, 1, .1, 600);

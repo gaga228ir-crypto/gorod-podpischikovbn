@@ -17,9 +17,9 @@ const lerp = (a, b, t) => a + (b - a) * t;
 // ---------- варианты ландшафта ----------
 // valley — город в долине, река с гор, горы кольцом; lake — холмы и озеро, горы с одной стороны; coast — берег моря, горы за спиной
 export const VARIANTS = {
-  valley: { name: 'Долина', Rc: 72, seed: 11, water: 'river' },
-  lake: { name: 'Озёрный', Rc: 74, seed: 23, water: 'lake' },
-  coast: { name: 'Побережье', Rc: 74, seed: 37, water: 'sea' },
+  valley: { name: 'Долина', Rc: 100, seed: 11, water: 'river' },
+  lake: { name: 'Озёрный', Rc: 100, seed: 23, water: 'lake' },
+  coast: { name: 'Побережье', Rc: 100, seed: 37, water: 'sea' },
 };
 export const WATER_Y = -0.22;
 
@@ -41,7 +41,7 @@ export class Terrain {
     // вода
     if (v.water === 'river') { const d = this.riverD(x, z) - 1.8 * (1 + .3 * fbm(x / 12, 0, s)); const bank = smoothstep(0, 3.2, d); h = lerp(-1.1, Math.max(h, .3), bank); if (d < 0) h = -1.1; }
     else if (v.water === 'lake') { const lx = x - 30, lz = z - 26, d = Math.hypot(lx * .8, lz) - 17 - 5 * fbm(Math.atan2(lz, lx) * 2, 0, s); const bank = smoothstep(-1, 3, d); h = lerp(-1.4, h, bank); }
-    else { const dir = -x * .8 + z * .6, coast = Rc * .62 + 7 * fbm(ang * 3, 2, s) + 3 * fbm(x / 6, z / 6, s); const d = coast - dir; const bank = smoothstep(-1, 3.5, d); h = lerp(-1.6, h, bank); }
+    else { const dir = -x * .8 + z * .6, coast = 46 + 7 * fbm(ang * 3, 2, s) + 3 * fbm(x / 6, z / 6, s); const d = coast - dir; const bank = smoothstep(-1, 3.5, d); h = lerp(-1.6, h, bank); }
     return h;
   }
   slope(x, z) { const e = .6; return Math.max(Math.abs(this.H(x + e, z) - this.H(x - e, z)), Math.abs(this.H(x, z + e) - this.H(x, z - e))) / (2 * e); }
@@ -106,7 +106,7 @@ export function buildRoads(T, seed) {
     if (Math.hypot(bx - ax, bz - az) < .3) continue;
     addSeg(ax, az, bx, bz, it.ch); it.ch.pts.push([bx, bz]); nodes.push([bx, bz]);
     if (end || Math.hypot(bx, bz) > Rc - 1) continue;
-    const n = it.n + 1, maxLen = it.kind === 'lane' ? 6 : it.kind === 'street' ? 40 : 99;
+    const n = it.n + 1, maxLen = it.kind === 'lane' ? 14 : it.kind === 'street' ? 40 : 99;
     if (n < maxLen) pushQ({ ...it, dir, n, t: it.t + 1 });
     // ответвления — почти под прямым углом, по очереди в обе стороны
     if (n % K.every === 0) for (const sd of [1, -1]) { if (r() < (it.kind === 'ave' ? .05 : .15)) continue;
@@ -123,21 +123,48 @@ class Grid { constructor(c) { this.c = c; this.m = new Map(); }
   near(x, z, R, f) { const c = this.c, x0 = Math.floor((x - R) / c), x1 = Math.floor((x + R) / c), z0 = Math.floor((z - R) / c), z1 = Math.floor((z + R) / c);
     for (let i = x0; i <= x1; i++) for (let j = z0; j <= z1; j++) { const a = this.m.get(i + ',' + j); if (a) for (const v of a) if (f(v) === false) return false; } return true; } }
 
-// участки вдоль улиц, отсортированы от центра — дом №1 у площади, новые жители заселяют окраины
+// участки вдоль улиц, отсортированы от центра — дом №1 у площади, новые жители заселяют окраины.
+// Участок — прямоугольник «дом + дворы»; ставим, только если он не задевает дорогу, соседний участок, воду и крутой склон.
+// Типы по удалённости: центр — многоэтажки, середина — таунхаусы, окраины — коттеджи с двором.
+export const LOT = { // w, dp — дом; step — шаг вдоль улицы; front/back/side — дворы
+  block: { w: 1.05, dp: .82, step: 1.3, front: .12, back: .25, side: .1 },
+  town: { w: .86, dp: .7, step: 1.18, front: .22, back: .45, side: .08 },
+  cottage: { w: .78, dp: .62, step: 1.34, front: .3, back: .66, side: .16 },
+};
+export const zoneOf = d => d < 13.5 ? 'block' : d < 30 ? 'town' : 'cottage';
+const axes = rot => [[Math.cos(rot), -Math.sin(rot)], [Math.sin(rot), Math.cos(rot)]]; // локальные X и Z (фасад смотрит в +Z)
+function rectHit(a, b) { const A = axes(a.rot), B = axes(b.rot), dx = b.cx - a.cx, dz = b.cz - a.cz;
+  for (const [ux, uz] of [...A, ...B]) {
+    const pa = a.hx * Math.abs(ux * A[0][0] + uz * A[0][1]) + a.hz * Math.abs(ux * A[1][0] + uz * A[1][1]);
+    const pb = b.hx * Math.abs(ux * B[0][0] + uz * B[0][1]) + b.hz * Math.abs(ux * B[1][0] + uz * B[1][1]);
+    if (Math.abs(dx * ux + dz * uz) > pa + pb) return false; }
+  return true; }
+const REJ = { wet: 0, slope: 0, road: 0, bump: 0, lot: 0 };
 export function buildLots(T, roads, seed) {
-  const lg = new Grid(2), lots = [], rp = new Grid(2);
-  for (const rd of roads) for (let i = 0; i < rd.pts.length - 1; i++) { const [a, b] = [rd.pts[i], rd.pts[i + 1]];
-    for (let t = 0; t < 1; t += .25) { const x = a[0] + (b[0] - a[0]) * t, z = a[1] + (b[1] - a[1]) * t; rp.add(x, z, [x, z, rd.w]); } }
-  const clearOfRoads = (x, z, pad) => rp.near(x, z, 2.2, ([px, pz, w]) => Math.hypot(px - x, pz - z) > w / 2 + pad);
-  for (const rd of roads) { const P = rd.pts;
+  const lg = new Grid(3), lots = [], rp = new Grid(2), r = rnd(seed * 3 + 7);
+  for (const rd of roads) for (let i = 0; i < rd.pts.length - 1; i++) { const [a, b] = [rd.pts[i], rd.pts[i + 1]], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    for (let t = 0; t <= 1; t += Math.min(1, .25 / (L || 1))) { const x = a[0] + (b[0] - a[0]) * t, z = a[1] + (b[1] - a[1]) * t; rp.add(x, z, [x, z, rd.w]); } }
+  const clearOfRoads = (x, z, pad) => rp.near(x, z, 2.6, ([px, pz, w]) => Math.hypot(px - x, pz - z) > w / 2 + pad);
+  for (const rd of roads) { const P = rd.pts; let carry = 0;
     for (let i = 0; i < P.length - 1; i++) { const [x0, z0] = P[i], [x1, z1] = P[i + 1], L = Math.hypot(x1 - x0, z1 - z0) || 1, tx = (x1 - x0) / L, tz = (z1 - z0) / L;
-      for (let t = 0; t < L; t += 1.08) { const px = x0 + tx * t, pz = z0 + tz * t;
-        for (const sd of [-1, 1]) { const off = rd.w / 2 + .62, nx = -tz * sd, nz = tx * sd, x = px + nx * off, z = pz + nz * off;
-          if (Math.hypot(x, z) < PLAZA_R + .9 || T.wet(x, z) || T.slope(x, z) > .45 || T.H(x, z) > 6) continue;
-          if (!clearOfRoads(x, z, .42)) continue;
-          if (!lg.near(x, z, 1.4, l => Math.hypot(l.x - x, l.z - z) > 1.02)) continue;
-          const lot = { x, z, rot: Math.atan2(-nx, -nz), d: Math.hypot(x, z), road: rd.kind }; // фасад (+z дома) смотрит на улицу
-          lots.push(lot); lg.add(x, z, lot); } } } }
+      let t = carry;
+      for (; t < L; ) { const px = x0 + tx * t, pz = z0 + tz * t, type = zoneOf(Math.hypot(px, pz)), S = LOT[type];
+        const u = r(), w = S.w * (.92 + u * .16), dp = S.dp * (.92 + r() * .16), wing = type === 'cottage' && r() < .35;
+        for (const sd of [-1, 1]) { const nx = -tz * sd, nz = tx * sd, off = rd.w / 2 + .3 + S.front + dp / 2, x = px + nx * off, z = pz + nz * off;
+          const rot = Math.atan2(-nx, -nz), back = S.back + (wing ? .2 : 0);
+          // прямоугольник участка: дом + передний двор до тротуара + задний двор + боковые
+          const fp = { cx: x + nx * (back - S.front) / 2, cz: z + nz * (back - S.front) / 2, hx: w / 2 + S.side, hz: dp / 2 + (S.front + back) / 2, rot };
+          if (Math.hypot(x, z) < PLAZA_R + 1.2 || T.H(x, z) > 6) continue;
+          const [ax, az] = axes(rot)[0], [bx, bz] = axes(rot)[1]; let ok = true; const hs = [];
+          for (const [i, j] of [[0, 0], [-1, -1], [1, -1], [-1, 1], [1, 1], [0, -1], [0, 1], [-1, 0], [1, 0]]) {
+            const qx = fp.cx + ax * fp.hx * i + bx * fp.hz * j, qz = fp.cz + az * fp.hx * i + bz * fp.hz * j;
+            if (T.wet(qx, qz)) { REJ.wet++; ok = false; break; } if (T.slope(qx, qz) > .5) { REJ.slope++; ok = false; break; } if (!clearOfRoads(qx, qz, .16)) { REJ.road++; ok = false; break; } hs.push(T.H(qx, qz)); }
+          if (!ok) continue; if (Math.max(...hs) - Math.min(...hs) > .55) { REJ.bump++; continue; } // участок слишком кривой — дом повиснет
+          if (!lg.near(fp.cx, fp.cz, 2.4, o => !rectHit(o.fp, fp))) { REJ.lot++; continue; }
+          const lot = { x, z, rot, d: Math.hypot(x, z), road: rd.kind, type, w, dp, wing, fp, nx, nz };
+          lots.push(lot); lg.add(fp.cx, fp.cz, lot); }
+        t += S.step * (.95 + u * .1); }
+      carry = t - L; } }
   const jit = l => l.d + 4 * h2(Math.round(l.x * 10), Math.round(l.z * 10), seed);
   lots.sort((a, b) => jit(a) - jit(b));
   return lots;
@@ -151,8 +178,8 @@ const tex = (w, h, draw, rep) => { const c = document.createElement('canvas'); c
 
 // фасад: на один этаж — два окна с рамой и подоконником (белая стена, цвет даёт инстанс)
 const WIN_T = tex(128, 128, (g, w, h) => { g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h);
-  for (const x of [22, 74]) { g.fillStyle = '#e8e2d8'; g.fillRect(x - 4, 30, 40, 62); g.fillStyle = '#3f5568'; g.fillRect(x, 34, 32, 52);
-    g.fillStyle = 'rgba(190,225,255,.55)'; g.fillRect(x + 2, 36, 12, 22); g.fillStyle = '#e8e2d8'; g.fillRect(x + 14, 34, 4, 52); g.fillRect(x, 58, 32, 4); g.fillStyle = '#cfc6b8'; g.fillRect(x - 6, 90, 44, 6); }
+  for (const x of [26, 78]) { g.fillStyle = '#f7f4ee'; g.fillRect(x - 4, 34, 32, 56); const gr = g.createLinearGradient(0, 38, 0, 86); gr.addColorStop(0, '#9cc3dc'); gr.addColorStop(1, '#4f6f88'); g.fillStyle = gr; g.fillRect(x, 38, 24, 48);
+    g.fillStyle = 'rgba(255,255,255,.45)'; g.fillRect(x + 2, 40, 6, 18); g.fillStyle = '#f7f4ee'; g.fillRect(x + 10, 38, 3, 48); g.fillRect(x, 58, 24, 3); g.fillStyle = '#d8d0c2'; g.fillRect(x - 6, 88, 36, 5); }
   g.fillStyle = 'rgba(0,0,0,.06)'; g.fillRect(0, 122, w, 6); }, true);
 const ROOF_T = tex(64, 64, (g, w, h) => { g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h); g.strokeStyle = 'rgba(0,0,0,.18)'; g.lineWidth = 2; for (let y = 0; y < h; y += 8) { g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); for (let x = (y / 8) % 2 * 8; x < w; x += 16) { g.beginPath(); g.moveTo(x, y); g.lineTo(x, y + 8); g.stroke(); } } }, true);
 const ROAD_T = tex(64, 256, (g, w, h) => { g.fillStyle = '#5c6068'; g.fillRect(0, 0, w, h); for (let i = 0; i < 700; i++) { g.fillStyle = `rgba(${Math.random() < .5 ? '0,0,0' : '255,255,255'},.05)`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
@@ -182,6 +209,9 @@ export function makeEnv(renderer) { // небо + мягкие отражени�
 }
 
 export function buildScene(scene, T, roads, lots, count, seed) {
+  // город растёт: улицы рисуем только до края заселённой части (+ запас), дальше — луга и лес
+  const N0 = Math.min(count, lots.length); let Rm = PLAZA_R + 6; for (let i = 0; i < N0; i++) Rm = Math.max(Rm, lots[i].d); Rm += 3;
+  roads = roads.map(rd => { const pts = []; for (const p of rd.pts) { pts.push(p); if (Math.hypot(p[0], p[1]) > Rm) break; } return { ...rd, pts }; }).filter(rd => rd.pts.length > 1);
   const Rw = T.Rc + 75, SEG = 340, geo = new THREE.PlaneGeometry(Rw * 2, Rw * 2, SEG, SEG); geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position, col = new Float32Array(pos.count * 3), c = new THREE.Color();
   const G1 = new THREE.Color('#a8d483'), G2 = new THREE.Color('#8cc46e'), G3 = new THREE.Color('#c4d98e'), FOR = new THREE.Color('#6a9e5a'), ROCK = new THREE.Color('#a19b92'), ROCK2 = new THREE.Color('#7e7a76'), SNOW = new THREE.Color('#f8fafc'), SAND = new THREE.Color('#ead9ad'), DEEP = new THREE.Color('#3f8fb0');
@@ -212,36 +242,9 @@ export function buildScene(scene, T, roads, lots, count, seed) {
   const big = roads.filter(r => r.kind === 'ave' || r.kind === 'street'), small = roads.filter(r => !(r.kind === 'ave' || r.kind === 'street'));
   const asph = (list, map) => { const keep = roads.splice(0, roads.length, ...list); const g = ribbon(0, .06, true); roads.splice(0, roads.length, ...keep); return new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map, roughness: .85, polygonOffset: true, polygonOffsetFactor: -3 })); };
   for (const m of [asph(big, ROAD_T), asph(small, LANE_T)]) { m.receiveShadow = true; scene.add(m); }
-  // дома
-  const N = Math.min(count, lots.length), r = rnd(seed + 5), houses = [];
-  for (let i = 0; i < N; i++) { const l = lots[i], u = r(), d = l.d;
-    const floors = d < 13 ? 3 + Math.floor(u * 3) : d < 26 ? 2 + Math.floor(u * 2) : 1 + Math.floor(u * 1.7);
-    const w = .74 + r() * .12, dp = .6 + r() * .12, mn = Math.min(T.H(l.x - .4, l.z - .4), T.H(l.x + .4, l.z + .4), T.H(l.x - .4, l.z + .4), T.H(l.x + .4, l.z - .4)), y = Math.max(T.H(l.x, l.z), mn + .05);
-    houses.push({ ...l, n: i + 1, floors, w, dp, y, mn, wall: WALLS[(r() * WALLS.length) | 0], roof: ROOFS[(r() * ROOFS.length) | 0], rh: .28 + r() * .14, chim: r() < .55, flat: floors >= 4 }); }
-  const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), S = new THREE.Vector3(), Pv = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0), off = new THREE.Vector3();
-  const wallMat = new THREE.MeshStandardMaterial({ map: WIN_T, roughness: .85, envMapIntensity: .5 });
-  for (let f = 1; f <= 6; f++) { const list = houses.filter(h => h.floors === f); if (!list.length) continue;
-    const im = new THREE.InstancedMesh(bodyGeo(f), wallMat, list.length); im.castShadow = im.receiveShadow = true;
-    list.forEach((h, i) => { Q.setFromAxisAngle(Y, h.rot); Pv.set(h.x, h.y, h.z); S.set(h.w, f * .3, h.dp); M.compose(Pv, Q, S); im.setMatrixAt(i, M); im.setColorAt(i, c.set(h.wall)); }); scene.add(im); }
-  const gab = houses.filter(h => !h.flat), flat = houses.filter(h => h.flat);
-  const roofM = new THREE.InstancedMesh(gableGeo(), new THREE.MeshStandardMaterial({ map: ROOF_T, roughness: .75, side: THREE.DoubleSide, envMapIntensity: .6 }), gab.length), endM = new THREE.InstancedMesh(gableEndGeo(), new THREE.MeshStandardMaterial({ roughness: .9, side: THREE.DoubleSide }), gab.length);
-  roofM.castShadow = endM.castShadow = true; roofM.receiveShadow = true;
-  gab.forEach((h, i) => { Q.setFromAxisAngle(Y, h.rot); Pv.set(h.x, h.y + h.floors * .3, h.z); S.set(h.w, h.rh, h.dp); M.compose(Pv, Q, S); roofM.setMatrixAt(i, M); roofM.setColorAt(i, c.set(h.roof)); endM.setMatrixAt(i, M); endM.setColorAt(i, c.set(h.wall)); });
-  scene.add(roofM, endM);
-  const capM = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1).translate(0, .5, 0), new THREE.MeshStandardMaterial({ color: '#8d8a86', roughness: .9 }), flat.length * 2);
-  flat.forEach((h, i) => { Q.setFromAxisAngle(Y, h.rot); Pv.set(h.x, h.y + h.floors * .3, h.z); S.set(h.w + .04, .06, h.dp + .04); M.compose(Pv, Q, S); capM.setMatrixAt(i * 2, M);
-    off.set((r() - .5) * .3, 0, (r() - .5) * .2).applyQuaternion(Q); Pv.add(off); S.set(.18, .14, .14); M.compose(Pv, Q, S); capM.setMatrixAt(i * 2 + 1, M); }); capM.castShadow = true; scene.add(capM);
-  // двери, трубы, фундамент, мягкая тень у основания
-  const doorM = new THREE.InstancedMesh(new THREE.BoxGeometry(.16, .22, .03).translate(0, .11, 0), new THREE.MeshStandardMaterial({ color: '#6b4a34', roughness: .7 }), N);
-  const chimL = gab.filter(h => h.chim), chM = new THREE.InstancedMesh(new THREE.BoxGeometry(.1, .3, .1).translate(0, .15, 0), new THREE.MeshStandardMaterial({ color: '#8a5a48', roughness: .9 }), chimL.length);
-  const plM = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1).translate(0, -.5, 0), new THREE.MeshStandardMaterial({ color: '#bdb5a6', roughness: 1 }), N);
-  const aoM = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: AO_T, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 }), N);
-  houses.forEach((h, i) => { Q.setFromAxisAngle(Y, h.rot);
-    off.set((r() - .5) * .2 * h.w, 0, h.dp / 2 + .005).applyQuaternion(Q); Pv.set(h.x + off.x, h.y, h.z + off.z); S.set(1, 1, 1); M.compose(Pv, Q, S); doorM.setMatrixAt(i, M);
-    Pv.set(h.x, h.y, h.z); S.set(h.w + .03, h.y - h.mn + .1, h.dp + .03); M.compose(Pv, Q, S); plM.setMatrixAt(i, M);
-    Pv.set(h.x, T.H(h.x, h.z) + .035, h.z); S.set(h.w * 1.9, 1, h.dp * 1.9); M.compose(Pv, Q, S); aoM.setMatrixAt(i, M); });
-  chimL.forEach((h, i) => { Q.setFromAxisAngle(Y, h.rot); off.set(h.w * .28, 0, -h.dp * .18).applyQuaternion(Q); Pv.set(h.x + off.x, h.y + h.floors * .3 + h.rh * .35, h.z + off.z); S.set(1, 1, 1); M.compose(Pv, Q, S); chM.setMatrixAt(i, M); });
-  chM.castShadow = true; scene.add(doorM, chM, plM, aoM);
+  // дома: 3 типа + дворы
+  const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), S = new THREE.Vector3(), Pv = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
+  const { houses, garden } = buildHouses(scene, T, lots, Math.min(count, lots.length), seed);
   // фонари вдоль больших улиц
   const lamps = []; for (const rd of big) { let acc = 0; for (let i = 1; i < rd.pts.length; i++) { const [ax, az] = rd.pts[i - 1], [bx, bz] = rd.pts[i], L = Math.hypot(bx - ax, bz - az); acc += L; if (acc < 3.2) continue; acc = 0;
     const nx = -(bz - az) / L, nz = (bx - ax) / L, sd = lamps.length % 2 ? 1 : -1, x = bx + nx * sd * (rd.w / 2 + .12), z = bz + nz * sd * (rd.w / 2 + .12); if (!T.wet(x, z)) lamps.push([x, T.H(x, z), z]); } }
@@ -249,14 +252,15 @@ export function buildScene(scene, T, roads, lots, count, seed) {
     lbM = new THREE.InstancedMesh(new THREE.SphereGeometry(.05, 8, 6).translate(0, .72, 0), new THREE.MeshStandardMaterial({ color: '#fff6dd', emissive: '#ffe6a0', emissiveIntensity: .4 }), lamps.length);
   lamps.forEach(([x, y, z], i) => { M.makeTranslation(x, y, z); lpM.setMatrixAt(i, M); lbM.setMatrixAt(i, M); }); scene.add(lpM, lbM);
   // деревья: ели на склонах, лиственные в городе и на равнине
-  const hg = new Grid(2); for (const h of houses) hg.add(h.x, h.z, h);
+  const hg = new Grid(3); for (const h of houses) hg.add(h.fp.cx, h.fp.cz, h);
+  const inFp = (x, z, f, pad) => { const [[ax, az], [bx, bz]] = axes(f.rot), dx = x - f.cx, dz = z - f.cz; return Math.abs(dx * ax + dz * az) < f.hx + pad && Math.abs(dx * bx + dz * bz) < f.hz + pad; };
   const rp = new Grid(2); for (const rd of roads) for (const [x, z] of rd.pts) rp.add(x, z, [x, z, rd.w]);
-  const firs = [], leafs = [], tr = rnd(seed + 9);
+  const firs = [], leafs = [...garden], tr = rnd(seed + 9);
   for (let k = 0; k < 60000 && firs.length + leafs.length < 11000; k++) { const x = (tr() * 2 - 1) * (T.Rc + 60), z = (tr() * 2 - 1) * (T.Rc + 60), h = T.H(x, z);
     if (h < .2 || h > 14 || T.slope(x, z) > 1.15 || Math.hypot(x, z) < PLAZA_R + .5) continue;
-    const city = Math.hypot(x, z) < T.Rc - 4, forest = fbm(x / 18, z / 18, seed + 44) + (city ? -.3 : .35) + smoothstep(1, 5, h) * .4; if (forest < .05 && tr() > (city ? .1 : .2)) continue;
+    const city = Math.hypot(x, z) < Rm, forest = fbm(x / 18, z / 18, seed + 44) + (city ? -.3 : .35) + smoothstep(1, 5, h) * .4; if (forest < .05 && tr() > (city ? .1 : .2)) continue;
     if (!rp.near(x, z, 1.6, ([px, pz, w]) => Math.hypot(px - x, pz - z) > w / 2 + .45)) continue;
-    if (!hg.near(x, z, 1.5, o => Math.hypot(o.x - x, o.z - z) > .8)) continue;
+    if (!hg.near(x, z, 2.4, o => !inFp(x, z, o.fp, .25))) continue;
     const s = .6 + tr() * .7; (h > 2.5 || (!city && tr() < .55) ? firs : leafs).push([x, h, z, s, tr()]); }
   const firG = new THREE.ConeGeometry(.34, .75, 7).translate(0, .85, 0), firG2 = new THREE.ConeGeometry(.26, .6, 7).translate(0, 1.2, 0), trunk = new THREE.CylinderGeometry(.05, .07, .5, 5).translate(0, .25, 0);
   const leafG = new THREE.IcosahedronGeometry(.36, 1).translate(0, .78, 0);
@@ -268,6 +272,95 @@ export function buildScene(scene, T, roads, lots, count, seed) {
   // площадь
   scene.add(buildPlaza(T.H(0, 0), roads));
   return { houses, trees: firs.length + leafs.length };
+}
+
+function hipGeo() { // вальмовая крыша: короткий конёк вдоль X, четыре ската
+  const W = .56, D = .56, rx = .2, p = [], u = [];
+  const tri = (a, b, c) => { p.push(...a, ...b, ...c); u.push(0, 0, 3, 0, 1.5, 2); };
+  const quad = (a, b, c, d) => { tri(a, b, c); tri(a, c, d); };
+  quad([-W, 0, D], [W, 0, D], [rx, 1, 0], [-rx, 1, 0]); quad([W, 0, -D], [-W, 0, -D], [-rx, 1, 0], [rx, 1, 0]);
+  tri([-W, 0, -D], [-W, 0, D], [-rx, 1, 0]); tri([W, 0, D], [W, 0, -D], [rx, 1, 0]);
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(u, 2)); g.computeVertexNormals(); return g; }
+
+const WALLS_BLOCK = ['#f3e2c4', '#ead0bd', '#d5e3ee', '#f0d9d6', '#dce9d3', '#f6ecc9', '#e3dcf0', '#fbf7ef'];
+const WALLS_TOWN = ['#efe2cc', '#ead6bf', '#f3dccb', '#f5e8bd', '#dce8d2', '#f1d3c6', '#d3e0ea', '#fbf6ee'];
+const AWN = ['#d9534f', '#2f8f83', '#e8a33d', '#3f6fb5', '#8c5bb5', '#5aa05a'];
+const FENCE = ['#f4f1ea', '#c79a6b', '#9c7350', '#e8e2d4'];
+const FLOWERS = ['#ff6b8b', '#ffd23f', '#ff9f43', '#c56cf0', '#ffffff', '#ff5e5e'];
+
+// Дома трёх типов. Всё — инстансы: один вызов отрисовки на вид детали, сколько бы ни было домов.
+function buildHouses(scene, T, lots, N, seed) {
+  const r = rnd(seed + 5), houses = [], garden = [], parts = new Map(), c = new THREE.Color();
+  const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), S = new THREE.Vector3(), Pv = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
+  const box = new THREE.BoxGeometry(1, 1, 1).translate(0, .5, 0);
+  const kinds = {
+    cap: [box, new THREE.MeshStandardMaterial({ color: '#9a9690', roughness: .9 })],
+    trim: [box, new THREE.MeshStandardMaterial({ roughness: .8 })], // цветные мелочи (цвет на инстанс)
+    glass: [box, new THREE.MeshStandardMaterial({ color: '#40607a', roughness: .15, metalness: .3, emissive: '#2a4a63', emissiveIntensity: .25 })],
+    door: [box, new THREE.MeshStandardMaterial({ color: '#6b4a34', roughness: .7 })],
+    stone: [box, new THREE.MeshStandardMaterial({ color: '#d9d3c7', roughness: 1 })],
+    plinth: [new THREE.BoxGeometry(1, 1, 1).translate(0, -.5, 0), new THREE.MeshStandardMaterial({ color: '#bdb5a6', roughness: 1 })],
+        gable: [gableGeo(), new THREE.MeshStandardMaterial({ map: ROOF_T, roughness: .75, side: THREE.DoubleSide, envMapIntensity: .6 })],
+    gend: [gableEndGeo(), new THREE.MeshStandardMaterial({ roughness: .9, side: THREE.DoubleSide })],
+    hip: [hipGeo(), new THREE.MeshStandardMaterial({ map: ROOF_T, roughness: .75, side: THREE.DoubleSide, envMapIntensity: .6 })],
+    ao: [new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: AO_T, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 })],
+  };
+  const wallMat = new THREE.MeshStandardMaterial({ map: WIN_T, roughness: .85, envMapIntensity: .5 });
+  const push = (k, row) => (parts.get(k) || parts.set(k, []).get(k)).push(row);
+  // put(вид, дом, локальные x,y,z, размеры, цвет, доп. поворот) — координаты в системе дома (фасад в +Z)
+  const put = (k, h, lx, ly, lz, sx, sy, sz, col, rot = 0) => {
+    const ca = Math.cos(h.rot), sa = Math.sin(h.rot);
+    push(k, [h.x + lx * ca + lz * sa, h.y + ly, h.z - lx * sa + lz * ca, h.rot + rot, sx, sy, sz, col]); };
+  const ground = (h, lx, lz) => { const ca = Math.cos(h.rot), sa = Math.sin(h.rot); return T.H(h.x + lx * ca + lz * sa, h.z - lx * sa + lz * ca) - h.y; };
+  const pick = a => a[(r() * a.length) | 0];
+  for (let i = 0; i < N; i++) { const l = lots[i], { w, dp, type } = l, S0 = LOT[type], u = r();
+    const ca = Math.cos(l.rot), sa = Math.sin(l.rot);
+    const mn = Math.min(...[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([a, b]) => { const lx = a * w / 2, lz = b * dp / 2; return T.H(l.x + lx * ca + lz * sa, l.z - lx * sa + lz * ca); }));
+    const y = Math.max(T.H(l.x, l.z), mn + .04);
+    const floors = type === 'block' ? (l.d < 9 ? 5 + (u * 2 | 0) : 4 + (u * 2 | 0)) : type === 'town' ? 2 + (u < .45 ? 1 : 0) : (u < .6 ? 1 : 2);
+    const h = { ...l, n: i + 1, floors, y, mn, wall: pick(type === 'block' ? WALLS_BLOCK : type === 'town' ? WALLS_TOWN : WALLS), roof: pick(ROOFS),
+      roofType: type === 'block' ? 'flat' : type === 'town' ? (r() < .6 ? 'hip' : 'gable') : 'gable', rh: type === 'cottage' ? .36 + r() * .14 : .26 + r() * .1 };
+    houses.push(h);
+    const H = floors * .3, fz = dp / 2;
+    push('body' + floors, [h.x, y, h.z, h.rot, w, H, dp, h.wall]);
+    put('plinth', h, 0, 0, 0, w + .04, y - mn + .08, dp + .04);
+    put('ao', h, 0, ground(h, 0, 0) + .03, 0, w * 1.8, 1, dp * 1.8);
+    // крыша
+    if (h.roofType === 'flat') { put('cap', h, 0, H, 0, w + .05, .07, dp + .05); put('cap', h, (r() - .5) * w * .4, H + .07, -(r() * .2), .22, .16, .2);
+      if (r() < .5) put('cap', h, (r() - .5) * w * .5, H + .07, .15, .12, .1, .12); }
+    else if (h.roofType === 'hip') put('hip', h, 0, H, 0, w, h.rh, dp, h.roof);
+    else { put('gable', h, 0, H, 0, w, h.rh, dp, h.roof); put('gend', h, 0, H, 0, w, h.rh, dp, h.wall); if (r() < .55) put('trim', h, w * .28, H + h.rh * .35, -dp * .18, .1, .3, .1, '#8a5a48'); }
+    // фасад и двор по типу
+    if (type === 'block') {
+      if (r() < .6) { put('glass', h, 0, .04, fz + .004, w * .82, .17, .01); put('trim', h, 0, .23, fz + .07, w * .88, .035, .15, pick(AWN)); } // магазин на первом этаже
+      else { put('door', h, 0, 0, fz + .005, .18, .24, .02); put('cap', h, 0, .26, fz + .06, .32, .03, .13); }
+      for (let f = 1; f < floors; f++) for (const sx of [-1, 1]) if (r() < .8) { put('stone', h, sx * w * .25, f * .3 + .01, fz + .06, .27, .025, .12); put('trim', h, sx * w * .25, f * .3 + .035, fz + .115, .27, .06, .012, '#f2f2ef'); }
+      continue; }
+    const dx = (r() - .5) * .3 * w; put('door', h, dx, 0, fz + .005, .15, .23, .02);
+    put('stone', h, dx, ground(h, dx, fz + .15) + .005, fz + (S0.front + .35) / 2, .14, .02, S0.front + .35); // дорожка к тротуару
+    if (type === 'town') continue;
+    // коттедж: крыльцо, пристройка, забор, сад
+    put('cap', h, dx, .28, fz + .1, .34, .025, .2); for (const s of [-1, 1]) put('trim', h, dx + s * .15, 0, fz + .19, .025, .28, .025, '#f4f1ea');
+    if (l.wing) { const sg = r() < .5 ? -1 : 1, wx = sg * (w / 2 - .22), wz = -(fz + .19);
+      put('wbody', h, wx, 0, wz, .44, .3, .4, h.wall); put('gable', h, wx, .3, wz, .4, .28, .44, h.roof, Math.PI / 2); put('gend', h, wx, .3, wz, .4, .28, .44, h.wall, Math.PI / 2); }
+    const f = l.fp, col = pick(FENCE), oz = (f.cx - l.x) * sa + (f.cz - l.z) * ca, hx = f.hx - .03, hz = f.hz - .03, gate = .32;
+    const gy = (lx, lz) => ground(h, lx, lz);
+    put('trim', h, 0, Math.min(gy(-hx, oz - hz), gy(hx, oz - hz)), oz - hz, hx * 2, .12, .025, col);
+    for (const s of [-1, 1]) { put('trim', h, s * hx, Math.min(gy(s * hx, oz - hz), gy(s * hx, oz + hz)), oz, .025, .12, hz * 2, col);
+      const seg = hx - gate / 2 - dx * s; if (seg > .05) put('trim', h, dx + s * (gate / 2 + seg / 2), gy(dx + s * (gate / 2 + seg / 2), oz + hz), oz + hz, seg, .12, .025, col); }
+    const gx = (r() - .5) * w * .7, gz = oz - hz + .32, tx = l.x + gx * ca + gz * sa, tz = l.z - gx * sa + gz * ca;
+    garden.push([tx, T.H(tx, tz), tz, .42 + r() * .22, r()]);
+    if (r() < .6) { const bx = (r() < .5 ? -1 : 1) * (hx - .22); for (let k = 0; k < 3; k++) put('trim', h, bx + (k - 1) * .09, gy(bx, oz + hz - .1) + .01, oz + hz - .1, .07, .06, .07, pick(FLOWERS)); }
+  }
+  // сборка инстансов
+  const add = (geo, mat, list) => { const im = new THREE.InstancedMesh(geo, mat, list.length); im.castShadow = im.receiveShadow = true;
+    list.forEach(([x, y, z, rot, sx, sy, sz, col], i) => { Q.setFromAxisAngle(Y, rot); Pv.set(x, y, z); S.set(sx, sy, sz); M.compose(Pv, Q, S); im.setMatrixAt(i, M); if (col) im.setColorAt(i, c.set(col)); });
+    scene.add(im); return im; };
+  for (const [k, list] of parts) {
+    if (k.startsWith('body')) add(bodyGeo(+k.slice(4)), wallMat, list);
+    else if (k === 'wbody') add(bodyGeo(1), wallMat, list);
+    else { const im = add(...kinds[k], list); if (k === 'ao') im.castShadow = im.receiveShadow = false; } }
+  return { houses, garden };
 }
 
 function buildPlaza(y0, roads) {
