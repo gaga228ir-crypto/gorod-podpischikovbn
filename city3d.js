@@ -598,6 +598,59 @@ export class City3D {
     this.boatHull = add(new THREE.InstancedMesh(hullG, flat('#ffffff'), boatN)); this.boatCab = add(new THREE.InstancedMesh(cabG, flat('#f4efe4'), boatN));
     const BC = ['#e05a5a', '#4a8fd6', '#f2c94c', '#3fae8f', '#8a6fd1', '#f4f4f4'];
     for (let i = 0; i < boatN; i++) { this.boats.push({ rad: 5 + r() * 6, a0: r() * 6.28, sp: (.04 + r() * .05) * (r() < .5 ? 1 : -1) }); this.boatHull.setColorAt(i, C.set(BC[i % BC.length])); }
+    // 🌊 набережная, пристань с подсветкой и уточки (идея жителей); на пристани — рыбалка
+    { const dir0 = Math.atan2(-LAKE.z, -LAKE.x), shore = [], Hs = (x, z) => T.H(x, z);
+      for (let a = -1.05; a <= 1.05; a += .035) { const ux = Math.cos(dir0 + a), uz = Math.sin(dir0 + a); let hit = null;
+        for (let rr = 2; rr < 45; rr += .08) { const x = LAKE.x + ux * rr, z = LAKE.z + uz * rr; if (Hs(x, z) > -.02) { hit = { x: x + ux * .35, z: z + uz * .35, ux, uz, a }; break; } }
+        if (hit) shore.push(hit); }
+      // набережная: сплошная полоса вдоль сглаженной кромки воды, перила со стороны воды, фонари
+      const sm = shore.map((p, i) => { let x = 0, z = 0, n = 0; for (let k = -3; k <= 3; k++) { const q = shore[i + k]; if (q && Math.hypot(q.x - p.x, q.z - p.z) < 3) { x += q.x; z += q.z; n++; } } return { ...p, x: x / n, z: z / n }; });
+      const segs = []; let cur = [];
+      for (const p of sm) { const last = cur[cur.length - 1]; if (last && Math.hypot(p.x - last.x, p.z - last.z) > 1.4) { if (cur.length > 3) segs.push(cur); cur = []; } if (!last || Math.hypot(p.x - last.x, p.z - last.z) > .25) cur.push(p); }
+      if (cur.length > 3) segs.push(cur);
+      const v = [], ix = [], rv = [], rix = [], posts = [], lampsP = [];
+      const rib = (V, I, P, w0, w1, yOf) => { for (let i = 0; i < P.length; i++) { const a = P[Math.max(0, i - 1)], b = P[Math.min(P.length - 1, i + 1)], L = Math.hypot(b.x - a.x, b.z - a.z) || 1, nx = -(b.z - a.z) / L, nz = (b.x - a.x) / L,
+          sd = (nx * P[i].ux + nz * P[i].uz) > 0 ? 1 : -1, y = yOf(P[i]), base = V.length / 3; // sd: +n смотрит на сушу
+        V.push(P[i].x + nx * sd * w1, y, P[i].z + nz * sd * w1, P[i].x + nx * sd * w0, y, P[i].z + nz * sd * w0); if (i) I.push(base - 2, base, base - 1, base - 1, base, base + 1); } };
+      const py0 = p => Math.max(Hs(p.x, p.z), WATER_Y + .06) + .04;
+      for (const P of segs) { rib(v, ix, P, -.28, .28, py0); rib(rv, rix, P, -.3, -.26, p => py0(p) + .17);
+        P.forEach((p, k) => { if (k % 3 === 0) posts.push([p.x - p.ux * .28, py0(p), p.z - p.uz * .28]); if (k % 9 === 4) lampsP.push([p.x + p.ux * .22, py0(p), p.z + p.uz * .22]); }); }
+      const mk = (V, I, mat) => { if (!V.length) return; const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(V, 3)); g.setIndex(I); g.computeVertexNormals();
+        const m = new THREE.Mesh(g, mat); m.receiveShadow = true; m.userData.flat = true; add(m); };
+      mk(v, ix, new THREE.MeshStandardMaterial({ color: '#d9cfb8', roughness: .9, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 }));
+      mk(rv, rix, new THREE.MeshStandardMaterial({ color: '#f2efe8', roughness: .6, side: THREE.DoubleSide }));
+      if (posts.length) { const im = new THREE.InstancedMesh(new THREE.BoxGeometry(.03, .17, .03).translate(0, .085, 0), flat('#f2efe8'), posts.length); posts.forEach(([x, y, z], i) => im.setMatrixAt(i, M.makeTranslation(x, y, z))); add(im); }
+      if (lampsP.length) { const pole = new THREE.InstancedMesh(new THREE.CylinderGeometry(.018, .022, .55, 6).translate(0, .275, 0), flat('#2f3440'), lampsP.length),
+          bulb = new THREE.InstancedMesh(new THREE.SphereGeometry(.05, 8, 6), flat('#ffe2a0', '#ffd27a', 1.6), lampsP.length);
+        lampsP.forEach(([x, y, z], i) => { pole.setMatrixAt(i, M.makeTranslation(x, y, z)); bulb.setMatrixAt(i, M.makeTranslation(x, y + .58, z)); }); add(pole); add(bulb); }
+      // пристань: деревянный настил в воду из середины набережной, сваи, неоновые фонарики, рыбак с удочкой
+      const mid = shore[Math.floor(shore.length / 2)];
+      if (mid) { const ux = -mid.ux, uz = -mid.uz, rot = Math.atan2(ux, uz), PL = 3.4, py = WATER_Y + .14, Pr = new THREE.Group();
+        Pr.position.set(mid.x, 0, mid.z); Pr.rotation.y = rot; const wood = flat('#a8733f'), dark = flat('#6e4a2a');
+        const deck = new THREE.Mesh(new THREE.BoxGeometry(.6, .05, PL), wood); deck.position.set(0, py, PL / 2 - .3); deck.receiveShadow = true; Pr.add(deck);
+        const head = new THREE.Mesh(new THREE.BoxGeometry(1.3, .05, .7), wood); head.position.set(0, py, PL - .3 + .25); Pr.add(head);
+        for (let k = 0; k <= 4; k++) for (const sx of [-.27, .27]) { const st = new THREE.Mesh(new THREE.CylinderGeometry(.035, .035, .5, 6), dark); st.position.set(sx, py - .25, k * PL / 4 - .2); Pr.add(st); }
+        const NEON = ['#5ef2ff', '#ff3d7f', '#ffd23f', '#a6ff8f'];
+        [[-.3, .6], [.3, 1.5], [-.3, 2.4], [-.62, PL + .2], [.62, PL + .2]].forEach(([sx, sz], k) => {
+          const pl = new THREE.Mesh(new THREE.CylinderGeometry(.015, .015, .45, 6), flat('#2f3440')); pl.position.set(sx, py + .25, sz); Pr.add(pl);
+          const bl = new THREE.Mesh(new THREE.SphereGeometry(.06, 10, 8), flat(NEON[k % 4], NEON[k % 4], 2.2)); bl.position.set(sx, py + .5, sz); Pr.add(bl); });
+        const fisher = new THREE.Group(); fisher.position.set(.25, py + .03, PL + .35);
+        const fb = new THREE.Mesh(new THREE.CapsuleGeometry(.045, .12, 3, 6), flat('#3f7ad6')); fb.position.y = .12; fisher.add(fb);
+        const fh = new THREE.Mesh(new THREE.SphereGeometry(.045, 8, 6), flat('#f6d2b5')); fh.position.y = .26; fisher.add(fh);
+        const hat = new THREE.Mesh(new THREE.ConeGeometry(.06, .05, 8), flat('#ffd23f')); hat.position.y = .31; fisher.add(hat);
+        const rod = new THREE.Mesh(new THREE.CylinderGeometry(.006, .006, .8, 4), dark); rod.position.set(0, .3, .3); rod.rotation.x = .9; fisher.add(rod);
+        const bob = new THREE.Mesh(new THREE.SphereGeometry(.025, 8, 6), flat('#ff3d7f', '#ff3d7f', 1.5)); bob.position.set(0, WATER_Y - py - .01, .95); fisher.add(bob); Pr.add(fisher);
+        add(Pr); this.bobber = bob;
+        this.pier = { x: mid.x + ux * (PL + .1), z: mid.z + uz * (PL + .1), y: py };
+        this.places.push({ kind: 'pier', name: 'Пристань · рыбалка', x: mid.x + ux * 1.4, z: mid.z + uz * 1.4, y: py });
+        // уточки: три стайки у пристани плавают кругами
+        this.ducks = []; const DN = 9, dB = new THREE.InstancedMesh(new THREE.SphereGeometry(.07, 10, 8).scale(1, .7, 1.4), flat('#ffffff'), DN),
+          dH = new THREE.InstancedMesh(new THREE.SphereGeometry(.045, 8, 6).translate(0, .08, .08), flat('#ffffff'), DN), dK = new THREE.InstancedMesh(new THREE.BoxGeometry(.03, .015, .05).translate(0, .075, .14), flat('#ff9f1a'), DN);
+        const sx0 = -uz, sz0 = ux; let n = 0;
+        for (const [off, fwd] of [[-1.6, 1.8], [1.7, 2.6], [-.6, 4.4]]) { const cx = mid.x + ux * fwd + sx0 * off, cz = mid.z + uz * fwd + sz0 * off; if (Hs(cx, cz) > WATER_Y - .05) continue;
+          for (let k = 0; k < 3 && n < DN; k++, n++) { this.ducks.push({ cx, cz, rad: .35 + k * .18, a0: k * 2.1 + r(), sp: (.18 + r() * .1) * (off > 0 ? 1 : -1) });
+            const mallard = k % 3 !== 2; dB.setColorAt(n, C.set(mallard ? '#8a6a4a' : '#fff6e0')); dH.setColorAt(n, C.set(mallard ? '#2e7d4f' : '#fff6e0')); } }
+        dB.count = dH.count = dK.count = n; if (n) { this.duckB = add(dB); this.duckH = add(dH); this.duckK = add(dK); } } }
     // районы → подписи на общем плане
     const dist = new Map(); for (const h of town) { const nm = h.district, d = dist.get(nm) || { name: nm, x: 0, z: 0, n: 0 }; d.x += h.x; d.z += h.z; d.n++; dist.set(nm, d); }
     this.districts = [...dist.values()].filter(d => d.n >= 25 && d.name !== 'Центр').map(d => ({ name: d.name, x: d.x / d.n, z: d.z / d.n, n: d.n }));
@@ -782,7 +835,8 @@ export class City3D {
       sg.position.set(pk.position.x + .42 + Math.sin(i * 2.1) * .5, pk.position.y + 1.0 + i * .28, pk.position.z + .42 + Math.cos(i * 2.1) * .3); add(sg); });
     for (const [nick, T] of Object.entries(allT)) { const h = this.byKey.get(nick); if (!h || h.gone || !T || !(T.t || T.mc)) continue;
       const sg = T.t ? textSprite((T.mc ? '💎 ' : '🏅 ') + T.t, { color: '#1a1238', bg: T.mc ? 'rgba(126,232,255,.95)' : 'rgba(255,210,63,.95)', scale: .0015, size: 48 })
-        : textSprite('💎 Меценат', { color: '#1a1238', bg: 'rgba(126,232,255,.95)', scale: .0015, size: 48 }); sg.position.set(h.x, (h.y || 0) + this.houseTop(h) + (this.fxMap?.[nick]?.s ? 1.0 : .62), h.z); add(sg); }
+        : textSprite('💎 Меценат', { color: '#1a1238', bg: 'rgba(126,232,255,.95)', scale: .0015, size: 48 }); { const f = this.fxMap?.[nick] || {}, v = (f.p && f.p.title) || []; if ((f.off || []).includes('title')) continue;
+          sg.position.set(h.x + (+v[0] || 0), (h.y || 0) + this.houseTop(h) + (f.s ? 1.0 : .62) + (+v[1] || 0), h.z + (+v[3] || 0)); sg.scale.multiplyScalar(v[2] == null ? 1 : +v[2]); add(sg); } }
     if (this.mini) { const { seed, n, taken } = this.mini, base = this.houses.filter(h => !h.recipe && !h.gone && !h.isEstate);
       for (let i = 0; i < n && base.length; i++) { if (taken.has(i)) continue; const r0 = rnd(seed ^ Math.imul(i + 1, 2654435761)), h = base[Math.floor(r0() * base.length)];
         const C = makeChest(); C.scale.setScalar(.75); { const lx = (r0() < .5 ? -1 : 1) * (h.w / 2 + .12), lz = r0() < .5 ? -(h.dp / 2 + .3) : 0, ca = Math.cos(h.rot), sa = Math.sin(h.rot), x = h.x + lx * ca + lz * sa, z = h.z - lx * sa + lz * ca; C.position.set(x, this.gy(x, z) + .02, z); } C.rotation.y = r0() * 6;
@@ -894,6 +948,11 @@ export class City3D {
     this.boats.forEach((b, i) => { const a = b.a0 + b.sp * T, sg = Math.sign(b.sp), x = LAKE.x + Math.cos(a) * b.rad * 1.15, z = LAKE.z + Math.sin(a) * b.rad;
       Q.setFromAxisAngle(Yx, Math.atan2(-Math.sin(a) * 1.15 * sg, Math.cos(a) * sg)); M.compose(P.set(x, WATER_Y + Math.sin(T * 2 + i) * .012, z), Q, S1); this.boatHull.setMatrixAt(i, M); this.boatCab.setMatrixAt(i, M); });
     this.boatHull.instanceMatrix.needsUpdate = this.boatCab.instanceMatrix.needsUpdate = true;
+    if (this.duckB) { this.ducks.forEach((d, i) => { const a = d.a0 + d.sp * T, sg = Math.sign(d.sp), x = d.cx + Math.cos(a) * d.rad, z = d.cz + Math.sin(a) * d.rad;
+        Q.setFromAxisAngle(Yx, Math.atan2(-Math.sin(a) * sg, Math.cos(a) * sg)); M.compose(P.set(x, WATER_Y + .02 + Math.sin(T * 3 + i) * .008, z), Q, S1);
+        this.duckB.setMatrixAt(i, M); this.duckH.setMatrixAt(i, M); this.duckK.setMatrixAt(i, M); });
+      this.duckB.instanceMatrix.needsUpdate = this.duckH.instanceMatrix.needsUpdate = this.duckK.instanceMatrix.needsUpdate = true; }
+    if (this.bobber && this.pier) this.bobber.position.y = WATER_Y - this.pier.y - .01 + Math.sin(T * 2.4) * .012 - (this.biting ? Math.abs(Math.sin(T * 18)) * .05 : 0);
     this.ppl.forEach((o, i) => { const Lr = o.L, u = (o.s0 + o.sp * T) % (2 * Lr), s = u < Lr ? u : 2 * Lr - u; alongRoad(Tr, o.rd, s, o.side * (o.rd.w / 2 + .14), A);
       const b = Math.abs(Math.sin(T * 8 * o.sp + o.ph)) * .02; M.makeTranslation(A.x, A.y + .05 + b, A.z); this.pBody.setMatrixAt(i, M); this.pHead.setMatrixAt(i, M); o.x = A.x; o.z = A.z; o.y = A.y + .05 + b; });
     if (this.ppl.length) this.pBody.instanceMatrix.needsUpdate = this.pHead.instanceMatrix.needsUpdate = true;
@@ -941,7 +1000,7 @@ export class City3D {
     // названия мест (парки, площади, памятники) — на среднем плане
     if (c.d > 5 && c.d < 40 && this.places && !this.noLmLabels && lm === 'all') {
       const R = c.d * 1.1, used = []; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = '700 12px Inter, sans-serif';
-      const ICON = { park: '🌳', square: '⭐', fountain: '⛲', playground: '🎠', art: '💗', monument: '🗿', estate: '🏡' };
+      const ICON = { park: '🌳', square: '⭐', fountain: '⛲', playground: '🎠', art: '💗', monument: '🗿', estate: '🏡', pier: '⚓' };
       for (const pl of this.places) { if (Math.hypot(pl.x - c.x, pl.z - c.z) > R) continue; const p = this.project(pl.x, (pl.y || 0) + 1.1, pl.z); if (!p) continue;
         if (used.some(q => Math.abs(q[0] - p[0]) < 150 && Math.abs(q[1] - p[1]) < 26)) continue; used.push(p);
         const t = `${ICON[pl.kind] || '📍'} ${pl.name}`, w = g.measureText(t).width + 16;

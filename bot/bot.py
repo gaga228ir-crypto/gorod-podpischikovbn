@@ -439,12 +439,17 @@ TASKS = {
     "borrow": ("🦝 Одолжи украшение у соседа", 1, 10),
     "roof": ("🎨 Нарисуй или обнови флаг над домом", 1, 10),
     "mini": ("🧰 Найди и открой малый сундук", 1, 15),
+    "fish": ("🎣 Поймай 2 рыбы на пристани", 2, 10),
 }
 TASKS_N, TASKS_ALL_BONUS = 3, 25
 
+# ======== 🎣 Рыбалка на пристани (идея жителей: «ловить рыбу и получать за неё неонки») ========
+FISH_MAX = 5  # забросов с уловом в день
+FISH = [("🐟 Карась", 2, 45), ("🐠 Окунь", 3, 25), ("🐡 Ёрш", 4, 12), ("🦐 Креветка", 3, 8), ("👢 Старый ботинок", 0, 7), ("✨ Неоновая рыба", 25, 3)]
+
 
 def tasks_for(uid, day):
-    return sorted(TASKS, key=lambda k: fnv(f"{day}:{uid}:{k}"))[:TASKS_N]
+    return sorted((k for k in TASKS if k != "fish" or day > "2026-11-14"), key=lambda k: fnv(f"{day}:{uid}:{k}"))[:TASKS_N]  # рыбалка — с 15.11, чтобы не сбить сегодняшние задания
 
 
 async def tasks_state(uid, day):
@@ -716,13 +721,13 @@ async def social_action(m, bot, me, data):
     elif t == "hide":  # снять / вернуть своё украшение (остаётся купленным)
         item = str(data.get("i") or "")
         fx = await fx_get(me["nick"])
-        if item not in fx.get("d", []) and not (item == "roof" and (fx.get("rf") or fx.get("rf64"))) and not (item == "sign" and fx.get("s")):
+        if item not in fx.get("d", []) and not (item == "roof" and (fx.get("rf") or fx.get("rf64"))) and not (item == "sign" and fx.get("s")) and item != "title":
             return
         off = set(fx.get("off", []))
         off ^= {item}
         fx["off"] = sorted(off)
         await fx_set(me["nick"], fx)
-        await m.answer(f"{FX_ITEMS[item][0] if item in FX_ITEMS else {'roof': '🎨 Флаг', 'sign': '💬 Табличка'}.get(item, item)}: {'снято — вернуть можно в «Мой дом»' if item in off else 'снова у дома'} ✅", reply_markup=kb)
+        await m.answer(f"{FX_ITEMS[item][0] if item in FX_ITEMS else {'roof': '🎨 Флаг', 'sign': '💬 Табличка', 'title': '🏅 Титул'}.get(item, item)}: {'снято — вернуть можно в «Мой дом»' if item in off else 'снова у дома'} ✅", reply_markup=kb)
     elif t == "cohab":  # 🏘 общий дом: хозяин зовёт друга жить вместе (идея думы «дома на несколько жильцов»)
         target = norm_nick(str(data.get("n") or ""))
         err = await cohab_check(me["nick"], target)
@@ -757,6 +762,25 @@ async def social_action(m, bot, me, data):
                 await bot.send_message(ow[0]["tg_id"], f"🏠 @{guest} выехал из общего дома." if t == "leave" else f"🏠 @{host} попросил тебя выехать из общего дома — ты снова в своём доме.")
             except Exception:
                 pass
+    elif t == "fish":  # 🎣 рыбалка: на сайте мини-игра «подсечь», улов и награду решает бот
+        day = msk_day()
+        fx = await fx_get(me["nick"])
+        fs = fx.get("fs") if isinstance(fx.get("fs"), list) and len(fx.get("fs")) == 2 else [day, 0]
+        if fs[0] != day:
+            fs = [day, 0]
+        if int(fs[1]) >= FISH_MAX:
+            await m.answer(f"🎣 На сегодня клёв закончился ({FISH_MAX} из {FISH_MAX}). Приходи завтра!", reply_markup=kb)
+            return
+        name, co, _ = random.choices(FISH, weights=[w for *_, w in FISH])[0]
+        fs = [day, int(fs[1]) + 1]
+        fx["fs"] = fs
+        fx["co"] = max(0, int(fx.get("co", 0)) + co)
+        fx["fc"] = int(fx.get("fc", 0)) + (1 if co else 0)  # всего поймано рыб
+        await fx_set(me["nick"], fx)
+        if co:
+            asyncio.create_task(task_hit(bot, uid, me["nick"], "fish"))
+        left = FISH_MAX - fs[1]
+        await m.answer(f"🎣 Улов: {name}! {f'+{co} 🪙' if co else 'Ну хоть не пусто 😅'} · Осталось забросов сегодня: {left}", reply_markup=kb)
     elif t == "esz":  # размер дома в усадьбе: 1 обычный, 2 большой, 3 огромный (бесплатно)
         sz = int(data.get("s", 1)) if str(data.get("s", "1")).isdigit() else 1
         if sz not in (1, 2, 3):
@@ -2575,7 +2599,7 @@ async def web_app(m: Message, bot: Bot):
         await fx_set(me["nick"], fx)
         await m.answer(f"🪙 Куплено: {FX_ITEMS[item][0]} за {price} неонок. Осталось 🪙 {fx['co']}.", reply_markup=city_keyboard(me["nick"]))
         return
-    if data.get("t") in ("cvote", "ivote", "friend", "gift", "roof", "borrow", "hide", "esz", "cohab", "leave", "kick"):
+    if data.get("t") in ("cvote", "ivote", "friend", "gift", "roof", "borrow", "hide", "esz", "cohab", "leave", "kick", "fish"):
         await social_action(m, bot, me, data)
         return
     if data.get("t") == "spin":
@@ -2606,7 +2630,7 @@ async def web_app(m: Message, bot: Bot):
     if data.get("t") == "place":
         item = str(data.get("i") or "")
         fx = await fx_get(me["nick"])
-        if not ((item in FX_ITEMS and item != "top" and item in fx.get("d", [])) or (item == "sign" and fx.get("s")) or (item == "roof" and (fx.get("rf") or fx.get("rf64")))):
+        if not ((item in FX_ITEMS and item != "top" and item in fx.get("d", [])) or (item == "sign" and fx.get("s")) or (item == "roof" and (fx.get("rf") or fx.get("rf64"))) or item == "title"):
             await m.answer("Сначала поставь это украшение у дома 🙂", reply_markup=city_keyboard(me["nick"]))
             return
         try:

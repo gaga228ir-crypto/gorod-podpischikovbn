@@ -252,6 +252,9 @@ export function buildRoadMeshes(T, roads) {
   const out = [walk, new THREE.Mesh(ribbon(big, 0, .06, true), new THREE.MeshStandardMaterial({ map: ROAD_T, roughness: .85, polygonOffset: true, polygonOffsetFactor: -3 })),
     new THREE.Mesh(ribbon(small, 0, .06, true), new THREE.MeshStandardMaterial({ map: LANE_T, roughness: .85, polygonOffset: true, polygonOffsetFactor: -3 }))];
   for (const m of out) { m.receiveShadow = true; m.userData.flat = true; }
+  // асфальт всегда поверх тротуаров: на перекрёстках улицы стыкуются на чуть разной высоте, и полоса тротуара
+  // одной улицы ложилась поперёк другой. Тротуар не пишет глубину и рисуется после земли, асфальт — после тротуара.
+  walk.material.depthWrite = false; walk.renderOrder = 1; out[1].renderOrder = out[2].renderOrder = 2;
   return out;
 }
 // фонари вдоль больших улиц; tops — точки плафонов (ночью светятся)
