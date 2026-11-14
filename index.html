@@ -40,6 +40,9 @@ button.ghost{background:var(--soft);color:var(--text);box-shadow:none}
 .bar{flex:1;min-width:60px;height:7px;border-radius:9px;background:var(--soft);overflow:hidden}
 .bar i{display:block;height:100%;background:linear-gradient(90deg,#ff7a8f,#ffc83d);border-radius:9px}
 /* меню */
+.ic{width:1.9em;height:1.9em;vertical-align:middle;margin:-.55em .3em -.45em -.25em;pointer-events:none}
+h2 .ic{width:1.5em;height:1.5em;margin:-.3em .25em -.2em 0}
+#cshare .ic,#clook .ic{width:1.7em;height:1.7em}
 .chip{border:0;border-radius:999px;padding:8px 12px;font:800 11px Unbounded,sans-serif;cursor:pointer;background:var(--panel);color:var(--text);text-decoration:none;display:inline-block;box-shadow:var(--shadow)}
 #menuBtn{align-self:flex-start;background:var(--gold);color:var(--text)}#menuBtn.open{background:var(--text);color:#fff}
 .chips{display:flex;gap:6px;flex-wrap:wrap;max-width:560px}.chips:not(.open){display:none}
@@ -103,22 +106,67 @@ body.orbiting .top,body.orbiting #card,body.orbiting #cta{display:none!important
 .code{font:800 40px Unbounded,sans-serif;color:var(--text);text-align:center;letter-spacing:.04em;padding:14px;border:2px dashed var(--pink);border-radius:18px;background:#fff6f8}
 .err{color:#d6334f;font:600 13px Inter,sans-serif;min-height:1em}
 .btns{display:flex;gap:8px}.btns>*{flex:1}
-/* заставка */
-#load{position:fixed;inset:0;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:linear-gradient(#8fc3ef,#dcefff 55%,#cfe8c0);transition:opacity .5s}
+/* заставка: небо, облака, домики растут один за другим */
+#load{position:fixed;inset:0;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;background:linear-gradient(#7fbbee,#cfe7fb 58%,#e9f5ff);transition:opacity .5s}
 #load.hide{opacity:0;pointer-events:none}
-#load .logo{font:800 26px/1.15 Unbounded,sans-serif;text-align:center;letter-spacing:.02em;color:var(--text)}
-#load .logo b{color:var(--pink);font-weight:800}
-#load .sky{display:flex;align-items:flex-end;gap:6px;height:70px}
-#load .sky i{display:block;width:16px;border-radius:4px 4px 0 0;background:linear-gradient(#ff8fa3,#e0576f);animation:grow 1.2s ease-in-out infinite alternate}
-#load .sky i:nth-child(2n){background:linear-gradient(#ffd66b,#e8a020)}#load .sky i:nth-child(3n){background:linear-gradient(#8fd3f0,#3f8fc0)}
-@keyframes grow{from{height:12px}to{height:70px}}
-#load .lbar{width:min(70vw,260px);height:7px;border-radius:9px;background:rgba(255,255,255,.7);overflow:hidden}
-#load .lbar i{display:block;height:100%;width:8%;background:linear-gradient(90deg,#ff7a8f,#ffc83d);border-radius:9px;transition:width .4s}
-#load .ltxt{font:600 13px Inter,sans-serif;color:var(--muted)}
+#load .sun{position:absolute;top:9%;right:14%;width:86px;height:86px;border-radius:50%;background:radial-gradient(circle,#fff7c8 0,#ffd75e 55%,rgba(255,200,61,0) 72%);animation:sunp 3s ease-in-out infinite alternate}
+@keyframes sunp{to{transform:scale(1.08)}}
+#load .cl{position:absolute;height:26px;width:90px;border-radius:30px;background:#fff;opacity:.9;animation:drift linear infinite}
+#load .cl::before,#load .cl::after{content:"";position:absolute;background:#fff;border-radius:50%}
+#load .cl::before{width:44px;height:44px;left:14px;top:-22px}#load .cl::after{width:32px;height:32px;left:46px;top:-14px}
+#load .c1{top:17%;animation-duration:26s;left:-120px}#load .c2{top:30%;animation-duration:38s;animation-delay:-18s;left:-120px;transform:scale(.7)}#load .c3{top:8%;animation-duration:32s;animation-delay:-8s;left:-120px;transform:scale(.55)}
+@keyframes drift{to{left:110%}}
+#load .stars{position:absolute;inset:0;opacity:0;background-image:radial-gradient(1.6px 1.6px at 12% 18%,#fff,transparent),radial-gradient(1.4px 1.4px at 32% 9%,#fff,transparent),radial-gradient(1.8px 1.8px at 58% 22%,#fff,transparent),radial-gradient(1.3px 1.3px at 76% 12%,#fff,transparent),radial-gradient(1.6px 1.6px at 88% 30%,#fff,transparent),radial-gradient(1.2px 1.2px at 22% 34%,#fff,transparent),radial-gradient(1.5px 1.5px at 45% 40%,#fff,transparent)}
+#load .hill{position:absolute;left:-10%;right:-10%;bottom:-38vh;height:70vh;border-radius:50%;background:radial-gradient(ellipse at 50% 0,#9fd67f,#6fb85a 60%);box-shadow:0 -6px 0 #b7e59b inset}
+#load .town{position:relative;display:flex;align-items:flex-end;gap:7px;height:92px;margin-bottom:18px;z-index:1}
+#load .h{position:relative;display:block;width:34px;border-radius:4px 4px 2px 2px;transform-origin:50% 100%;transform:scaleY(0);animation:rise 4.2s cubic-bezier(.3,1.5,.5,1) infinite;background:linear-gradient(90deg,transparent 22%,rgba(255,255,255,.85) 22% 40%,transparent 40% 60%,rgba(255,255,255,.85) 60% 78%,transparent 78%) 0 9px/100% 10px repeat-y,var(--w,#ffe1c7);box-shadow:inset -6px 0 0 rgba(0,0,0,.07)}
+#load .h::before{content:"";position:absolute;left:-5px;right:-5px;bottom:100%;height:20px;background:var(--r,#ff5a7a);clip-path:polygon(50% 0,100% 100%,0 100%)}
+#load .h.t{width:26px;border-radius:3px}#load .h.t::before{display:none}
+@keyframes rise{0%{transform:scaleY(0)}14%,82%{transform:scaleY(1)}96%,100%{transform:scaleY(0)}}
+#load .logo{position:relative;z-index:1;font:800 25px/1.15 Unbounded,sans-serif;text-align:center;letter-spacing:.02em;color:#1d2b44;text-shadow:0 2px 0 rgba(255,255,255,.7)}
+#load .logo b{color:#ff5a7a;font-weight:800}
+#load .lbox{position:relative;z-index:1;margin-top:22px;width:min(78vw,300px);background:rgba(255,255,255,.93);border-radius:20px;padding:14px 16px;box-shadow:0 8px 28px rgba(29,43,68,.16)}
+#load .lbar{height:9px;border-radius:9px;background:rgba(29,43,68,.08);overflow:hidden}
+#load .lbar i{display:block;height:100%;width:8%;border-radius:9px;transition:width .4s;background:linear-gradient(90deg,#ff7a8f,#ffc83d,#ff7a8f);background-size:200% 100%;animation:shine 1.4s linear infinite}
+@keyframes shine{to{background-position:-200% 0}}
+#load .lrow{display:flex;justify-content:space-between;gap:8px;margin-top:8px;font:600 12px Inter,sans-serif;color:#5d6b82}#load .lrow b{color:#1d2b44;font:800 12px Unbounded,sans-serif}
+#load .ltip{margin-top:8px;padding-top:8px;border-top:1px solid rgba(29,43,68,.1);font:500 12.5px/1.4 Inter,sans-serif;color:#5d6b82;min-height:3.6em;transition:opacity .3s}
+html[data-night] #load{background:linear-gradient(#0f1838,#24305e 60%,#3a3f74)}
+html[data-night] #load .sun{background:radial-gradient(circle,#fffbe8 0,#e9ecff 45%,rgba(200,210,255,0) 70%);width:64px;height:64px}
+html[data-night] #load .cl{opacity:.12}html[data-night] #load .stars{opacity:1}
+html[data-night] #load .hill{background:radial-gradient(ellipse at 50% 0,#3d6a4a,#27493a 60%);box-shadow:0 -6px 0 #4f7f5c inset}
+html[data-night] #load .h{background:linear-gradient(90deg,transparent 22%,#ffd36b 22% 40%,transparent 40% 60%,#ffd36b 60% 78%,transparent 78%) 0 9px/100% 10px repeat-y,var(--w,#ffe1c7);filter:brightness(.85)}
+html[data-night] #load .logo{color:#fff;text-shadow:0 0 18px rgba(255,90,122,.55)}
+html[data-night] #load .lbox{background:rgba(22,30,58,.9);box-shadow:0 8px 28px rgba(0,0,0,.4)}
+html[data-night] #load .lrow,html[data-night] #load .ltip{color:#a9b4d6}html[data-night] #load .lrow b{color:#fff}html[data-night] #load .lbar{background:rgba(255,255,255,.1)}html[data-night] #load .ltip{border-color:rgba(255,255,255,.12)}
+/* тёмная тема (ночь): тёмно-синее стекло, светлый текст */
+html[data-theme=dark]{--panel:rgba(22,30,58,.9);--line:rgba(255,255,255,.12);--goldt:#ffc83d;--text:#eef2ff;--muted:#a9b4d6;--soft:rgba(255,255,255,.08);--shadow:0 8px 28px rgba(0,0,0,.4)}
+html[data-theme=dark] .title h1{color:#fff;text-shadow:0 2px 12px rgba(0,0,0,.6)}
+html[data-theme=dark] .sheet{background:#18203f;box-shadow:0 -10px 40px rgba(0,0,0,.5)}
+html[data-theme=dark] .modal{background:rgba(5,8,20,.55)}
+html[data-theme=dark] .modal.placing .sheet{background:rgba(24,32,63,.95)}
+html[data-theme=dark] .sheet input,html[data-theme=dark] .sheet textarea,html[data-theme=dark] .sheet select{background:#0f1530;color:var(--text);border:1px solid var(--line)}
+html[data-theme=dark] input::placeholder,html[data-theme=dark] textarea::placeholder{color:#7d88ad}
+html[data-theme=dark] .opt.on{background:rgba(255,90,122,.16)}
+html[data-theme=dark] #menuBtn{color:#1d2b44}html[data-theme=dark] #menuBtn.open{background:#fff;color:#18203f}
+html[data-theme=dark] #toCity{background:var(--panel);color:var(--text)}
+html[data-theme=dark] .hint{background:rgba(22,30,58,.75)}
+html[data-theme=dark] .code{background:#0f1530}
+html[data-theme=dark] .card{box-shadow:0 16px 50px rgba(0,0,0,.5)}
+html[data-theme=dark] .chip{border:1px solid rgba(255,255,255,.08)}
+html[data-theme=dark] .klad{border:2px solid var(--gold)}
+html[data-theme=dark] .share,html[data-theme=dark] .klad.hot{color:#1d2b44}
+html[data-theme=dark] .ic{filter:drop-shadow(0 2px 4px rgba(0,0,0,.35))}
+html[data-theme=dark],html[data-theme=old]{--toast:rgba(24,32,63,.97)}html[data-theme=old]{--text:#fff}
+html[data-theme=old] .opt.on{background:rgba(255,210,63,.18);color:#fff}
+html[data-theme=dark] .studio canvas{background:linear-gradient(#26305a,#1a2244)}
 </style>
+<link rel="stylesheet" href="old.css" id="oldcss" disabled>
+<script>(function(){var u='auto';try{u=(JSON.parse(localStorage.getItem('gset')||'{}').ui)||'auto'}catch(e){}var h=new Date().getHours(),n=h<7||h>=18,d=document.documentElement;if(n)d.setAttribute('data-night','');window.applyTheme=function(u,night){var o=document.getElementById('oldcss');if(o)o.disabled=u!=='old';d.setAttribute('data-theme',u==='old'?'old':u==='dark'||(u==='auto'&&night)?'dark':'light')};applyTheme(u,n)})()</script>
 </head>
 <body>
-<div id="load"><div class="sky"><i style="animation-delay:0s"></i><i style="animation-delay:.15s"></i><i style="animation-delay:.3s"></i><i style="animation-delay:.45s"></i><i style="animation-delay:.6s"></i><i style="animation-delay:.75s"></i><i style="animation-delay:.9s"></i></div><div class="logo">ГОРОД<br><b>ПОДПИСЧИКОВ</b></div><div class="lbar"><i id="lbarI"></i></div><div class="ltxt" id="ltxt">Загружаем город…</div></div>
+<div id="load"><i class="stars"></i><i class="sun"></i><i class="cl c1"></i><i class="cl c2"></i><i class="cl c3"></i><i class="hill"></i><div class="town"><i class="h" style="height:46px;--w:#ffe1c7;--r:#ff5a7a;animation-delay:0.00s"></i><i class="h" style="height:62px;--w:#d9ecff;--r:#2b6fb5;animation-delay:0.18s"></i><i class="h" style="height:40px;--w:#fff1b8;--r:#e8743b;animation-delay:0.36s"></i><i class="h t" style="height:78px;--w:#bcd3ee;animation-delay:0.54s"></i><i class="h" style="height:54px;--w:#e3f6d8;--r:#2e9d4f;animation-delay:0.72s"></i><i class="h" style="height:44px;--w:#ffd9e2;--r:#7a4fd0;animation-delay:0.90s"></i><i class="h" style="height:58px;--w:#fdeedd;--r:#ff5a7a;animation-delay:1.08s"></i></div><div class="logo">ГОРОД<br><b>ПОДПИСЧИКОВ</b></div><div class="lbox"><div class="lbar"><i id="lbarI"></i></div><div class="lrow"><span id="ltxt">Загружаем город…</span><b id="lpct">0%</b></div><div class="ltip" id="ltip"></div></div></div>
+<script>(function(){var T=['🔍 Впиши свой ник в поиск — камера прилетит к твоему дому.','💎 Каждый день в городе прячется клад. Найди сундук — получишь дом по описанию.','🏡 За озером — Посёлок Усадеб: большой участок с забором и садом.','👆 Нажми на любой дом — увидишь адрес, соседей и украшения.','🌙 Ночью в окнах загорается свет, а по улицам горят фонари.','🗳 В городе проходят выборы мэра — голосуй в боте.','🏛 Предложи идею для города в боте — жители проголосуют в думе.'],i=Math.floor(Math.random()*T.length),el=document.getElementById('ltip');function sh(){if(!el.isConnected)return;el.style.opacity=0;setTimeout(function(){el.textContent=T[i++%T.length];el.style.opacity=1},300)}el.textContent=T[i++%T.length];setInterval(sh,3600)})()</script>
 <script>setTimeout(function(){var l=document.getElementById('load');if(l)l.classList.add('hide')},20000)</script>
 <canvas id="c"></canvas>
 <canvas id="lbl"></canvas>
@@ -205,7 +253,7 @@ window.city = city;
 
 // ---------- данные ----------
 let houses = [], milestones = MILESTONES_DEFAULT, election = null;
-const loadStep = (p, t) => { $('lbarI').style.width = p + '%'; if (t) $('ltxt').textContent = t; };
+const loadStep = (p, t) => { $('lbarI').style.width = p + '%'; if ($('lpct')) $('lpct').textContent = Math.round(p) + '%'; if (t) $('ltxt').textContent = t; };
 const hideLoad = () => { loadStep(100); setTimeout(() => $('load').classList.add('hide'), 250); setTimeout(() => $('load').remove(), 900); };
 let baseList = [], hallInfo = null, specialRows = [], fxMap = {}, titles = {}, estates = {}, meta = {}, duma = [];
 async function loadCity() {
@@ -331,7 +379,7 @@ async function loadAPI() { const a = await Promise.all([getJSON('api.json'), get
 loadAPI();
 async function apiPost(data) { const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ initData: tg.initData, data }), signal: withTimeout(15000) }); return r.json(); }
 function toastMsg(t) { let el = document.getElementById('toastM'); if (!el) { el = document.createElement('div'); el.id = 'toastM';
-    el.style.cssText = 'position:fixed;left:50%;top:18%;transform:translateX(-50%);z-index:20;max-width:88vw;background:rgba(255,255,255,.97);border-left:4px solid var(--pink);color:var(--text);font:600 14px/1.4 Inter,sans-serif;padding:12px 16px;border-radius:14px;box-shadow:0 10px 36px rgba(29,43,68,.25);transition:opacity .3s';
+    el.style.cssText = 'position:fixed;left:50%;top:18%;transform:translateX(-50%);z-index:20;max-width:88vw;background:var(--toast,rgba(255,255,255,.97));border-left:4px solid var(--pink);color:var(--text);font:600 14px/1.4 Inter,sans-serif;padding:12px 16px;border-radius:14px;box-shadow:0 10px 36px rgba(29,43,68,.25);transition:opacity .3s';
     document.body.appendChild(el); } el.textContent = t; el.style.opacity = 1; clearTimeout(el._t); el._t = setTimeout(() => el.style.opacity = 0, 4200); }
 function optimistic(d) { const me = fxMap[ME] = fxMap[ME] || {};
   if (d.t === 'knock') { const f = fxMap[d.n] = fxMap[d.n] || {}; f.k = (f.k || 0) + 1; }
@@ -567,7 +615,7 @@ function openHonor() {
 }
 
 // ---------- день/ночь и погода ----------
-const GSET_DEF = { day: 'auto', tz: 'device', wx: 'auto', nicks: 'on' };
+const GSET_DEF = { day: 'auto', tz: 'device', wx: 'auto', nicks: 'on', ui: 'auto' };
 let gset = { ...GSET_DEF }; try { Object.assign(gset, JSON.parse(localStorage.getItem('gset') || '{}')); } catch (e) {}
 const TZS = [['device', 'Как на телефоне'], ['2', 'UTC+2 · Калининград'], ['3', 'UTC+3 · Москва, СПб'], ['4', 'UTC+4 · Самара'], ['5', 'UTC+5 · Екатеринбург'], ['6', 'UTC+6 · Омск'], ['7', 'UTC+7 · Новосибирск'], ['8', 'UTC+8 · Иркутск'], ['9', 'UTC+9 · Якутск'], ['10', 'UTC+10 · Владивосток'], ['11', 'UTC+11 · Магадан'], ['12', 'UTC+12 · Камчатка']];
 const localHour = () => { const d = new Date(); if (gset.tz === 'device') return d.getHours() + d.getMinutes() / 60; const h = d.getUTCHours() + d.getUTCMinutes() / 60 + +gset.tz; return (h + 24) % 24; };
@@ -582,7 +630,7 @@ const curWeather = () => gset.wx === 'auto' ? autoWeather() : gset.wx === 'off' 
 const WX_ICON = { clear: '', snow: '❄️', rain: '🌧', fog: '🌫' };
 let ambChip = null;
 function applyAmbience() {
-  city.setDaylight(daylight()); city.setWeather(curWeather()); city.hideNicks = gset.nicks === 'off';
+  city.setDaylight(daylight()); city.setWeather(curWeather()); city.hideNicks = gset.nicks === 'off'; applyTheme(gset.ui, city.dayT < .35);
   if (ambChip) { const t = city.dayT; ambChip.textContent = (t > .6 ? '☀️' : t > .05 ? '🌇' : '🌙') + (WX_ICON[city.weather] ? ' ' + WX_ICON[city.weather] : ''); }
 }
 function initAmbience() {
@@ -597,6 +645,7 @@ function initAmbience() {
 function openAmbience() {
   const opt = (k, v, t) => `<button class="opt${gset[k] === v ? ' on' : ''}" data-k="${k}" data-v="${v}" type="button">${t}</button>`;
   sheet.innerHTML = `<h2>⚙️ Настройки города</h2>
+    <div class="srow"><span>Оформление меню</span><div class="opts">${opt('ui', 'auto', '🕒 Авто: днём светлое, ночью тёмное')}${opt('ui', 'light', '☀️ Светлое')}${opt('ui', 'dark', '🌙 Тёмное')}${opt('ui', 'old', '💜 Старый неоновый')}</div></div>
     <div class="srow"><span>Время суток</span><div class="opts">${opt('day', 'auto', '🕒 Как в жизни')}${opt('day', 'night', '🌙 Всегда ночь')}${opt('day', 'day', '☀️ Всегда день')}</div></div>
     <div class="srow"><span>Часовой пояс</span><select id="gtz" style="border-radius:12px;padding:10px;font:600 14px Inter,sans-serif">${TZS.map(([v, t]) => `<option value="${v}"${gset.tz === v ? ' selected' : ''}>${t}</option>`).join('')}</select></div>
     <div class="srow"><span>Ники над домами</span><div class="opts">${opt('nicks', 'on', '👁 Показывать')}${opt('nicks', 'off', '🙈 Скрыть')}</div></div>
@@ -664,6 +713,19 @@ new MutationObserver(unplace).observe(sheet, { childList: true });
 
 modal.addEventListener('pointerdown', e => { if (e.target === modal) modal.classList.remove('show'); });
 $('menuBtn').onclick = () => { const o = $('chips').classList.toggle('open'); $('menuBtn').classList.toggle('open', o); $('menuBtn').textContent = o ? '✕ ЗАКРЫТЬ' : '☰ МЕНЮ'; };
+// ── иконки вместо эмодзи (icons/*.webp, нарезаны из одного листа)
+const ICONS = [['🗳', 'vote'], ['💎', 'chest'], ['💬', 'chat'], ['🎡', 'park'], ['🏡', 'estate'], ['🏆', 'honor'], ['🏛', 'duma'], ['👤', 'myhome'], ['🔄', 'look'], ['🎁', 'gift'], ['🏙', 'city'], ['🏠', 'gethouse'], ['🪙', 'coin'], ['☀️', 'weather', 1], ['🌇', 'weather', 1], ['🌙', 'weather', 1]];
+function iconize(el) {
+  if (!el || el.classList.contains('opt') || el.querySelector('img.ic')) return;
+  const n = el.firstChild; if (!n || n.nodeType !== 3) return;
+  const t = n.nodeValue.trimStart(), m = ICONS.find(([e]) => t.startsWith(e)); if (!m || (m[2] && !el.classList.contains('chip'))) return;
+  n.nodeValue = t.slice(m[0].length).replace(/^\uFE0F?\s*/, '');
+  const i = new Image(); i.className = 'ic'; i.alt = ''; i.src = 'icons/' + m[1] + '.webp'; el.insertBefore(i, n);
+}
+const iconAll = root => root.querySelectorAll('.chip, button, a.btn, h2').forEach(iconize);
+for (const r of [$('chips'), sheet, $('card'), document.body]) new MutationObserver(() => iconAll(r)).observe(r, { childList: true, subtree: r !== document.body, characterData: false });
+iconAll(document.body);
+if (!$('cshare').querySelector('img.ic')) $('cshare').insertAdjacentHTML('afterbegin', '<img class="ic" alt="" src="icons/share.webp">');
 $('chips').addEventListener('click', e => { if (e.target.closest('.chip')) { $('chips').classList.remove('open'); $('menuBtn').classList.remove('open'); $('menuBtn').textContent = '☰ МЕНЮ'; } });
 // «Осмотреть дом»: камера облетает дом по кругу, интерфейс прячется; любое касание — выход
 let orbit = null;

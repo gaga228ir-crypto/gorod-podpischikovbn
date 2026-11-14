@@ -1,0 +1,392 @@
+:root{--bg:#070b24;--panel:rgba(12,8,36,.86);--gold:#ffd23f;--pink:#ff3d7f;--cyan:#5ef2ff;--text:#fff;--muted:#bdb6ea}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:Inter,system-ui,sans-serif;overflow:hidden;touch-action:none}
+html,body{background:radial-gradient(120% 80% at 50% 0%,#2a1d6b 0%,#120c38 45%,#070b24 100%)}
+#c{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:grab;touch-action:none}
+#c.drag{cursor:grabbing}
+#lbl{position:fixed;inset:0;width:100%;height:100%;pointer-events:none}
+.prog{display:flex;align-items:center;gap:8px;background:rgba(12,8,36,.75);border:1px solid rgba(160,150,255,.3);border-radius:999px;padding:6px 12px 6px 10px;font:600 11px Inter,sans-serif;color:var(--muted);cursor:pointer;max-width:520px}
+.prog b{color:#fff;font-weight:800}
+.bar{flex:1;min-width:60px;height:6px;border-radius:9px;background:rgba(255,255,255,.12);overflow:hidden}
+.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--pink),var(--gold));border-radius:9px}
+.top{position:fixed;left:0;right:0;top:0;padding:14px 16px 12px;background:linear-gradient(var(--panel),rgba(12,8,36,0));display:flex;flex-direction:column;gap:10px;z-index:2}
+.title{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.title h1{margin:0;font:800 18px/1.1 Unbounded,sans-serif;letter-spacing:.02em}
+.count{font:500 12px Unbounded,sans-serif;color:var(--muted);white-space:nowrap}
+.count b{color:var(--gold);font-weight:800;font-size:15px}
+form.row{display:flex;gap:8px;max-width:520px}
+input,textarea{width:100%;min-width:0;border:0;border-radius:999px;padding:12px 16px;font:600 16px Inter,sans-serif;background:#fff;color:#1a1238;outline:none}
+textarea{border-radius:18px;resize:none;height:84px}
+input:focus,textarea:focus{box-shadow:0 0 0 3px var(--pink)}
+button,.btn{border:0;border-radius:999px;padding:12px 18px;font:800 13px Unbounded,sans-serif;cursor:pointer;background:var(--pink);color:#fff;text-decoration:none;white-space:nowrap;display:inline-block;text-align:center}
+button:active,.btn:active{transform:scale(.96)}
+button.ghost{background:rgba(255,255,255,.12)}
+.msg{font:600 13px Inter,sans-serif;color:var(--gold);min-height:1em}
+.card{position:fixed;left:50%;bottom:18px;transform:translate(-50%,160%);transition:transform .35s cubic-bezier(.2,1.4,.4,1);background:var(--panel);border:1px solid rgba(160,150,255,.35);border-radius:22px;padding:16px 18px;width:min(92vw,420px);z-index:3;display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;max-height:62vh;overflow-y:auto}
+.card .grow{flex:1 1 100%;min-width:0;order:0}
+.card>button{order:1}.card #cclose{position:absolute;top:10px;right:10px;width:34px;height:34px;padding:0;border-radius:50%}
+.card .nick{padding-right:40px;word-break:break-word}
+.card.show{transform:translate(-50%,0)}
+.card .nick{font:800 18px Unbounded,sans-serif;color:var(--gold);word-break:break-all}
+.card .sub{font:500 13px Inter,sans-serif;color:var(--muted);margin-top:4px}
+
+.vbar{height:6px;border-radius:3px;background:rgba(255,255,255,.12);margin:6px 0 2px;overflow:hidden}.vbar i{display:block;height:100%;background:linear-gradient(90deg,#ff3d7f,#ffd23f)}
+.vbtn{padding:8px 14px!important;font-size:13px!important;align-self:center;flex:none}
+.card .nb button{font:700 13px Inter,sans-serif;color:var(--gold);background:none;border:0;padding:0 2px;cursor:pointer;text-decoration:underline dotted}
+.cta{position:fixed;right:16px;bottom:18px;z-index:2}
+#toCity{position:fixed;right:16px;top:150px;z-index:3;display:none;background:var(--cyan);color:#1a1238;box-shadow:0 8px 30px rgba(94,242,255,.4)}
+#toCity.show{display:block}body.orbiting #toCity{display:none!important}
+.card.show ~ .cta{display:none}
+body.orbiting .top,body.orbiting #card,body.orbiting #cta{display:none!important}
+.chips{display:flex;gap:8px;flex-wrap:wrap}.chips:not(.open){display:none}#menuBtn{align-self:flex-start}#menuBtn.open{background:var(--pink);color:#fff}
+.fxb{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.fxb:empty{display:none}.fxb button{padding:7px 11px;font-size:10px;background:rgba(255,255,255,.12)}.fxb .k{font:800 12px Inter,sans-serif;color:#ff8fb8;align-self:center}
+.shop{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.06);border-radius:14px;padding:10px 12px}.shop span{flex:1;font:600 14px Inter,sans-serif}.shop button{padding:8px 12px;font-size:12px}
+.klad{background:rgba(12,8,36,.8);color:#fff;border:1px solid rgba(255,210,63,.5);animation:none}
+.klad.hot{background:var(--gold);color:#1a1238;animation:pulse 1s infinite}
+.chip{border:0;border-radius:999px;padding:7px 12px;font:800 11px Unbounded,sans-serif;cursor:pointer;background:var(--gold);color:#1a1238;animation:pulse 2s infinite;text-decoration:none;display:inline-block}
+@keyframes pulse{50%{box-shadow:0 0 0 6px rgba(255,210,63,.25)}}
+/* в меню кнопки не пульсируют: 15 анимаций тени поверх 3D на телефоне — лаги */
+.chips .chip{animation:none}
+.share{background:var(--gold);color:#1a1238;padding:9px 12px;font-size:11px}
+.cand{display:flex;gap:10px;align-items:flex-start;background:rgba(255,255,255,.06);border-radius:14px;padding:10px 12px}
+.cand b{font:800 18px Unbounded,sans-serif;color:var(--gold);min-width:26px}
+.cand .n{font:800 14px Unbounded,sans-serif}
+.cand .p{color:var(--muted);font-size:14px}
+.studio{display:flex;flex-direction:column;gap:12px}
+.studio canvas{display:block;margin:0 auto;width:200px;height:200px;border-radius:18px;background:#191545}
+.tabs{display:flex;gap:6px;background:rgba(255,255,255,.06);padding:4px;border-radius:999px}
+.tabs button{flex:1;background:transparent;padding:10px 6px;font-size:11px}
+.tabs button.on{background:var(--pink)}
+.srow{display:flex;flex-direction:column;gap:6px}
+.srow>span{font:600 12px Inter,sans-serif;color:var(--muted)}
+.opts{display:flex;gap:6px;flex-wrap:wrap}
+.opt{border:2px solid transparent;background:rgba(255,255,255,.08);color:#fff;border-radius:12px;padding:8px 10px;font:600 13px Inter,sans-serif;cursor:pointer}
+.opt.on{border-color:var(--gold)}
+.sw{width:34px;height:34px;padding:0;border-radius:50%}
+.pre{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
+.hint{position:fixed;left:16px;bottom:24px;font:500 12px Inter,sans-serif;color:var(--muted);z-index:2;opacity:.8}
+@media (max-width:520px){.hint{display:none}}
+.modal{position:fixed;inset:0;background:rgba(5,3,20,.74);z-index:5;display:none;align-items:flex-end;justify-content:center}
+.modal.show{display:flex}
+.sheet{background:#140c3a;border:1px solid rgba(160,150,255,.35);border-radius:26px 26px 0 0;padding:22px 18px 26px;width:min(100vw,480px);display:flex;flex-direction:column;gap:12px;max-height:92vh;overflow:auto}
+@media (min-width:600px){.modal{align-items:center}.sheet{border-radius:26px}}
+/* настройка положения украшения: город не затемняем, панель — узкая полоска внизу, чтобы видеть дом */
+.modal.placing{background:none!important;backdrop-filter:none!important;pointer-events:none;align-items:flex-end!important}
+.modal.placing .sheet{pointer-events:auto;padding:10px 14px 14px;gap:4px;border-radius:20px 20px 0 0!important;background:rgba(20,12,58,.86);max-height:46vh}
+.modal.placing .sheet p{display:none}.modal.placing .sheet h2{font-size:15px;margin:0}.modal.placing .srow{margin:0}
+.sheet h2{margin:0;font:800 20px Unbounded,sans-serif}
+.sheet p{margin:0;font:500 14px/1.45 Inter,sans-serif;color:var(--muted)}
+.sheet p b{color:#fff}
+.step{display:flex;gap:10px;align-items:flex-start;font:500 14px/1.4 Inter,sans-serif;color:var(--muted)}
+.step i{font-style:normal;flex:none;width:24px;height:24px;border-radius:50%;background:var(--pink);color:#fff;font:800 12px/24px Unbounded,sans-serif;text-align:center}
+.step a{color:var(--gold)}
+.code{font:800 40px Unbounded,sans-serif;color:var(--gold);text-align:center;letter-spacing:.04em;padding:14px;border:2px dashed var(--gold);border-radius:18px}
+.err{color:#ff8fae;font:600 13px Inter,sans-serif;min-height:1em}
+.btns{display:flex;gap:8px}.btns>*{flex:1}
+</style>
+    <style>#rg{touch-action:none}#rg i{display:block;border-radius:2px;cursor:pointer}</style>
+    <div class="btns"><button class="ghost" id="rclr" type="button">ОЧИСТИТЬ</button><button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button><button id="rgo" type="button">ПОВЕСИТЬ</button></div>`;
+  draw();
+  sheet.querySelectorAll('[data-col]').forEach(b => b.onclick = () => { col = +b.dataset.col; sheet.querySelectorAll('[data-col]').forEach(x => x.classList.toggle('on', x === b)); });
+  let painting = false; const paint = e => { const t = document.elementFromPoint(e.clientX, e.clientY), i = t && t.dataset && t.dataset.i; if (i == null || px[+i] === String(col)) return; px[+i] = String(col); t.style.background = PAL[col] || 'rgba(255,255,255,.06)'; };
+  $('rg').onpointerdown = e => { painting = true; paint(e); }; $('rg').onpointermove = e => { if (painting) paint(e); }; window.addEventListener('pointerup', () => painting = false);
+  $('rclr').onclick = () => { px = '0'.repeat(N * N).split(''); draw(); };
+  $('rgo').onclick = () => sendTG({ t: 'roof', p: px.join('') });
+  modal.classList.add('show'); closeBtn();
+}
+// «Мой дом» (идея жителей): всё о своём доме в одном месте, без поиска по нику
+function openProfile() {
+  const h = city.byKey.get(ME); if (!h) { toastMsg('Дом не найден — привяжи ник в боте: «🏠 Мой дом»'); return; }
+  const fx = fxMap[ME] || {}, T0 = titles[ME] || (fx.tt ? { t: fx.tt } : null), off = new Set(fx.off || []), ad = city.address(h);
+  const mine = SHOP.filter(([k]) => (fx.d || []).includes(k) && k !== 'top' && k !== 'estate');
+  sheet.innerHTML = `<h2>👤 @${esc(ME)}</h2><p>📍 ${esc(ad.text)} · ${esc(ad.district)}${h.isEstate ? ' · 🏡 Усадьба' : ''}</p>
+    <p><b style="color:#ffd23f">🪙 ${fx.co || 0} неонок</b>${fx.k ? ` · ❤ ${fx.k} стуков` : ''}${T0 ? ` · 🏅 ${esc(T0.t)}` : ''}${fx.mc ? ' · 💎 Меценат' : ''}${(fx.f || []).length ? ` · 👫 ${fx.f.length}` : ''}</p>
+    <div class="btns" style="flex-wrap:wrap"><button type="button" id="pGo">🏠 ПОКАЗАТЬ ДОМ</button><button type="button" class="ghost" id="pLook">🔄 ОСМОТРЕТЬ</button></div>
+    <div class="btns" style="flex-wrap:wrap"><button type="button" class="ghost" id="pSign">✏️ ТАБЛИЧКА</button><button type="button" class="ghost" id="pRoof">🎨 ФЛАГ</button><button type="button" class="ghost" id="pShop">⭐ УКРАСИТЬ</button><button type="button" class="ghost" id="pEst">🏡 УСАДЬБЫ</button></div>
+    <p><b>Мои украшения</b> — можно снять и вернуть в любой момент, они остаются твоими.</p>
+    ${mine.map(([k, t]) => `<div class="shop"><span style="${off.has(k) ? 'opacity:.45' : ''}">${t}</span><button type="button" class="ghost" data-hide="${k}">${off.has(k) ? '↩️ ВЕРНУТЬ' : '🙈 СНЯТЬ'}</button></div>`).join('') || '<p>Пока нет — загляни в «⭐ УКРАСИТЬ».</p>'}
+    <button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button>`;
+  const go = () => { modal.classList.remove('show'); focus(h); };
+  $('pGo').onclick = go; $('pLook').onclick = () => { go(); startOrbit(h); };
+  $('pSign').onclick = () => { go(); setTimeout(() => $('bfx') && $('bfx').click(), 50); };
+  $('pRoof').onclick = () => openRoof(h); $('pShop').onclick = () => openShop(h); $('pEst').onclick = openEstates;
+  sheet.querySelectorAll('[data-hide]').forEach(b => b.onclick = () => { const k = b.dataset.hide, f = fxMap[ME] = fxMap[ME] || {}, o = new Set(f.off || []);
+    o.has(k) ? o.delete(k) : o.add(k); f.off = [...o]; city.setFx(fxMap); b.textContent = '…'; sendTG({ t: 'hide', i: k }); });
+  modal.classList.add('show'); closeBtn();
+}
+function openEstates() {
+  const c = city.estateCenter; if (c) city.flyTo(c.x, c.z, 16);
+  const own = Object.entries(estates).filter(([k]) => city.byKey.get(k)).sort((a, b) => a[1] - b[1]), free = 36 - Object.keys(estates).length;
+  sheet.innerHTML = `<h2>🏡 Посёлок Усадеб</h2><p>Тихий район на окраине: участок как 4 обычных дома, свой забор и сад. Сейчас свободно участков: <b style="color:var(--gold)">${Math.max(0, free)}</b>.</p>
+    ${own.map(([k, s]) => `<div class="shop"><span>№${s + 1} · @${esc(k)}</span><button type="button" class="ghost hn" data-n="${esc(k)}">👀 СМОТРЕТЬ</button></div>`).join('') || '<p>Пока никто не переехал — займи лучший участок первым!</p>'}
+    <p>Как переехать: открой свой дом → «⭐ УКРАСИТЬ» → «🏡 Усадьба» (100 ⭐).</p>
+    <div class="btns">${TG && ME && city.byKey.get(ME) && !estates[ME] ? '<button type="button" id="estMine">🏡 ХОЧУ УСАДЬБУ</button>' : ''}<button class="ghost" id="mclose" type="button">${c ? 'СМОТРЕТЬ ПОСЁЛОК' : 'ЗАКРЫТЬ'}</button></div>`;
+  sheet.querySelectorAll('.hn').forEach(b => b.onclick = () => { const h = city.byKey.get(b.dataset.n); if (h) { modal.classList.remove('show'); focus(h); } });
+  if ($('estMine')) $('estMine').onclick = () => openShop(city.byKey.get(ME));
+  modal.classList.add('show'); closeBtn();
+}
+function openDuma() {
+  const ideas = [...duma].sort((a, b) => (b.up - b.down) - (a.up - a.down));
+  sheet.innerHTML = `<h2>🏛 Городская дума</h2><p>Идеи жителей. Голосуй 👍 или 👎 — идеи с лучшим счётом мэрия делает первыми. Свою идею предложи в боте: «💡 Идея для города».</p>
+    ${ideas.map(x => `<div class="cand"><div style="flex:1;min-width:0"><div class="p" style="color:#fff">${esc(x.text)}</div><div class="p" style="font-size:12px">${x.nick ? '@' + esc(x.nick) : ''} · 👍 ${x.up || 0} · 👎 ${x.down || 0}</div></div>
+      ${TG ? `<div style="display:flex;flex-direction:column;gap:6px"><button class="vbtn" type="button" data-iv="${x.id}" data-v="1">👍</button><button class="vbtn ghost" type="button" data-iv="${x.id}" data-v="-1">👎</button></div>` : ''}</div>`).join('') || '<p>Идей пока нет — предложи первую!</p>'}
+    <button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button>`;
+  sheet.querySelectorAll('[data-iv]').forEach(b => b.onclick = () => sendTG({ t: 'ivote', i: +b.dataset.iv, v: +b.dataset.v }));
+  modal.classList.add('show'); closeBtn();
+}
+function openContest() {
+  const top = Object.entries(fxMap).filter(([k, f]) => f.cv && city.byKey.get(k)).sort((a, b) => b[1].cv - a[1].cv).slice(0, 10);
+  const left = Math.max(0, Math.round(((meta.contest || 0) * 1000 - Date.now()) / 3600e3));
+  sheet.innerHTML = `<h2>🏆 Самый красивый дом</h2><p>Нажми на понравившийся дом → «🏆 ГОЛОС». Один голос на жителя, за свой нельзя. До конца — ~${left} ч. Победителю — титул и «Дом дня» на неделю!</p>
+    ${top.map(([k, f], i) => `<div class="cand"><b>${i + 1}</b><div style="flex:1"><button class="opt hn" data-n="${esc(k)}" type="button">@${esc(k)}</button></div><div class="p">🏆 ${f.cv}</div></div>`).join('') || '<p>Голосов пока нет — будь первым!</p>'}
+    <button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button>`;
+  sheet.querySelectorAll('.hn').forEach(b => b.onclick = () => { const h = city.byKey.get(b.dataset.n); if (h) { modal.classList.remove('show'); focus(h); } });
+  modal.classList.add('show'); closeBtn();
+}
+function renderSocialChips() {
+  if (!$('dumaChip')) { const c = document.createElement('button'); c.className = 'chip'; c.id = 'dumaChip'; c.textContent = '🏛 ДУМА'; c.onclick = openDuma; $('chips').appendChild(c); }
+  if (contestOn() && !$('contestChip')) { const c = document.createElement('button'); c.className = 'chip'; c.id = 'contestChip'; c.textContent = '🏆 КОНКУРС'; c.onclick = openContest; $('chips').appendChild(c); }
+}
+
+// ---------- доска почёта и кандидаты ----------
+function honorData() {
+  const cands = [...(election?.candidates || [])].sort((a, b) => (b.votes || 0) - (a.votes || 0));
+  const kw = kladState && kladState.day === KLAD.day ? (kladState.winners || []) : [];
+  const day = fnv(mskDay()), sp = [...specialRows].sort((a, b) => (fnv(a.nick) ^ day) - (fnv(b.nick) ^ day));
+  const pop = Object.entries(fxMap).filter(([k, f]) => f.k && city.byKey.get(k)).sort((a, b) => b[1].k - a[1].k), tops = Object.entries(fxMap).filter(([k, f]) => f.top && city.byKey.get(k));
+  const tit = Object.entries(titles).filter(([k]) => city.byKey.get(k));
+  return { cands, kw, sp, pop, tops, tit, sections: [
+    tit.length && { title: '🏅 ТИТУЛЫ', lines: tit.map(([k, T]) => `@${k} — ${T.t}`), max: 3 },
+    tops.length && { title: '🔦 ДОМ ДНЯ', lines: tops.map(([k]) => '@' + k), max: 2 },
+    cands.length && { title: '🗳 ЛИДЕРЫ ВЫБОРОВ', lines: cands.map(c => `@${norm(c.nick)} — ${c.votes || 0} 🗳`), max: 3 },
+    kw.length && { title: '💎 НАШЛИ КЛАД СЕГОДНЯ', lines: kw.map(n => '@' + n), max: 3 },
+    pop.length && { title: '❤ ПОПУЛЯРНЫЕ ДОМА', lines: pop.map(([k, f]) => `@${k} — ❤ ${f.k}`), max: 3 },
+    sp.length && { title: '✨ КРЕАТИВНЫЕ ДОМА', lines: sp.map(r => `@${norm(r.nick)} — ${r.recipe.name}`), max: 3 },
+  ].filter(Boolean) };
+}
+function updateHonor() {
+  const d = honorData(); city.setHonor(d);
+  if (election && election.stage && !election.winner) city.setCandidates(d.cands.map(c => ({ nick: norm(c.nick), votes: c.votes })));
+}
+function openHonor() {
+  const d = honorData(), li = (nick, t) => `<div class="cand"><div style="flex:1;min-width:0"><div class="n"><button class="opt hn" data-n="${esc(norm(nick))}" type="button">@${esc(norm(nick))}</button></div>${t ? `<div class="p">${esc(t)}</div>` : ''}</div></div>`;
+  sheet.innerHTML = `<h2>🏆 Доска почёта</h2><p>Стоит у ратуши в центре города. Нажми на ник — покажу дом.</p>
+    ${d.cands.length ? '<p><b>🗳 Кандидаты в мэры</b></p>' + d.cands.map(c => li(c.nick, `${c.votes || 0} голосов`)).join('') : ''}
+    ${(meta.donors || []).length ? '<p><b>💎 Поддержали город</b></p>' + meta.donors.map(([k, n], i) => li(k, `${['🥇', '🥈', '🥉'][i] || '💎'} ${n} ⭐`)).join('') : ''}
+    ${d.tit.length ? '<p><b>🏅 Титулы жителей</b></p>' + d.tit.map(([k, T]) => li(k, T.t + (T.why ? ' — ' + T.why : ''))).join('') : ''}
+    ${d.tops.length ? '<p><b>🔦 Дом дня</b></p>' + d.tops.map(([k]) => li(k)).join('') : ''}
+    ${d.pop.length ? '<p><b>❤ Популярные дома</b></p>' + d.pop.slice(0, 10).map(([k, f]) => li(k, `❤ ${f.k} стуков`)).join('') : ''}
+    ${d.kw.length ? '<p><b>💎 Нашли клад сегодня</b></p>' + d.kw.map(n => li(n)).join('') : ''}
+    ${d.sp.length ? '<p><b>✨ Креативные дома</b></p>' + d.sp.slice(0, 12).map(r => li(r.nick, r.recipe.name)).join('') : ''}
+    <button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button>`;
+  sheet.querySelectorAll('.hn').forEach(b => b.onclick = () => { const h = city.byKey.get(b.dataset.n); if (h) { modal.classList.remove('show'); focus(h); } });
+  modal.classList.add('show'); closeBtn();
+}
+
+// ---------- день/ночь и погода ----------
+const GSET_DEF = { day: 'auto', tz: 'device', wx: 'auto', nicks: 'on' };
+let gset = { ...GSET_DEF }; try { Object.assign(gset, JSON.parse(localStorage.getItem('gset') || '{}')); } catch (e) {}
+const TZS = [['device', 'Как на телефоне'], ['2', 'UTC+2 · Калининград'], ['3', 'UTC+3 · Москва, СПб'], ['4', 'UTC+4 · Самара'], ['5', 'UTC+5 · Екатеринбург'], ['6', 'UTC+6 · Омск'], ['7', 'UTC+7 · Новосибирск'], ['8', 'UTC+8 · Иркутск'], ['9', 'UTC+9 · Якутск'], ['10', 'UTC+10 · Владивосток'], ['11', 'UTC+11 · Магадан'], ['12', 'UTC+12 · Камчатка']];
+const localHour = () => { const d = new Date(); if (gset.tz === 'device') return d.getHours() + d.getMinutes() / 60; const h = d.getUTCHours() + d.getUTCMinutes() / 60 + +gset.tz; return (h + 24) % 24; };
+const sstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+const daylight = () => gset.day === 'night' ? 0 : gset.day === 'day' ? 1 : (h => sstep(6.3, 8, h) * (1 - sstep(17, 18.7, h)))(localHour());
+function autoWeather() { // одна погода на всех: меняется каждые 3 часа, зависит от сезона
+  const d = new Date(), m = d.getUTCMonth(), r = fnv('wx:' + d.toISOString().slice(0, 10) + ':' + Math.floor(d.getUTCHours() / 3)) % 100;
+  const w = m === 11 || m <= 1 ? [['snow', 60], ['fog', 70]] : m === 10 || m === 2 ? [['snow', 30], ['rain', 50], ['fog', 60]] : [['rain', 22], ['fog', 28]];
+  for (const [k, p] of w) if (r < p) return k; return 'clear';
+}
+const curWeather = () => gset.wx === 'auto' ? autoWeather() : gset.wx === 'off' ? 'clear' : gset.wx;
+const WX_ICON = { clear: '', snow: '❄️', rain: '🌧', fog: '🌫' };
+let ambChip = null;
+function applyAmbience() {
+  city.setDaylight(daylight()); city.setWeather(curWeather()); city.hideNicks = gset.nicks === 'off';
+  if (ambChip) { const t = city.dayT; ambChip.textContent = (t > .6 ? '☀️' : t > .05 ? '🌇' : '🌙') + (WX_ICON[city.weather] ? ' ' + WX_ICON[city.weather] : ''); }
+}
+function initAmbience() {
+  if (!$('parkChip')) { const pc = document.createElement('button'); pc.className = 'chip'; pc.id = 'parkChip'; pc.textContent = parkOpen() ? '🎡 ПАРК' : '🎡 ПАРК · СКОРО';
+    pc.onclick = () => { const lm = city.landmarks[1]; if (lm) city.flyTo(lm.position.x, lm.position.z, 7); if (!parkOpen()) openPark('park'); }; $('chips').appendChild(pc); }
+  if (TG && ME && !$('meChip')) { const mc = document.createElement('button'); mc.className = 'chip'; mc.id = 'meChip'; mc.textContent = '👤 МОЙ ДОМ'; mc.onclick = openProfile; $('chips').prepend(mc); }
+  if (!$('estChip')) { const ec = document.createElement('button'); ec.className = 'chip'; ec.id = 'estChip'; ec.textContent = '🏡 УСАДЬБЫ'; ec.onclick = openEstates; $('chips').appendChild(ec); }
+  if (!$('honorChip')) { const hc = document.createElement('button'); hc.className = 'chip'; hc.id = 'honorChip'; hc.textContent = '🏆 ДОСКА ПОЧЁТА'; hc.onclick = openHonor; $('chips').appendChild(hc); }
+  if (ambChip) { if (!ambChip.isConnected) $('chips').appendChild(ambChip); return; } ambChip = document.createElement('button'); ambChip.className = 'chip klad'; ambChip.title = 'Время суток и погода'; $('chips').appendChild(ambChip);
+  ambChip.onclick = openAmbience; applyAmbience(); setInterval(applyAmbience, 20000);
+}
+function openAmbience() {
+  const opt = (k, v, t) => `<button class="opt${gset[k] === v ? ' on' : ''}" data-k="${k}" data-v="${v}" type="button">${t}</button>`;
+  sheet.innerHTML = `<h2>⚙️ Настройки города</h2>
+    <div class="srow"><span>Время суток</span><div class="opts">${opt('day', 'auto', '🕒 Как в жизни')}${opt('day', 'night', '🌙 Всегда ночь')}${opt('day', 'day', '☀️ Всегда день')}</div></div>
+    <div class="srow"><span>Часовой пояс</span><select id="gtz" style="border-radius:12px;padding:10px;font:600 14px Inter,sans-serif">${TZS.map(([v, t]) => `<option value="${v}"${gset.tz === v ? ' selected' : ''}>${t}</option>`).join('')}</select></div>
+    <div class="srow"><span>Ники над домами</span><div class="opts">${opt('nicks', 'on', '👁 Показывать')}${opt('nicks', 'off', '🙈 Скрыть')}</div></div>
+    <div class="srow"><span>Погода</span><div class="opts">${opt('wx', 'auto', '🔄 Авто')}${opt('wx', 'off', '🚫 Выкл')}${opt('wx', 'snow', '❄️ Снег')}${opt('wx', 'rain', '🌧 Дождь')}${opt('wx', 'fog', '🌫 Туман')}</div></div>
+    <p>«Авто» — погода общая для всех жителей и меняется каждые 3 часа: зимой чаще снег.</p>
+    <button class="ghost" id="mclose" type="button">ГОТОВО</button>`;
+  const save = () => { try { localStorage.setItem('gset', JSON.stringify(gset)); } catch (e) {} applyAmbience(); };
+  sheet.querySelectorAll('.opt').forEach(b => b.onclick = () => { gset[b.dataset.k] = b.dataset.v; sheet.querySelectorAll(`.opt[data-k="${b.dataset.k}"]`).forEach(x => x.classList.toggle('on', x === b)); save(); });
+  $('gtz').onchange = e => { gset.tz = e.target.value; save(); };
+  modal.classList.add('show'); closeBtn();
+}
+
+// ---------- клад дня ----------
+const fnv = s => { let h = 2166136261; for (const c of s) { h ^= c.codePointAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
+const mskDay = () => new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10);
+const KLAD = (d => ({ day: d, code: String(1000 + fnv(KLAD_SALT + ':code:' + d) % 9000), seed: fnv(KLAD_SALT + ':pos:' + d) }))(mskDay());
+let kladState = null; // klad.json от бота: {day, taken, limit}
+const kladOver = () => !!(kladState && kladState.day === KLAD.day && kladState.taken >= kladState.limit);
+const kladLeft = () => kladState && kladState.day === KLAD.day ? Math.max(0, kladState.limit - kladState.taken) : null;
+const MINI_N = 8, miniSeed = () => fnv(KLAD_SALT + ':mini:' + KLAD.day), miniCode = i => String(1000 + fnv(KLAD_SALT + ':mini:' + KLAD.day + ':' + i) % 9000);
+const miniTaken = () => kladState && kladState.day === KLAD.day ? (kladState.mini || []) : [];
+async function loadKladState() { const j = await getJSON('klad.json'); if (j && j.day) kladState = j; if (city.chest) city.chest.visible = !kladOver(); city.setMini(miniSeed(), MINI_N, miniTaken()); updateHonor(); }
+function openMini(i) {
+  const deep = BOT_URL.replace(/\/$/, '') + `?start=mini${i}c${miniCode(i)}`;
+  sheet.innerHTML = `<h2>🎁 Малый сундук!</h2><p>Внутри — <b>случайное украшение для твоего дома</b>: салют, НЛО, радуга, ёлка или снеговик. Один малый сундук в день на жителя, всего в городе их ${MINI_N} — кто первый.</p>
+    <div class="btns"><button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button>${TG ? '<button id="mgo" type="button">ОТКРЫТЬ 🎁</button>' : `<a class="btn" href="${esc(deep)}">ОТКРЫТЬ В БОТЕ</a>`}</div>`;
+  modal.classList.add('show'); closeBtn(); if ($('mgo')) $('mgo').onclick = () => sendTG({ t: 'mini', i, c: miniCode(i) });
+}
+const kladFound = () => { try { return localStorage.getItem('klad') === KLAD.day; } catch (e) { return false; } };
+let kladChip = null;
+function renderKlad() {
+  kladChip = document.createElement('button'); kladChip.className = 'chip klad'; $('chips').appendChild(kladChip);
+  if (CHAT_URL) { const ch = document.createElement('a'); ch.className = 'chip'; ch.href = CHAT_URL; ch.target = '_blank'; ch.rel = 'noopener'; ch.textContent = '💬 ЧАТ ЖИТЕЛЕЙ'; ch.onclick = e => { if (TG && tg.openTelegramLink) { e.preventDefault(); tg.openTelegramLink(CHAT_URL); } }; $('chips').appendChild(ch); }
+  kladChip.onclick = () => { if (kladOver()) { sheet.innerHTML = `<h2>💎 Клад на сегодня разобран</h2><p>Все ${kladState.limit} призов уже забрали 🎉 Новый сундук спрячется в городе в <b>00:00 МСК</b> — приходи пораньше!</p><button class="ghost" id="mclose">ПОНЯЛ</button>`; modal.classList.add('show'); return closeBtn(); } if (kladFound()) return openKlad(); sheet.innerHTML = `<h2>💎 Клад дня</h2><p>Каждый день в городе прячется сундук. Найди его между домами — подсказка вверху: <b>холодно → тепло → горячо</b>. Подойди поближе (приблизь камеру) и нажми на сундук.</p><p>Приз — <b>дом по описанию бесплатно</b>: нейросеть построит любую твою идею в 3D. Новый клад — каждый день в 00:00 МСК.</p><p>🎁 А ещё по городу спрятаны <b>${MINI_N} малых сундуков</b> (голубые) — в них украшения для дома!</p><button class="ghost" id="mclose">ИСКАТЬ</button>`; modal.classList.add('show'); closeBtn(); };
+  setInterval(updKlad, 250); updKlad(); loadKladState(); setInterval(loadKladState, 120000);
+}
+function updKlad() {
+  if (!kladChip) return;
+  if (city.chest) city.chest.visible = !kladOver();
+  if (kladOver()) { kladChip.className = 'chip klad'; kladChip.textContent = '💎 КЛАД РАЗОБРАН · НОВЫЙ В 00:00'; return; }
+  if (kladFound()) { kladChip.className = 'chip klad'; kladChip.textContent = '💎 КЛАД НАЙДЕН · КОД'; return; }
+  const d = city.treasureDist(), t = d < 2.5 ? ['🔥 ГОРЯЧО!', 1] : d < 6 ? ['♨️ ОЧЕНЬ ТЕПЛО', 1] : d < 14 ? ['🌤 ТЕПЛО', 0] : d < 30 ? ['❄️ ПРОХЛАДНО', 0] : ['🧊 ХОЛОДНО', 0];
+  kladChip.textContent = '💎 КЛАД ДНЯ · ' + t[0]; kladChip.className = 'chip klad' + (t[1] ? ' hot' : '');
+}
+function openKlad() {
+  try { localStorage.setItem('klad', KLAD.day); } catch (e) {}
+  updKlad();
+  const deep = BOT_URL ? BOT_URL.replace(/\/$/, '') + '?start=klad' + KLAD.code : '';
+  sheet.innerHTML = `<h2>💎 Ты нашёл клад!</h2><p>Твой код на сегодня:</p><div class="code">КЛАД-${KLAD.code}</div>
+    <p>Приз — <b>дом по описанию бесплатно</b> (нейросеть построит твою идею в 3D). Код действует до конца дня (по МСК), призов на день ограниченно — кто первый.${kladLeft() != null ? ` <b>Осталось: ${kladLeft()} из ${kladState.limit}</b>.` : ''}</p>
+    <div class="err" id="kerr"></div>
+    <div class="btns"><button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button>${TG ? '<button id="kgo" type="button">ЗАБРАТЬ ПРИЗ</button>' : deep ? `<a class="btn" href="${esc(deep)}">ЗАБРАТЬ В БОТЕ</a>` : ''}</div>
+    ${!TG && !deep ? '<p>Напиши этот код боту города в Telegram.</p>' : ''}`;
+  modal.classList.add('show'); closeBtn();
+  if (TG) $('kgo').onclick = () => { try { sendTG({ t: 'klad', c: KLAD.code }); } catch (e) { $('kerr').textContent = 'Напиши боту: КЛАД-' + KLAD.code; } };
+}
+
+// ---------- окно ----------
+const modal = $('modal'), sheet = $('sheet');
+// режим «placing» снимаем, как только окно закрылось или в нём открыли что-то другое
+// (снимаем класс только если он есть — иначе remove() снова меняет class и наблюдатель зацикливается → вкладка виснет)
+const unplace = () => { if (modal.classList.contains('placing') && (!modal.classList.contains('show') || !sheet.querySelector('#pgo'))) modal.classList.remove('placing'); };
+new MutationObserver(unplace).observe(modal, { attributes: true, attributeFilter: ['class'] });
+new MutationObserver(unplace).observe(sheet, { childList: true });
+
+modal.addEventListener('pointerdown', e => { if (e.target === modal) modal.classList.remove('show'); });
+$('menuBtn').onclick = () => { const o = $('chips').classList.toggle('open'); $('menuBtn').classList.toggle('open', o); $('menuBtn').textContent = o ? '✕ ЗАКРЫТЬ' : '☰ МЕНЮ'; };
+$('chips').addEventListener('click', e => { if (e.target.closest('.chip')) { $('chips').classList.remove('open'); $('menuBtn').classList.remove('open'); $('menuBtn').textContent = '☰ МЕНЮ'; } });
+// «Осмотреть дом»: камера облетает дом по кругу, интерфейс прячется; любое касание — выход
+let orbit = null;
+function stopOrbit() { if (!orbit) return; cancelAnimationFrame(orbit.raf); orbit = null; document.body.classList.remove('orbiting'); }
+function startOrbit(h) { stopOrbit(); if (!h) return;
+  const top = city.houseTop ? city.houseTop(h) : 1; city.flyTo(h.x, h.z, Math.max(4.2, top * 2.6));
+  document.body.classList.add('orbiting'); orbit = { raf: 0, t0: performance.now() };
+  const step = () => { if (!orbit) return; city.ctl.taz += .0055; orbit.raf = requestAnimationFrame(step); }; step();
+  setTimeout(() => addEventListener('pointerdown', stopOrbit, { once: true }), 300); }
+// кнопка «В город», когда камера улетела в Посёлок Усадеб (он за озером, далеко от центра)
+$('toCity').onclick = () => { city.flyTo(0, 0, 34); $('toCity').classList.remove('show'); };
+setInterval(() => { const c = city.ctl, far = c && (city.estateCenter && Math.hypot(c.tx - city.estateCenter.x, c.tz - city.estateCenter.z) < 16); $('toCity').classList.toggle('show', !!far); }, 700);
+const closeBtn = () => { $('mclose').onclick = () => modal.classList.remove('show'); };
+
+// ---------- выборы ----------
+function renderElection() {
+  const E = election; $('chips').innerHTML = ''; if (!E || !E.stage) return;
+  const chip = document.createElement('button'); chip.className = 'chip'; chip.textContent = E.chip || '🗳 ВЫБОРЫ МЭРА'; $('chips').appendChild(chip);
+  chip.onclick = () => {
+    const tot = (E.candidates || []).reduce((n, c) => n + (c.votes || 0), 0), open2 = E.stage === 2;
+    const cands = (E.candidates || []).map((c, i) => { const pc = tot ? Math.round((c.votes || 0) / tot * 100) : 0;
+      return `<div class="cand"><b>${i + 1}</b><div style="flex:1;min-width:0"><div class="n">@${esc(norm(c.nick))}${E.winner && norm(E.winner) === norm(c.nick) ? ' 👑' : ''}</div><div class="p">${(c.promise || '').length > 170 ? `${esc(c.promise.slice(0, 160))}… <button class="more" type="button" data-full="${esc(c.promise)}" style="background:none;border:0;padding:0;color:var(--gold);font:700 13px Inter,sans-serif;cursor:pointer">читать дальше</button>` : esc(c.promise || '')}</div>`
+        + (c.votes != null ? `<div class="vbar"><i style="width:${pc}%"></i></div><div class="p">🗳 ${c.votes} · ${pc}%</div>` : '')
+        + `</div><div style="display:flex;flex-direction:column;gap:6px;align-self:center">${city.byKey.get(norm(c.nick)) ? `<button class="vbtn ghost" type="button" data-home="${esc(norm(c.nick))}">🏠 ДОМ</button>` : ''}${open2 && c.vote ? `<a class="btn vbtn tglink" href="${esc(c.vote)}" target="_blank" rel="noopener">ЗА</a>` : ''}</div></div>`; }).join('')
+      || (open2 ? '<p>Кандидатов пока нет — стань первым! 🙋</p>' : '');
+    sheet.innerHTML = `<h2>${esc(E.title || 'Выборы мэра')}</h2><p>${esc(E.text || '')}</p>${(E.deputies || []).length ? `<p>🎖 Заместители мэра: <b>${E.deputies.map(d => '@' + esc(d)).join(', ')}</b></p>` : ''}${cands}${E.until ? `<p>⏳ До: <b>${esc(E.until)}</b></p>` : ''}
+      <div class="btns">${open2 && E.apply ? `<a class="btn tglink" href="${esc(E.apply)}" target="_blank" rel="noopener">🙋 СТАТЬ КАНДИДАТОМ</a>` : ''}${E.link && !open2 ? `<a class="btn" href="${esc(E.link)}" target="_blank" rel="noopener">${esc(E.button || 'УЧАСТВОВАТЬ')}</a>` : ''}<button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button></div>`;
+    sheet.querySelectorAll('.tglink').forEach(a => a.onclick = e => { if (TG && tg.openTelegramLink) { e.preventDefault(); tg.openTelegramLink(a.href); } });
+    sheet.querySelectorAll('.more').forEach(b => b.onclick = () => { b.parentElement.textContent = b.dataset.full; });
+    sheet.querySelectorAll('[data-home]').forEach(b => b.onclick = () => { const h = city.byKey.get(b.dataset.home); if (h) { modal.classList.remove('show'); focus(h); } });
+    modal.classList.add('show'); closeBtn();
+  };
+}
+
+// ---------- «Получить дом» / мини-приложение ----------
+if (/tgWebApp/.test(location.hash + location.search) || window.TelegramWebviewProxy) await new Promise(res => { const sc = document.createElement('script'); sc.src = 'https://telegram.org/js/telegram-web-app.js'; sc.onload = sc.onerror = res; document.head.appendChild(sc); setTimeout(res, 5000); });
+const tg = window.Telegram && window.Telegram.WebApp;
+const TG = !!(tg && tg.platform && tg.platform !== 'unknown');
+const GIFT = new URLSearchParams(location.search).get('gift') === '1';
+const ME = norm(new URLSearchParams(location.search).get('me') || '');
+const WALL_C = ['#ffcf4a', '#f28b82', '#a7d36f', '#7cc8ff', '#c9a0e8', '#f7a8d0', '#86d4c8', '#9aa3b5'];
+const ROOF_C = ['#d1404f', '#3d5a99', '#6b3fa0', '#2f7a6b', '#b8562f', '#374070'];
+const SHAPE_N = { house: 'Домик', tower: 'Башня', castle: 'Замок', skyscraper: 'Небоскрёб', dome: 'Купол', clocktower: 'Часы' };
+const EMB = { none: '✖', sun: '☀️', moon: '🌙', star: '⭐', heart: '❤️', clock: '🕐', crown: '👑', flame: '🔥', leaf: '🍃', lightning: '⚡', diamond: '💎', snake: '🐍' };
+const LIGHT_N = { warm: '🟡', cool: '🔵', pink: '🩷', green: '🟢' };
+$('cta').onclick = () => {
+  if (TG) return openStudio();
+  if (BOT_URL) { location.href = BOT_URL; return; }
+  sheet.innerHTML = `<h2>Получить дом</h2><p>1 подписка = 1 дом с твоим ником. Подпишись на <a style="color:var(--gold)" href="${TIKTOK_URL}" target="_blank" rel="noopener">${TIKTOK_NICK}</a> — новые жители заселяются ${CHECK_TIME}.</p><div class="btns"><a class="btn" href="${TIKTOK_URL}" target="_blank" rel="noopener">ПОДПИСАТЬСЯ</a><button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button></div>`;
+  modal.classList.add('show'); closeBtn();
+};
+let studio = { tab: GIFT ? 'ai' : 'free', preset: 0, r: { ...CityHouse.PRESETS[0].r } }, preview = null;
+function openStudio() {
+  if (!ME) {
+    sheet.innerHTML = TG ? `<h2>Мой дом</h2><p>Город открыт без твоего ника 🤔 Нажми кнопку — бот пришлёт правильную кнопку «🏙 Открыть город» с твоим домом и подарками.</p><p>Если ник ещё не привязан — бот подскажет, как это сделать.</p><div class="btns"><button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button><button id="whoami" type="button">🔄 МОЯ КНОПКА</button></div>`
+      : `<h2>Мой дом</h2><p>Сначала привяжи свой ник TikTok в боте — кнопка «🏠 Мой дом».</p><button class="ghost" id="mclose">ЗАКРЫТЬ</button>`;
+    modal.classList.add('show'); closeBtn(); if ($('whoami')) $('whoami').onclick = () => sendTG({ t: 'me' }); return; }
+  const mine = city.byKey.get(ME); if (mine && mine.recipe) studio.r = { ...mine.recipe };
+  renderStudio(); modal.classList.add('show');
+}
+const DECOR_N = { garland: '🎄 Гирлянда', tree: '🌲 Ёлка', car: '🚗 Машина', pet: '🐶 Питомец' };
+function renderStudio() {
+  const S = studio, R = S.r, opts = (key, list, fmt) => list.map(v => `<button class="opt ${R[key] === v ? 'on' : ''}" data-k="${key}" data-v="${v}">${fmt(v)}</button>`).join('');
+  const sw = (key, list) => list.map(v => `<button class="opt sw ${R[key] === v ? 'on' : ''}" data-k="${key}" data-v="${v}" style="background:${v}"></button>`).join('');
+  const dec = new Set(R.decor || []);
+  const go = S.tab === 'free' ? 'ВЫБРАТЬ' : S.tab === 'ai' ? (GIFT ? 'ПОСТРОИТЬ БЕСПЛАТНО 🎁' : `ПОСТРОИТЬ · ${AI_PRICE} ⭐ / 🎁`) : (CUSTOM_PRICE ? 'ОПЛАТИТЬ ' + CUSTOM_PRICE + ' ⭐' : 'СОХРАНИТЬ');
+  sheet.innerHTML = `<div class="studio"><h2>Мой дом · @${esc(ME)}</h2>
+    ${S.tab === 'ai' ? '' : '<canvas id="prev" style="width:200px;height:200px"></canvas>'}
+    <div class="tabs"><button data-tab="free" class="${S.tab === 'free' ? 'on' : ''}">5 ГОТОВЫХ</button><button data-tab="pro" class="${S.tab === 'pro' ? 'on' : ''}">КОНСТРУКТОР</button><button data-tab="ai" class="${S.tab === 'ai' ? 'on' : ''}">✨ ПО ОПИСАНИЮ</button></div>
+    ${S.tab === 'free' ? `<div class="pre">${CityHouse.PRESETS.map((p, i) => `<button class="opt ${S.preset === i ? 'on' : ''}" data-pre="${i}">${esc(p.name)}</button>`).join('')}</div>` : S.tab === 'ai' ? `
+    <p>Опиши дом мечты — <b>нейросеть соберёт его в 3D</b> из деталей: ракета, пончик, замок, дом-кот… Перед тем как поставить в город, дом проверит мэрия. Если не получится — звёзды вернём.</p>
+    <textarea id="aitext" maxlength="300" placeholder="Например: дом-ракета с иллюминаторами и огнём из сопел">${esc(S.ai || '')}</textarea>` : `
+    <div class="srow"><span>Форма</span><div class="opts">${opts('shape', CityHouse.SHAPES, v => SHAPE_N[v])}</div></div>
+    <div class="srow"><span>Стены</span><div class="opts">${sw('wall', WALL_C)}</div></div>
+    <div class="srow"><span>Крыша</span><div class="opts">${sw('roof', ROOF_C)}</div></div>
+    <div class="srow"><span>Этажи</span><div class="opts">${opts('floors', [1, 2, 3, 4, 5, 6], v => v)}</div></div>
+    <div class="srow"><span>Знак на фасаде</span><div class="opts">${opts('emblem', CityHouse.EMBLEMS, v => EMB[v])}</div></div>
+    <div class="srow"><span>Свет в окнах</span><div class="opts">${opts('lights', CityHouse.LIGHTS, v => LIGHT_N[v])}</div></div>
+    <div class="srow"><span>Декор · 📢 бонус подписчикам ТГ-канала</span><div class="opts">${Object.entries(DECOR_N).map(([k, n]) => `<button class="opt ${dec.has(k) ? 'on' : ''}" data-dec="${k}">${n}</button>`).join('')}</div></div>`}
+    <div class="err" id="serr"></div>
+    <div class="btns"><button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button><button id="sgo" type="button">${go}</button></div></div>`;
+  sheet.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { if (S.tab === 'ai') S.ai = ($('aitext') || {}).value || S.ai; S.tab = b.dataset.tab; if (S.tab === 'free') S.r = { ...CityHouse.PRESETS[S.preset].r }; renderStudio(); });
+  sheet.querySelectorAll('[data-pre]').forEach(b => b.onclick = () => { S.preset = +b.dataset.pre; S.r = { ...CityHouse.PRESETS[S.preset].r }; renderStudio(); });
+  sheet.querySelectorAll('[data-k]').forEach(b => b.onclick = () => { const k = b.dataset.k; R[k] = k === 'floors' ? +b.dataset.v : b.dataset.v; renderStudio(); });
+  sheet.querySelectorAll('[data-dec]').forEach(b => b.onclick = () => { const d = new Set(R.decor || []); d.has(b.dataset.dec) ? d.delete(b.dataset.dec) : d.add(b.dataset.dec); R.decor = [...d]; renderStudio(); });
+  closeBtn();
+  $('sgo').onclick = () => {
+    let data;
+    if (S.tab === 'free') data = { t: 'preset', i: S.preset };
+    else if (S.tab === 'ai') { const d = ($('aitext').value || '').trim(); if (d.length < 5) { $('serr').textContent = 'Опиши дом хотя бы парой слов 🙂'; return; } data = { t: 'ai', d }; }
+    else data = { t: 'custom', r: { ...CityHouse.normRecipe(R), decor: R.decor || [] } };
+    const mineH = city.byKey.get(ME), special = mineH && mineH.recipe && Array.isArray(mineH.recipe.parts) && mineH.recipe.parts.length;
+    if (S.tab !== 'ai' && special && !S.confirmed) { const msgC = 'У тебя особый дом (сделан по описанию). Если выбрать этот — особый дом пропадёт. Точно заменить?';
+      const go = ok => { if (ok) { S.confirmed = true; $('sgo').click(); } };
+      try { tg.showConfirm(msgC, go); } catch (e) { go(confirm(msgC)); } return; }
+    S.confirmed = false;
+    try { sendTG(data); } catch (e) { $('serr').textContent = 'Открой город кнопкой «🏙 Открыть город» внизу чата с ботом — тогда выбор отправится.'; }
+  };
+  if (preview) preview.alive = false; preview = null;
+  if ($('prev')) { preview = new HousePreview($('prev')); preview.set(R); }
+}
+if (TG) { try { tg.ready(); tg.expand(); } catch (e) {} $('cta').textContent = '🎨 МОЙ ДОМ'; }
+
+loadCity().then(() => {
+  const k = norm(decodeURIComponent(location.hash.slice(1))) || (TG ? ME : '');
+  const h = k && city.byKey.get(k); if (h) setTimeout(() => focus(h), 400);
+});
+</script>
+</body>
