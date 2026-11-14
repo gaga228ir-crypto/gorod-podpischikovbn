@@ -32,7 +32,7 @@ button,.btn{border:0;border-radius:999px;padding:12px 18px;font:800 13px Unbound
 button:active,.btn:active{transform:scale(.96)}
 button.ghost{background:rgba(255,255,255,.12)}
 .msg{font:600 13px Inter,sans-serif;color:var(--gold);min-height:1em}
-.card{position:fixed;left:50%;bottom:18px;transform:translate(-50%,160%);transition:transform .35s cubic-bezier(.2,1.4,.4,1);background:var(--panel);backdrop-filter:blur(8px);border:1px solid rgba(160,150,255,.35);border-radius:22px;padding:16px 18px;width:min(92vw,420px);z-index:3;display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;max-height:62vh;overflow-y:auto}
+.card{position:fixed;left:50%;bottom:18px;transform:translate(-50%,160%);transition:transform .35s cubic-bezier(.2,1.4,.4,1);background:var(--panel);border:1px solid rgba(160,150,255,.35);border-radius:22px;padding:16px 18px;width:min(92vw,420px);z-index:3;display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;max-height:62vh;overflow-y:auto}
 .card .grow{flex:1 1 100%;min-width:0;order:0}
 .card>button{order:1}.card #cclose{position:absolute;top:10px;right:10px;width:34px;height:34px;padding:0;border-radius:50%}
 .card .nick{padding-right:40px;word-break:break-word}
@@ -55,6 +55,8 @@ body.orbiting .top,body.orbiting #card,body.orbiting #cta{display:none!important
 .klad.hot{background:var(--gold);color:#1a1238;animation:pulse 1s infinite}
 .chip{border:0;border-radius:999px;padding:7px 12px;font:800 11px Unbounded,sans-serif;cursor:pointer;background:var(--gold);color:#1a1238;animation:pulse 2s infinite;text-decoration:none;display:inline-block}
 @keyframes pulse{50%{box-shadow:0 0 0 6px rgba(255,210,63,.25)}}
+/* в меню кнопки не пульсируют: 15 анимаций тени поверх 3D на телефоне — лаги */
+.chips .chip{animation:none}
 .share{background:var(--gold);color:#1a1238;padding:9px 12px;font-size:11px}
 .cand{display:flex;gap:10px;align-items:flex-start;background:rgba(255,255,255,.06);border-radius:14px;padding:10px 12px}
 .cand b{font:800 18px Unbounded,sans-serif;color:var(--gold);min-width:26px}
@@ -74,7 +76,7 @@ body.orbiting .top,body.orbiting #card,body.orbiting #cta{display:none!important
 .pre{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
 .hint{position:fixed;left:16px;bottom:24px;font:500 12px Inter,sans-serif;color:var(--muted);z-index:2;opacity:.8}
 @media (max-width:520px){.hint{display:none}}
-.modal{position:fixed;inset:0;background:rgba(5,3,20,.6);backdrop-filter:blur(4px);z-index:5;display:none;align-items:flex-end;justify-content:center}
+.modal{position:fixed;inset:0;background:rgba(5,3,20,.74);z-index:5;display:none;align-items:flex-end;justify-content:center}
 .modal.show{display:flex}
 .sheet{background:#140c3a;border:1px solid rgba(160,150,255,.35);border-radius:26px 26px 0 0;padding:22px 18px 26px;width:min(100vw,480px);display:flex;flex-direction:column;gap:12px;max-height:92vh;overflow:auto}
 @media (min-width:600px){.modal{align-items:center}.sheet{border-radius:26px}}
@@ -247,7 +249,11 @@ cv.addEventListener('wheel', e => { e.preventDefault(); city.zoom(Math.exp(e.del
 
 let last = performance.now(), frameErrs = 0;
 // цикл не должен умирать от одной ошибки: раньше исключение в city.frame останавливало карту навсегда («не двигается»)
-function loop(now) { requestAnimationFrame(loop); const dt = Math.min(.05, (now - last) / 1000); last = now;
+let skip = 0;
+function loop(now) { requestAnimationFrame(loop);
+  // пока открыто окно (не настройка украшения) — город рисуем в 4 раза реже: телефон отдаёт силы интерфейсу
+  const md = document.getElementById('modal'); if (md && md.classList.contains('show') && !md.classList.contains('placing') && (skip++ % 4)) return;
+  const dt = Math.min(.05, (now - last) / 1000); last = now;
   try { city.frame(dt); } catch (e) { if (frameErrs++ < 3) reportErr('frame', e); } }
 requestAnimationFrame(loop);
 // потеря WebGL (слабый телефон, мало памяти) — перезагружаем город один раз, потом переходим на 2D
