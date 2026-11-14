@@ -12,6 +12,7 @@ import httpx
 from urllib.parse import quote
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
+from aiogram.client.session.middlewares.base import BaseRequestMiddleware
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -70,6 +71,24 @@ GITHUB_REPO = E("GITHUB_REPO", "gaga228ir-crypto/gorod-podpischikovbn")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("gorod")
+# ошибки и предупреждения бота — ещё и в файл (читает Claude при проверках; в git не идёт)
+try:
+    from logging.handlers import RotatingFileHandler
+    _eh = RotatingFileHandler(Path(__file__).parent / "bot_errors.log", maxBytes=2_000_000, backupCount=2, encoding="utf-8")
+    _eh.setLevel(logging.WARNING); _eh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    logging.getLogger().addHandler(_eh)
+except Exception:
+    pass
+DM_LOG = Path(__file__).parent / "dm_log.jsonl"  # журнал лички с ботом: что пишут/жмут жители и что бот ответил (в git не идёт)
+
+
+def dm_log(**row):
+    try:
+        row = {"ts": dt.datetime.now(dt.timezone(dt.timedelta(hours=3))).strftime("%Y-%m-%d %H:%M:%S"), **row}
+        with open(DM_LOG, "a", encoding="utf-8") as f:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
 
 # ---------- дома: те же наборы, что на сайте (houses.js / index.html) ----------
 SHAPES = ["house", "tower", "castle", "skyscraper", "dome", "clocktower"]
@@ -368,7 +387,16 @@ GROUPS = {"group", "supergroup"}
 async def group_silence(handler, m: Message, data):
     """В чате жителей бот молчит: только журнал + бегущая строка. Пропускаем лишь команды админа."""
     if m.chat.type not in GROUPS:
-        return await handler(m, data)
+        u = m.from_user
+        dm_log(dir="in", uid=u.id if u else None, user=u.username if u else None, name=(u.full_name if u else "?")[:40],
+               text=(m.text or m.caption or "")[:2000], photo=bool(m.photo), sticker=bool(m.sticker),
+               app=(m.web_app_data.data[:2000] if m.web_app_data else None))
+        try:
+            return await handler(m, data)
+        except Exception as e:
+            log.exception("личка %s: %s", u.id if u else "?", e)
+            dm_log(dir="err", uid=u.id if u else None, err=repr(e)[:500])
+            raise
     if m.from_user and is_admin(m.from_user.id) and (m.text or "").startswith("/"):
         return await handler(m, data)
     chat_log(m)
@@ -384,7 +412,13 @@ async def group_silence_cb(handler, c: CallbackQuery, data):
         except Exception:
             pass
         return
-    return await handler(c, data)
+    dm_log(dir="btn", uid=c.from_user.id, user=c.from_user.username, name=(c.from_user.full_name or "?")[:40], data=c.data)
+    try:
+        return await handler(c, data)
+    except Exception as e:
+        log.exception("кнопка %s %s: %s", c.from_user.id, c.data, e)
+        dm_log(dir="err", uid=c.from_user.id, data=c.data, err=repr(e)[:500])
+        raise
 
 
 
@@ -2346,9 +2380,11 @@ async def api_handler(req):
     try:
         await web_app(m, req.app["bot"])
     except Exception as e:
-        log.warning("api: %s", e)
+        log.exception("api: %s", e)
+        dm_log(dir="app", uid=uid, app=json.dumps(body.get("data") or {}, ensure_ascii=False)[:2000], err=repr(e)[:500])
         return web.json_response({"ok": False, "err": "server"}, headers=cors)
     clean = [re.sub(r"<[^>]+>", "", t) for t in m.out if t]
+    dm_log(dir="app", uid=uid, app=json.dumps(body.get("data") or {}, ensure_ascii=False)[:2000], out=" | ".join(clean)[:1000])
     mine = None
     try:  # свежее состояние своего дома (баланс неонок и т.п.) — fx.json на сайте обновляется с задержкой
         me = await db.linked(uid)
@@ -3244,11 +3280,22 @@ async def main():
     dp = Dispatcher()
     dp.include_router(r)
 
+    class OutLog(BaseRequestMiddleware):  # что бот отвечает в личку — в dm_log.jsonl
+        async def __call__(self, make_request, bot_, method):
+            try:
+                cid, txt = getattr(method, "chat_id", None), getattr(method, "text", None) or getattr(method, "caption", None)
+                if isinstance(cid, int) and cid > 0 and type(method).__name__ in ("SendMessage", "SendPhoto", "EditMessageText", "SendInvoice", "CopyMessage"):
+                    dm_log(dir="out", uid=cid, m=type(method).__name__, text=re.sub(r"<[^>]+>", "", txt or "")[:1000])
+            except Exception:
+                pass
+            return await make_request(bot_, method)
+    bot.session.middleware(OutLog())
+
     @dp.errors()
     async def quiet_errors(event):  # старые нажатия кнопок, пока бот был выключен, и «сообщение не изменилось» — не ошибки
         if "query is too old" in str(event.exception) or "message is not modified" in str(event.exception):
             return True
-        log.error("ошибка: %s", event.exception)
+        log.error("ошибка: %r", event.exception, exc_info=event.exception)
         return True
     # меню команд — только в личке; в группах и по умолчанию списка нет, чтобы в чате жителей не тыкали
     await bot.delete_my_commands()

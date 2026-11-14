@@ -3,3 +3,6 @@ bot/chat_feed.json
 bot/tt_profile/
 bot/tt_qr.png
 bot/chat_log.jsonl
+bot/dm_log.jsonl
+bot/bot_errors.log*
+bot/site_errors.jsonl
