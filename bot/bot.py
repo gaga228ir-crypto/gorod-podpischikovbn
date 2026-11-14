@@ -2624,7 +2624,7 @@ async def web_app(m: Message, bot: Bot):
         await bot.send_invoice(m.chat.id, title="Особый дом", description=f"Твой дом @{me['nick']} в городе станет таким, как ты собрал в конструкторе.",
                                payload=f"c|{me['id']}|{code}", currency="XTR", prices=[LabeledPrice(label="Особый дом", amount=PRICE)])
     elif data.get("t") == "ai":
-        text = re.sub(r"\s+", " ", str(data.get("d") or "")).strip()[:300]
+        text = re.sub(r"\s+", " ", str(data.get("d") or "")).strip()[:600]
         if len(text) < 5:
             await m.answer("Опиши дом подробнее — хотя бы пару слов 🙂")
             return

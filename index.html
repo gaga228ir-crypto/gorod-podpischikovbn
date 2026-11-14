@@ -828,7 +828,7 @@ function renderStudio() {
     <div class="tabs"><button data-tab="free" class="${S.tab === 'free' ? 'on' : ''}">5 ГОТОВЫХ</button><button data-tab="pro" class="${S.tab === 'pro' ? 'on' : ''}">КОНСТРУКТОР</button><button data-tab="ai" class="${S.tab === 'ai' ? 'on' : ''}">✨ ПО ОПИСАНИЮ</button></div>
     ${S.tab === 'free' ? `<div class="pre">${CityHouse.PRESETS.map((p, i) => `<button class="opt ${S.preset === i ? 'on' : ''}" data-pre="${i}">${esc(p.name)}</button>`).join('')}</div>` : S.tab === 'ai' ? `
     <p>Опиши дом мечты — <b>нейросеть соберёт его в 3D</b> из деталей: ракета, пончик, замок, дом-кот… Перед тем как поставить в город, дом проверит мэрия. Если не получится — звёзды вернём.</p>
-    <textarea id="aitext" maxlength="300" placeholder="Например: дом-ракета с иллюминаторами и огнём из сопел">${esc(S.ai || '')}</textarea>` : `
+    <textarea id="aitext" maxlength="600" placeholder="Например: дом-ракета с иллюминаторами и огнём из сопел">${esc(S.ai || '')}</textarea>` : `
     <div class="srow"><span>Форма</span><div class="opts">${opts('shape', CityHouse.SHAPES, v => SHAPE_N[v])}</div></div>
     <div class="srow"><span>Стены</span><div class="opts">${sw('wall', WALL_C)}</div></div>
     <div class="srow"><span>Крыша</span><div class="opts">${sw('roof', ROOF_C)}</div></div>
