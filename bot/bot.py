@@ -690,11 +690,16 @@ async def social_action(m, bot, me, data):
         await fx_set(me["nick"], fx)
         await m.answer(f"{FX_ITEMS[item][0] if item in FX_ITEMS else item}: {'снято — вернуть можно в «Мой дом»' if item in off else 'снова у дома'} ✅", reply_markup=kb)
     elif t == "roof":
-        px = re.sub(r"[^0-8]", "", str(data.get("p") or ""))[:225]
-        if len(px) not in (64, 225):
-            return
+        if data.get("p64"):
+            px = re.sub(r"[^0-9a-v]", "", str(data.get("p64")))[:FLAG64 * FLAG64]
+            if len(px) != FLAG64 * FLAG64:
+                return
+        else:
+            px = re.sub(r"[^0-8]", "", str(data.get("p") or ""))[:225]
+            if len(px) not in (64, 225):
+                return
         fx = await fx_get(me["nick"])
-        fx["rf"] = px if px.strip("0") else ""
+        flag_store(fx, px)
         await fx_set(me["nick"], fx)
         await m.answer("🎨 Флаг-рисунок над домом готов! На сайте через пару минут.", reply_markup=kb)
         if px.strip("0"):
@@ -753,28 +758,60 @@ async def friend_no(c: CallbackQuery):
     await c.message.edit_text("Ок, без дружбы 🙂")
 
 
-FLAG_PAL = ["#1a1238", "#ffffff", "#1a1238", "#ff3d7f", "#ffd23f", "#5ef2ff", "#a6ff8f", "#c084fc", "#ff7a1a"]
+FLAG_PAL = ["#1a1238", "#ffffff", "#1a1238", "#ff3d7f", "#ffd23f", "#5ef2ff", "#a6ff8f", "#c084fc", "#ff7a1a",
+            "#000000", "#4a4f5c", "#9aa1ad", "#d9dde3", "#e02a2a", "#8b1a2e", "#ff9ec4", "#ffb27a", "#fff3a6", "#b8862e", "#7a4a22",
+            "#f1c6a0", "#c88a5f", "#2e9d4f", "#135c34", "#2bb5d8", "#2b6fb5", "#17307a", "#7a4fd0", "#45207a", "#2fc0a0", "#ff6b6b", "#ffd9e8"]
+FLAG_ABC = "0123456789abcdefghijklmnopqrstuv"  # 0 — пусто, дальше индексы FLAG_PAL
+FLAG64 = 64
+
+
+def flag_down15(px64):
+    """Флаг 64×64 → 15×15 в старой палитре (1–8) — для старой версии сайта."""
+    pal = [(int(c[1:3], 16), int(c[3:5], 16), int(c[5:7], 16)) for c in FLAG_PAL]
+    out = []
+    for y in range(15):
+        for x in range(15):
+            cells = [px64[yy * 64 + xx] for yy in range(y * 64 // 15, (y + 1) * 64 // 15) for xx in range(x * 64 // 15, (x + 1) * 64 // 15)]
+            full = [ch for ch in cells if ch != "0"]
+            if len(full) * 2 < len(cells):
+                out.append("0")
+                continue
+            r_ = sum(pal[FLAG_ABC.index(ch)][0] for ch in full) / len(full)
+            g_ = sum(pal[FLAG_ABC.index(ch)][1] for ch in full) / len(full)
+            b_ = sum(pal[FLAG_ABC.index(ch)][2] for ch in full) / len(full)
+            out.append(str(min(range(1, 9), key=lambda i: 2 * (r_ - pal[i][0]) ** 2 + 4 * (g_ - pal[i][1]) ** 2 + 3 * (b_ - pal[i][2]) ** 2)))
+    return "".join(out)
+
+
+def flag_store(fx, px):
+    """Записать флаг любого размера: 64×64 → rf64 (+ rf 15×15 для старого сайта); 8×8/15×15 → rf, rf64 снимаем."""
+    if len(px) == FLAG64 * FLAG64:
+        fx["rf64"] = px if px.strip("0") else ""
+        fx["rf"] = flag_down15(px) if px.strip("0") else ""
+    else:
+        fx["rf"] = px if px.strip("0") else ""
+        fx.pop("rf64", None)
 
 
 def flag_png(px):
     """Превью флага для админа: сетка N×N, пустые клетки — шахматка."""
     from io import BytesIO
     from PIL import Image, ImageDraw
-    n = 15 if len(px) == 225 else 8
-    c = 360 // n
+    n = int(round(len(px) ** .5))
+    c = max(5, 360 // n)
     im = Image.new("RGB", (c * n + 20, c * n + 20), "#0d0a1f")
     d = ImageDraw.Draw(im)
     for i, ch in enumerate(px):
         x, y = 10 + (i % n) * c, 10 + (i // n) * c
-        col = FLAG_PAL[int(ch)] if ch != "0" else ("#2a2448" if (i % n + i // n) % 2 else "#221d3d")
+        col = FLAG_PAL[FLAG_ABC.index(ch)] if ch != "0" else ("#2a2448" if (i % n + i // n) % 2 else "#221d3d")
         d.rectangle([x, y, x + c - 1, y + c - 1], fill=col)
     buf = BytesIO()
     im.save(buf, "PNG")
     return buf.getvalue()
 
 
-def img_to_flag(raw: bytes) -> str:
-    """Картинка → флаг 15×15 в палитре сайта (идея из думы). Фон (прозрачный или цвет углов) → пустые клетки."""
+def img_to_flag(raw: bytes, n: int = FLAG64) -> str:
+    """Картинка → флаг n×n (по умолчанию 64×64) в палитре сайта (идея из думы). Фон (прозрачный или цвет углов) → пустые клетки."""
     from io import BytesIO
     from PIL import Image, ImageEnhance, ImageOps
     im = ImageOps.exif_transpose(Image.open(BytesIO(raw))).convert("RGBA")
@@ -792,13 +829,13 @@ def img_to_flag(raw: bytes) -> str:
     sq.paste(im, ((side - w) // 2, (side - h) // 2))
     a = sq.split()[3]
     rgb = ImageEnhance.Contrast(ImageEnhance.Color(sq.convert("RGB")).enhance(1.5)).enhance(1.15)
-    small = rgb.resize((15, 15), Image.LANCZOS)
-    alpha = a.resize((15, 15), Image.BOX)
-    raw_small = sq.convert("RGB").resize((15, 15), Image.BOX)
+    small = rgb.resize((n, n), Image.LANCZOS)
+    alpha = a.resize((n, n), Image.BOX)
+    raw_small = sq.convert("RGB").resize((n, n), Image.BOX)
     pal = [(int(c[1:3], 16), int(c[3:5], 16), int(c[5:7], 16)) for c in FLAG_PAL]
     out = []
-    for y in range(15):
-        for x in range(15):
+    for y in range(n):
+        for x in range(n):
             if alpha.getpixel((x, y)) < 110:
                 out.append("0")
                 continue
@@ -807,7 +844,7 @@ def img_to_flag(raw: bytes) -> str:
                 continue
             r_, g_, b_ = small.getpixel((x, y))
             best = min(range(1, len(pal)), key=lambda i: 2 * (r_ - pal[i][0]) ** 2 + 4 * (g_ - pal[i][1]) ** 2 + 3 * (b_ - pal[i][2]) ** 2)
-            out.append(str(best))
+            out.append(FLAG_ABC[best])
     return "".join(out)
 
 
@@ -832,7 +869,7 @@ async def flagpic_start(m: Message, uid: int, state: FSMContext):
         await m.answer("Сначала привяжи ник TikTok — «🏠 Мой дом» 👇", reply_markup=main_menu())
         return
     await state.set_state(FlagPic.photo)
-    await m.answer("🖼 <b>Картинка на флаг</b>\n\nПришли картинку одним сообщением — я переведу её во флаг 15×15 над твоим домом. "
+    await m.answer("🖼 <b>Картинка на флаг</b>\n\nПришли картинку одним сообщением — я переведу её во флаг 64×64 над твоим домом. "
                    "Лучше всего получаются простые яркие рисунки: логотип, смайлик, сердце, эмблема. Фон по краям станет прозрачным.\n\n"
                    "Флаг проверяет мэрия. Отмена — /start")
 
@@ -880,7 +917,7 @@ async def flagpic_cb(c: CallbackQuery, state: FSMContext):
     if c.data == "fpno" or not px or not me:
         return await c.message.answer("Ок, флаг не меняю 👌", reply_markup=main_menu())
     fx = await fx_get(me["nick"])
-    fx["rf"] = px
+    flag_store(fx, px)
     await fx_set(me["nick"], fx)
     asyncio.create_task(task_hit(c.bot, c.from_user.id, me["nick"], "roof"))
     await c.message.answer("🎨 Флаг из картинки поднят над домом! На сайте через пару минут.", reply_markup=main_menu())
@@ -898,10 +935,12 @@ async def roof_moderate(c: CallbackQuery, bot: Bot):
         await c.answer("Оставлен ✅")
         return await c.message.edit_caption(caption=cap + "✅ Оставлен", reply_markup=None)
     fx = await fx_get(nick)
-    if not fx.get("rf") or (len(parts) > 2 and str(fnv(fx["rf"]) % 99991) != parts[2]):
+    cur = fx.get("rf64") or fx.get("rf")
+    if not cur or (len(parts) > 2 and str(fnv(cur) % 99991) != parts[2]):
         await c.answer("Флаг уже другой или снят", show_alert=True)
         return await c.message.edit_caption(caption=cap + "⚠️ Уже не актуально", reply_markup=None)
     fx["rf"] = ""
+    fx.pop("rf64", None)
     await fx_set(nick, fx)
     await c.answer("Убран 🗑")
     await c.message.edit_caption(caption=cap + "🗑 Убран", reply_markup=None)
@@ -953,6 +992,7 @@ async def roof_clear(m: Message):
     nick = norm_nick(parts[1])
     fx = await fx_get(nick)
     fx["rf"] = ""
+    fx.pop("rf64", None)
     await fx_set(nick, fx)
     await m.answer(f"✅ Флаг-рисунок @{nick} снят.")
 
