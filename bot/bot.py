@@ -2727,7 +2727,7 @@ async def ai_cmd(m: Message, bot: Bot):
     """/ai — показать заказы «дом по описанию» с кнопками (если кнопки потерялись)."""
     if not is_admin(m.from_user.id):
         return
-    rows = [o for st in ("paid", "review") for o in await db.ai_list(st)]
+    rows = [o for st in ("paid", "review", "offer") for o in await db.ai_list(st)]
     if not rows:
         await m.answer("Активных заказов «дом по описанию» нет.")
         return
@@ -2779,16 +2779,73 @@ async def ai_decide(c: CallbackQuery, bot: Bot):
         if not me:
             await c.answer("Ник больше не привязан", show_alert=True)
             return
+        # идея из думы: житель сам смотрит превью и решает — ставить или перегенерировать
+        await db.ai_patch(o["id"], {"status": "offer"})
+        await c.answer("Отправил жителю на выбор")
+        await note("👀 Отправлен жителю: поставить / другой вариант")
+        try:
+            await ai_offer(bot, o, me["nick"])
+        except Exception as e:
+            log.warning("ai offer: %s", e)
+
+
+AI_REROLL_CO = 25
+
+
+async def ai_offer(bot, o, nick):
+    png = await ai.preview(o["recipe"], SITE_BASE)
+    kb = InlineKeyboardMarkup(inline_keyboard=[[IB(text="✅ Поставить в город", callback_data=f"uai_ok:{o['id']}")],
+                                               [IB(text=f"🔄 Другой вариант · 🪙 {AI_REROLL_CO}", callback_data=f"uai_re:{o['id']}")],
+                                               [IB(text="🏠 Пока оставить старый дом", callback_data=f"uai_keep:{o['id']}")]])
+    await bot.send_photo(o["tg_id"], photo(png, "house.png"), reply_markup=kb, caption=(
+        f"✨ Твой дом по описанию готов: «{o['recipe'].get('name', 'по описанию')}»\n«{o['text'][:200]}»\n\n"
+        f"Ставим в город? Не нравится — нейросеть соберёт другой вариант за 🪙 {AI_REROLL_CO} неонок."))
+
+
+@r.callback_query(F.data.startswith("uai_"))
+async def ai_user(c: CallbackQuery, bot: Bot):
+    act, oid = c.data.split(":")
+    o = await db.ai_get(int(oid))
+    if not o or o["tg_id"] != c.from_user.id:
+        return await c.answer()
+    if o["status"] != "offer" or not o.get("recipe"):
+        await c.answer("Этот вариант уже не актуален", show_alert=True)
+        return
+    me = await db.linked(c.from_user.id)
+    if not me:
+        return await c.answer("Ник больше не привязан", show_alert=True)
+
+    async def done_caption(t):
+        try:
+            await c.message.edit_caption(caption=(c.message.caption or "") + "\n\n" + t, reply_markup=None)
+        except Exception:
+            pass
+    if act == "uai_ok":
         await db.patch(me["id"], {"recipe": o["recipe"]})
         await db.ai_patch(o["id"], {"status": "done"})
         await c.answer("Поставлен!")
-        await note("✅ Стоит в городе")
-        try:
-            png = await ai.preview(o["recipe"], SITE_BASE)
-            await bot.send_photo(o["tg_id"], photo(png, "house.png"), reply_markup=city_keyboard(me["nick"]), caption=(
-                f"✨ Твой дом «{o['recipe'].get('name', 'по описанию')}» готов и уже стоит в городе! Открой город и найди @{me['nick']} 🏙"))
-        except Exception as e:
-            log.warning("ai send: %s", e)
+        await done_caption("✅ Стоит в городе")
+        await c.message.answer(f"🏙 Дом «{o['recipe'].get('name', 'по описанию')}» уже в городе! Открой и найди @{me['nick']}.", reply_markup=city_keyboard(me["nick"]))
+        for a in ADMIN_IDS:
+            try:
+                await bot.send_message(a, f"✅ @{me['nick']} поставил дом #{o['id']} в город.")
+            except Exception:
+                pass
+    elif act == "uai_re":
+        fx = await fx_get(me["nick"])
+        if int(fx.get("co", 0)) < AI_REROLL_CO:
+            await c.answer(f"Нужно 🪙 {AI_REROLL_CO}, у тебя {fx.get('co', 0)}. Неонки — бонус дня и задания дня в боте.", show_alert=True)
+            return
+        fx["co"] = int(fx.get("co", 0)) - AI_REROLL_CO
+        await fx_set(me["nick"], fx)
+        await db.ai_patch(o["id"], {"status": "paid"})
+        await c.answer("Собираю другой вариант…")
+        await done_caption(f"🔄 Пересобираю за 🪙 {AI_REROLL_CO}…")
+        await c.message.answer("🔄 Нейросеть собирает другой вариант — пришлю, как будет готов (обычно несколько минут).")
+        asyncio.create_task(build_ai(bot, o["id"]))
+    elif act == "uai_keep":
+        await c.answer("Ок!")
+        await c.message.answer("🏠 Оставил старый дом. Этот вариант не пропадёт — кнопки выше работают, решить можно позже.")
 
 
 async def handmade_loop(bot):
