@@ -516,11 +516,13 @@ function openRoof(h) {
     <div class="opts">${PAL.map((c, i) => `<button class="opt sw${i === col ? ' on' : ''}" data-col="${i}" type="button" style="background:${c || 'rgba(29,43,68,.07)'}">${c ? '' : '🧽'}</button>`).join('')}</div>
     <div id="rg" style="display:grid;grid-template-columns:repeat(15,1fr);gap:1px;width:min(84vw,330px);margin:4px auto;aspect-ratio:1"></div>
     <style>#rg{touch-action:none}#rg i{display:block;border-radius:2px;cursor:pointer}</style>
+    <button class="ghost" id="rpic" type="button">🖼 ИЗ КАРТИНКИ — пришли фото боту</button>
     <div class="btns"><button class="ghost" id="rclr" type="button">ОЧИСТИТЬ</button><button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button><button id="rgo" type="button">ПОВЕСИТЬ</button></div>`;
   draw();
   sheet.querySelectorAll('[data-col]').forEach(b => b.onclick = () => { col = +b.dataset.col; sheet.querySelectorAll('[data-col]').forEach(x => x.classList.toggle('on', x === b)); });
   let painting = false; const paint = e => { const t = document.elementFromPoint(e.clientX, e.clientY), i = t && t.dataset && t.dataset.i; if (i == null || px[+i] === String(col)) return; px[+i] = String(col); t.style.background = PAL[col] || 'rgba(29,43,68,.06)'; };
   $('rg').onpointerdown = e => { painting = true; paint(e); }; $('rg').onpointermove = e => { if (painting) paint(e); }; window.addEventListener('pointerup', () => painting = false);
+  $('rpic').onclick = () => { const u = BOT_URL.split('?')[0] + '?start=flagpic'; if (TG && tg.openTelegramLink) { tg.openTelegramLink(u); } else window.open(u, '_blank'); };
   $('rclr').onclick = () => { px = '0'.repeat(N * N).split(''); draw(); };
   $('rgo').onclick = () => sendTG({ t: 'roof', p: px.join('') });
   modal.classList.add('show'); closeBtn();
