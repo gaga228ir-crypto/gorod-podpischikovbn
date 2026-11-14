@@ -617,14 +617,7 @@ async def social_action(m, bot, me, data):
         await fx_set(me["nick"], fx)
         await m.answer("🎨 Флаг-рисунок над домом готов! На сайте через пару минут.", reply_markup=kb)
         if px.strip("0"):
-            pic = BufferedInputFile(flag_png(px), "flag.png")
-            mk = InlineKeyboardMarkup(inline_keyboard=[[IB(text="✅ Оставить", callback_data=f"rfk:{me['nick']}"),
-                                                        IB(text="🗑 Убрать", callback_data=f"rfd:{me['nick']}:{fnv(px) % 99991}")]])
-            for a in ADMIN_IDS:
-                try:
-                    await bot.send_photo(a, pic, caption=f"🎨 @{me['nick']} нарисовал флаг над домом.", reply_markup=mk)
-                except Exception as e:
-                    log.warning("flag preview: %s", e)
+            await flag_to_admins(bot, me["nick"], px)
     elif t == "borrow":
         target = norm_nick(str(data.get("n") or ""))
         now = int(time.time())
@@ -695,6 +688,119 @@ def flag_png(px):
     buf = BytesIO()
     im.save(buf, "PNG")
     return buf.getvalue()
+
+
+def img_to_flag(raw: bytes) -> str:
+    """Картинка → флаг 15×15 в палитре сайта (идея из думы). Фон (прозрачный или цвет углов) → пустые клетки."""
+    from io import BytesIO
+    from PIL import Image, ImageEnhance, ImageOps
+    im = ImageOps.exif_transpose(Image.open(BytesIO(raw))).convert("RGBA")
+    im.thumbnail((600, 600))
+    rgb = im.convert("RGB")
+    w, h = im.size
+    k = max(2, min(w, h) // 25)
+    corners = [rgb.crop(b).resize((1, 1), Image.BOX).getpixel((0, 0)) for b in ((0, 0, k, k), (w - k, 0, w, k), (0, h - k, k, h), (w - k, h - k, w, h))]
+    bg = None
+    if max(max(abs(a[i] - corners[0][i]) for i in range(3)) for a in corners) < 40:
+        bg = tuple(sum(c[i] for c in corners) // 4 for i in range(3))
+    # вписываем в квадрат с полями, усиливаем цвет
+    side = max(w, h)
+    sq = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+    sq.paste(im, ((side - w) // 2, (side - h) // 2))
+    a = sq.split()[3]
+    rgb = ImageEnhance.Contrast(ImageEnhance.Color(sq.convert("RGB")).enhance(1.5)).enhance(1.15)
+    small = rgb.resize((15, 15), Image.LANCZOS)
+    alpha = a.resize((15, 15), Image.BOX)
+    raw_small = sq.convert("RGB").resize((15, 15), Image.BOX)
+    pal = [(int(c[1:3], 16), int(c[3:5], 16), int(c[5:7], 16)) for c in FLAG_PAL]
+    out = []
+    for y in range(15):
+        for x in range(15):
+            if alpha.getpixel((x, y)) < 110:
+                out.append("0")
+                continue
+            if bg and max(abs(raw_small.getpixel((x, y))[i] - bg[i]) for i in range(3)) < 34:
+                out.append("0")
+                continue
+            r_, g_, b_ = small.getpixel((x, y))
+            best = min(range(1, len(pal)), key=lambda i: 2 * (r_ - pal[i][0]) ** 2 + 4 * (g_ - pal[i][1]) ** 2 + 3 * (b_ - pal[i][2]) ** 2)
+            out.append(str(best))
+    return "".join(out)
+
+
+async def flag_to_admins(bot, nick, px, what="нарисовал флаг над домом"):
+    pic = BufferedInputFile(flag_png(px), "flag.png")
+    mk = InlineKeyboardMarkup(inline_keyboard=[[IB(text="✅ Оставить", callback_data=f"rfk:{nick}"),
+                                                IB(text="🗑 Убрать", callback_data=f"rfd:{nick}:{fnv(px) % 99991}")]])
+    for a in ADMIN_IDS:
+        try:
+            await bot.send_photo(a, pic, caption=f"🎨 @{nick} {what}.", reply_markup=mk)
+        except Exception as e:
+            log.warning("flag preview: %s", e)
+
+
+class FlagPic(StatesGroup):
+    photo = State()
+
+
+async def flagpic_start(m: Message, uid: int, state: FSMContext):
+    me = await db.linked(uid)
+    if not me:
+        await m.answer("Сначала привяжи ник TikTok — «🏠 Мой дом» 👇", reply_markup=main_menu())
+        return
+    await state.set_state(FlagPic.photo)
+    await m.answer("🖼 <b>Картинка на флаг</b>\n\nПришли картинку одним сообщением — я переведу её во флаг 15×15 над твоим домом. "
+                   "Лучше всего получаются простые яркие рисунки: логотип, смайлик, сердце, эмблема. Фон по краям станет прозрачным.\n\n"
+                   "Флаг проверяет мэрия. Отмена — /start")
+
+
+@r.message(Command("flagpic"))
+async def flagpic_cmd(m: Message, state: FSMContext):
+    await flagpic_start(m, m.from_user.id, state)
+
+
+@r.message(FlagPic.photo)
+async def flagpic_photo(m: Message, state: FSMContext):
+    me = await db.linked(m.from_user.id)
+    fid = m.photo[-1].file_id if m.photo else (m.document.file_id if m.document and (m.document.mime_type or "").startswith("image/") else None)
+    if not me or not fid:
+        await m.answer("Нужна картинка 🖼 — пришли фото или файл-картинку. Отмена — /start")
+        return
+    try:
+        f = await m.bot.download(fid)
+        px = img_to_flag(f.read())
+    except Exception as e:
+        log.warning("flagpic: %s", e)
+        await m.answer("Не получилось прочитать картинку 😕 Попробуй другую.")
+        return
+    if not px.strip("0"):
+        await m.answer("Картинка получилась пустой — попробуй более яркую, без однотонного фона.")
+        return
+    await state.update_data(px=px)
+    mk = InlineKeyboardMarkup(inline_keyboard=[[IB(text="✅ Поставить на дом", callback_data="fpok")], [IB(text="🖼 Другая картинка", callback_data="fpre"), IB(text="✖ Отмена", callback_data="fpno")]])
+    await m.answer_photo(BufferedInputFile(flag_png(px), "flag.png"), caption="Вот так флаг будет выглядеть над домом. Поставить?\n"
+                         "Подправить по пикселям можно потом на сайте: «👤 Мой дом» → «🎨 Флаг».", reply_markup=mk)
+
+
+@r.callback_query(F.data.in_({"fpok", "fpre", "fpno"}))
+async def flagpic_cb(c: CallbackQuery, state: FSMContext):
+    await c.answer()
+    try:
+        await c.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    if c.data == "fpre":
+        return await flagpic_start(c.message, c.from_user.id, state)
+    px = (await state.get_data()).get("px") if await state.get_state() == FlagPic.photo.state else None
+    await state.clear()
+    me = await db.linked(c.from_user.id)
+    if c.data == "fpno" or not px or not me:
+        return await c.message.answer("Ок, флаг не меняю 👌", reply_markup=main_menu())
+    fx = await fx_get(me["nick"])
+    fx["rf"] = px
+    await fx_set(me["nick"], fx)
+    await c.message.answer("🎨 Флаг из картинки поднят над домом! На сайте через пару минут.", reply_markup=main_menu())
+    await flag_to_admins(c.bot, me["nick"], px, "поставил флаг из картинки")
 
 
 @r.callback_query(F.data.startswith("rfk:") | F.data.startswith("rfd:"))
@@ -1080,6 +1186,9 @@ async def start(m: Message, state: FSMContext):
         gift = bool(await db.ai_gift(m.from_user.id))
         await m.answer(f"Вот твой город, @{_me['nick']} 🏙 Открывай кнопкой «🏙 Открыть город» внизу — через неё работают студия, табличка, «постучать» и украшения"
                        + (" (а ещё тебя ждёт 🎁 бесплатный дом по описанию)." if gift else "."), reply_markup=city_keyboard(_me["nick"], gift=gift))
+        return
+    if arg[0] == "flagpic":
+        await flagpic_start(m, m.from_user.id, state)
         return
     if arg[0] == "cand":
         await apply_start(m, m.from_user.id, state, m.bot)
