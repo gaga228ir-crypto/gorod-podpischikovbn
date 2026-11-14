@@ -395,6 +395,83 @@ async def coins_add(nick, n):
     return fx["co"]
 
 
+# ======== 📋 Задания дня (идея из думы: «работа или задания для получения валюты») ========
+TASKS = {
+    "daily": ("🪙 Забери бонус дня", 1, 5),
+    "knock": ("🚪 Постучи в 3 дома", 3, 15),
+    "ivote": ("🏛 Проголосуй за идею в думе", 1, 10),
+    "gift": ("🎁 Подари украшение другу", 1, 20),
+    "friend": ("👫 Предложи кому-нибудь дружбу", 1, 10),
+    "borrow": ("🦝 Одолжи украшение у соседа", 1, 10),
+    "roof": ("🎨 Нарисуй или обнови флаг над домом", 1, 10),
+    "mini": ("🧰 Найди и открой малый сундук", 1, 15),
+}
+TASKS_N, TASKS_ALL_BONUS = 3, 25
+
+
+def tasks_for(uid, day):
+    return sorted(TASKS, key=lambda k: fnv(f"{day}:{uid}:{k}"))[:TASKS_N]
+
+
+async def tasks_state(uid, day):
+    try:
+        st = json.loads(await db.kv_get(f"tasks:{uid}:{day}") or "{}")
+    except ValueError:
+        st = {}
+    st.setdefault("p", {})
+    st.setdefault("done", [])
+    return st
+
+
+async def task_hit(bot, uid, nick, ev):
+    """Засчитать действие ev в задания дня; за выполненное — неонки и сообщение."""
+    try:
+        day = msk_day()
+        if ev not in tasks_for(uid, day):
+            return
+        st = await tasks_state(uid, day)
+        if ev in st["done"]:
+            return
+        name, goal, rew = TASKS[ev]
+        st["p"][ev] = int(st["p"].get(ev, 0)) + 1
+        msg = ""
+        if st["p"][ev] >= goal:
+            st["done"].append(ev)
+            total = await coins_add(nick, rew)
+            msg = f"✅ Задание дня выполнено: {name} — 🪙 +{rew}"
+            if len(st["done"]) >= TASKS_N and not st.get("all"):
+                st["all"] = 1
+                total = await coins_add(nick, TASKS_ALL_BONUS)
+                msg += f"\n🏆 Все задания на сегодня сделаны — бонус 🪙 +{TASKS_ALL_BONUS}! Завтра будут новые."
+            msg += f"\nНа счету: 🪙 {total}"
+        await db.kv_set(f"tasks:{uid}:{day}", json.dumps(st))
+        if msg:
+            await bot.send_message(uid, msg)
+    except Exception as e:
+        log.warning("task_hit %s: %s", ev, e)
+
+
+@r.callback_query(F.data == "tasks")
+async def tasks_cb(c: CallbackQuery):
+    await c.answer()
+    me = await db.linked(c.from_user.id)
+    if not me:
+        await c.message.answer("Сначала привяжи ник — «🏠 Мой дом» 📋", reply_markup=main_menu())
+        return
+    day = msk_day()
+    st = await tasks_state(c.from_user.id, day)
+    lines = []
+    for k in tasks_for(c.from_user.id, day):
+        name, goal, rew = TASKS[k]
+        if k in st["done"]:
+            lines.append(f"✅ <s>{name}</s> · 🪙 +{rew}")
+        else:
+            lines.append(f"▫️ {name} · 🪙 +{rew}" + (f" ({int(st['p'].get(k, 0))}/{goal})" if goal > 1 else ""))
+    fx = await fx_get(me["nick"])
+    await c.message.answer("📋 <b>Задания дня</b>\n\n" + "\n".join(lines) + f"\n\nВсе {TASKS_N} — ещё 🪙 +{TASKS_ALL_BONUS} сверху. Новые задания каждый день в 00:00 МСК.\n"
+                           f"Выполнять — в городе: кнопка «🏙 Открыть город» внизу.\nНа счету: <b>🪙 {fx.get('co', 0)}</b>", reply_markup=city_keyboard(me["nick"]))
+
+
 @r.callback_query(F.data == "daily")
 async def daily_cb(c: CallbackQuery):
     await c.answer()
@@ -414,6 +491,7 @@ async def daily_cb(c: CallbackQuery):
     await db.kv_set(f"dstreak:{c.from_user.id}", streak)
     gain = 10 + min(streak - 1, 6) * 2
     total = await coins_add(me["nick"], gain)
+    asyncio.create_task(task_hit(c.bot, c.from_user.id, me["nick"], "daily"))
     await c.message.answer(f"🪙 +{gain} неонок! Серия: {streak} дн. подряд (каждый день подряд — больше).\nНа счету: <b>🪙 {total}</b>\n\nТрать в городе: нажми на свой дом → «⭐ Украсить» → кнопки с 🪙.",
                            reply_markup=city_keyboard(me["nick"]))
 
@@ -559,6 +637,7 @@ async def social_action(m, bot, me, data):
         await db.kv_set("duma", json.dumps(ideas, ensure_ascii=False))
         _fx_dirty.set()
         await coins_add(me["nick"], 1)
+        asyncio.create_task(task_hit(bot, uid, me["nick"], "ivote"))
         await m.answer(f"🏛 Голос учтён: «{idea['text'][:60]}» {'👍' if v > 0 else '👎'}. Тебе 🪙 +1.", reply_markup=kb)
     elif t == "friend":
         target = norm_nick(str(data.get("n") or ""))
@@ -572,6 +651,7 @@ async def social_action(m, bot, me, data):
         if not ow or not ow[0].get("tg_id"):
             await m.answer(f"@{target} ещё не привязал дом в боте — позови его сюда 🙂", reply_markup=kb)
             return
+        asyncio.create_task(task_hit(bot, uid, me["nick"], "friend"))
         await m.answer(f"👫 Запрос дружбы отправлен @{target}!", reply_markup=kb)
         try:
             await bot.send_message(ow[0]["tg_id"], f"👫 @{me['nick']} хочет дружить домами! Между вашими домами загорится неоновая нить, и вы сможете дарить друг другу украшения.",
@@ -596,6 +676,7 @@ async def social_action(m, bot, me, data):
         await fx_set(me["nick"], mine)
         fx["d"] = sorted(set(fx.get("d", [])) | {item})
         await fx_set(target, fx)
+        asyncio.create_task(task_hit(bot, uid, me["nick"], "gift"))
         await m.answer(f"🎁 Подарил @{target}: {FX_ITEMS[item][0]}! Осталось 🪙 {mine['co']}.", reply_markup=kb)
         await notify(target, f"🎁 Твой друг @{me['nick']} подарил тебе {FX_ITEMS[item][0]}! Уже у твоего дома.")
     elif t == "hide":  # снять / вернуть своё украшение (остаётся купленным)
@@ -617,6 +698,7 @@ async def social_action(m, bot, me, data):
         await fx_set(me["nick"], fx)
         await m.answer("🎨 Флаг-рисунок над домом готов! На сайте через пару минут.", reply_markup=kb)
         if px.strip("0"):
+            asyncio.create_task(task_hit(bot, uid, me["nick"], "roof"))
             await flag_to_admins(bot, me["nick"], px)
     elif t == "borrow":
         target = norm_nick(str(data.get("n") or ""))
@@ -640,6 +722,7 @@ async def social_action(m, bot, me, data):
         await fx_set(target, fx)
         await fx_set(me["nick"], mine)
         await db.kv_set(f"borrow:{uid}", now)
+        asyncio.create_task(task_hit(bot, uid, me["nick"], "borrow"))
         await m.answer(f"🦝 Ты одолжил у @{target}: {FX_ITEMS[item][0]} — на 1 час, потом вернётся само!", reply_markup=kb)
         await notify(target, f"🦝 @{me['nick']} одолжил твоё украшение «{FX_ITEMS[item][0]}» на 1 час. Не волнуйся — вернётся само! (Можешь одолжить у него в ответ 😉)")
 
@@ -799,6 +882,7 @@ async def flagpic_cb(c: CallbackQuery, state: FSMContext):
     fx = await fx_get(me["nick"])
     fx["rf"] = px
     await fx_set(me["nick"], fx)
+    asyncio.create_task(task_hit(c.bot, c.from_user.id, me["nick"], "roof"))
     await c.message.answer("🎨 Флаг из картинки поднят над домом! На сайте через пару минут.", reply_markup=main_menu())
     await flag_to_admins(c.bot, me["nick"], px, "поставил флаг из картинки")
 
@@ -921,6 +1005,7 @@ async def claim_mini(m, uid, i, code):
     fx["co"] = int(fx.get("co", 0)) + 15
     await fx_set(me["nick"], fx)
     asyncio.create_task(klad_publish(day))
+    asyncio.create_task(task_hit(m.bot, uid, me["nick"], "mini"))
     await m.answer(f"🎁 Сундук открыт! Внутри — <b>{FX_ITEMS[item][0]}</b>. Уже у твоего дома (на сайте через пару минут). Разместить его можно в «⭐ Украсить» → «⚙️ Разместить».",
                    reply_markup=city_keyboard(me["nick"]))
 FX_COLORS = {"", "#ff3d7f", "#ffd23f", "#5ef2ff", "#a6ff8f", "#c084fc", "#ff7a1a"}
@@ -1138,7 +1223,7 @@ async def menu_backfill(bot):
 
 def main_menu():
     rows = [[IB(text="🏠 Мой дом", callback_data="home")], [IB(text="👥 Пригласить друга · бонус", callback_data="ref")],
-            [IB(text="🗳 Выборы мэра", callback_data="elect")], [IB(text="🪙 Бонус дня", callback_data="daily"), IB(text="🏛 Дума", callback_data="duma")],
+            [IB(text="🗳 Выборы мэра", callback_data="elect"), IB(text="🏛 Дума", callback_data="duma")], [IB(text="🪙 Бонус дня", callback_data="daily"), IB(text="📋 Задания дня", callback_data="tasks")],
             [IB(text="🐞 Нашёл баг", callback_data="bug"), IB(text="💡 Идея для города", callback_data="idea")]]
     if CHAT_URL:
         rows.append([IB(text="💬 Чат жителей", url=CHAT_URL)])
@@ -2118,6 +2203,7 @@ async def api_handler(req):
     if not uid:
         return web.json_response({"ok": False, "err": "auth"}, headers=cors)
     m = ApiMsg(uid, json.dumps(body.get("data") or {}, ensure_ascii=False))
+    m.bot = req.app["bot"]
     try:
         await web_app(m, req.app["bot"])
     except Exception as e:
@@ -2286,6 +2372,7 @@ async def web_app(m: Message, bot: Bot):
         fx["k"] = int(fx.get("k", 0)) + 1
         await fx_set(target, fx)
         await coins_add(me["nick"], 2)
+        asyncio.create_task(task_hit(bot, m.from_user.id, me["nick"], "knock"))
         await m.answer(f"🚪 Тук-тук! Ты постучал к @{target}. У дома уже ❤ {fx['k']}. Тебе 🪙 +2.", reply_markup=city_keyboard(me["nick"]))
         owners = await db.by_nick(target)
         owner = owners[0] if owners else None
