@@ -395,6 +395,83 @@ async def coins_add(nick, n):
     return fx["co"]
 
 
+# ======== 📋 Задания дня (идея из думы: «работа или задания для получения валюты») ========
+TASKS = {
+    "daily": ("🪙 Забери бонус дня", 1, 5),
+    "knock": ("🚪 Постучи в 3 дома", 3, 15),
+    "ivote": ("🏛 Проголосуй за идею в думе", 1, 10),
+    "gift": ("🎁 Подари украшение другу", 1, 20),
+    "friend": ("👫 Предложи кому-нибудь дружбу", 1, 10),
+    "borrow": ("🦝 Одолжи украшение у соседа", 1, 10),
+    "roof": ("🎨 Нарисуй или обнови флаг над домом", 1, 10),
+    "mini": ("🧰 Найди и открой малый сундук", 1, 15),
+}
+TASKS_N, TASKS_ALL_BONUS = 3, 25
+
+
+def tasks_for(uid, day):
+    return sorted(TASKS, key=lambda k: fnv(f"{day}:{uid}:{k}"))[:TASKS_N]
+
+
+async def tasks_state(uid, day):
+    try:
+        st = json.loads(await db.kv_get(f"tasks:{uid}:{day}") or "{}")
+    except ValueError:
+        st = {}
+    st.setdefault("p", {})
+    st.setdefault("done", [])
+    return st
+
+
+async def task_hit(bot, uid, nick, ev):
+    """Засчитать действие ev в задания дня; за выполненное — неонки и сообщение."""
+    try:
+        day = msk_day()
+        if ev not in tasks_for(uid, day):
+            return
+        st = await tasks_state(uid, day)
+        if ev in st["done"]:
+            return
+        name, goal, rew = TASKS[ev]
+        st["p"][ev] = int(st["p"].get(ev, 0)) + 1
+        msg = ""
+        if st["p"][ev] >= goal:
+            st["done"].append(ev)
+            total = await coins_add(nick, rew)
+            msg = f"✅ Задание дня выполнено: {name} — 🪙 +{rew}"
+            if len(st["done"]) >= TASKS_N and not st.get("all"):
+                st["all"] = 1
+                total = await coins_add(nick, TASKS_ALL_BONUS)
+                msg += f"\n🏆 Все задания на сегодня сделаны — бонус 🪙 +{TASKS_ALL_BONUS}! Завтра будут новые."
+            msg += f"\nНа счету: 🪙 {total}"
+        await db.kv_set(f"tasks:{uid}:{day}", json.dumps(st))
+        if msg:
+            await bot.send_message(uid, msg)
+    except Exception as e:
+        log.warning("task_hit %s: %s", ev, e)
+
+
+@r.callback_query(F.data == "tasks")
+async def tasks_cb(c: CallbackQuery):
+    await c.answer()
+    me = await db.linked(c.from_user.id)
+    if not me:
+        await c.message.answer("Сначала привяжи ник — «🏠 Мой дом» 📋", reply_markup=main_menu())
+        return
+    day = msk_day()
+    st = await tasks_state(c.from_user.id, day)
+    lines = []
+    for k in tasks_for(c.from_user.id, day):
+        name, goal, rew = TASKS[k]
+        if k in st["done"]:
+            lines.append(f"✅ <s>{name}</s> · 🪙 +{rew}")
+        else:
+            lines.append(f"▫️ {name} · 🪙 +{rew}" + (f" ({int(st['p'].get(k, 0))}/{goal})" if goal > 1 else ""))
+    fx = await fx_get(me["nick"])
+    await c.message.answer("📋 <b>Задания дня</b>\n\n" + "\n".join(lines) + f"\n\nВсе {TASKS_N} — ещё 🪙 +{TASKS_ALL_BONUS} сверху. Новые задания каждый день в 00:00 МСК.\n"
+                           f"Выполнять — в городе: кнопка «🏙 Открыть город» внизу.\nНа счету: <b>🪙 {fx.get('co', 0)}</b>", reply_markup=city_keyboard(me["nick"]))
+
+
 @r.callback_query(F.data == "daily")
 async def daily_cb(c: CallbackQuery):
     await c.answer()
@@ -414,6 +491,7 @@ async def daily_cb(c: CallbackQuery):
     await db.kv_set(f"dstreak:{c.from_user.id}", streak)
     gain = 10 + min(streak - 1, 6) * 2
     total = await coins_add(me["nick"], gain)
+    asyncio.create_task(task_hit(c.bot, c.from_user.id, me["nick"], "daily"))
     await c.message.answer(f"🪙 +{gain} неонок! Серия: {streak} дн. подряд (каждый день подряд — больше).\nНа счету: <b>🪙 {total}</b>\n\nТрать в городе: нажми на свой дом → «⭐ Украсить» → кнопки с 🪙.",
                            reply_markup=city_keyboard(me["nick"]))
 
@@ -559,6 +637,7 @@ async def social_action(m, bot, me, data):
         await db.kv_set("duma", json.dumps(ideas, ensure_ascii=False))
         _fx_dirty.set()
         await coins_add(me["nick"], 1)
+        asyncio.create_task(task_hit(bot, uid, me["nick"], "ivote"))
         await m.answer(f"🏛 Голос учтён: «{idea['text'][:60]}» {'👍' if v > 0 else '👎'}. Тебе 🪙 +1.", reply_markup=kb)
     elif t == "friend":
         target = norm_nick(str(data.get("n") or ""))
@@ -572,6 +651,7 @@ async def social_action(m, bot, me, data):
         if not ow or not ow[0].get("tg_id"):
             await m.answer(f"@{target} ещё не привязал дом в боте — позови его сюда 🙂", reply_markup=kb)
             return
+        asyncio.create_task(task_hit(bot, uid, me["nick"], "friend"))
         await m.answer(f"👫 Запрос дружбы отправлен @{target}!", reply_markup=kb)
         try:
             await bot.send_message(ow[0]["tg_id"], f"👫 @{me['nick']} хочет дружить домами! Между вашими домами загорится неоновая нить, и вы сможете дарить друг другу украшения.",
@@ -596,6 +676,7 @@ async def social_action(m, bot, me, data):
         await fx_set(me["nick"], mine)
         fx["d"] = sorted(set(fx.get("d", [])) | {item})
         await fx_set(target, fx)
+        asyncio.create_task(task_hit(bot, uid, me["nick"], "gift"))
         await m.answer(f"🎁 Подарил @{target}: {FX_ITEMS[item][0]}! Осталось 🪙 {mine['co']}.", reply_markup=kb)
         await notify(target, f"🎁 Твой друг @{me['nick']} подарил тебе {FX_ITEMS[item][0]}! Уже у твоего дома.")
     elif t == "hide":  # снять / вернуть своё украшение (остаётся купленным)
@@ -608,23 +689,67 @@ async def social_action(m, bot, me, data):
         fx["off"] = sorted(off)
         await fx_set(me["nick"], fx)
         await m.answer(f"{FX_ITEMS[item][0] if item in FX_ITEMS else item}: {'снято — вернуть можно в «Мой дом»' if item in off else 'снова у дома'} ✅", reply_markup=kb)
-    elif t == "roof":
-        px = re.sub(r"[^0-8]", "", str(data.get("p") or ""))[:225]
-        if len(px) not in (64, 225):
+    elif t == "cohab":  # 🏘 общий дом: хозяин зовёт друга жить вместе (идея думы «дома на несколько жильцов»)
+        target = norm_nick(str(data.get("n") or ""))
+        err = await cohab_check(me["nick"], target)
+        if err:
+            await m.answer(err, reply_markup=kb)
+            return
+        ow = await db.by_nick(target)
+        if not ow or not ow[0].get("tg_id"):
+            await m.answer(f"@{target} ещё не привязал дом в боте 🙂", reply_markup=kb)
+            return
+        await m.answer(f"🏘 Приглашение жить вместе отправлено @{target}!", reply_markup=kb)
+        try:
+            await bot.send_message(ow[0]["tg_id"], f"🏘 @{me['nick']} зовёт тебя жить вместе в одном доме!\n\n"
+                                   f"Твой ник появится на его доме, а на месте твоего дома будет указатель «живёт у @{me['nick']}». "
+                                   "Твой дом, украшения и неонки сохранятся — выехать можно в любой момент.",
+                                   reply_markup=InlineKeyboardMarkup(inline_keyboard=[[IB(text="✅ Переехать", callback_data=f"chy:{me['nick']}"), IB(text="❌ Нет", callback_data="chn")]]))
+        except Exception:
+            pass
+    elif t in ("leave", "kick"):  # выехать из общего дома / хозяин выселяет жильца
+        guest = me["nick"] if t == "leave" else norm_nick(str(data.get("n") or ""))
+        host = await db.kv_get(f"home:{guest}")
+        if not host or (t == "kick" and host != me["nick"]):
+            await m.answer("Такого жильца нет 🙂", reply_markup=kb)
+            return
+        await db.kv_set(f"home:{guest}", None)
+        _fx_dirty.set()
+        other = host if t == "leave" else guest
+        await m.answer(f"🏠 Готово: @{guest} снова живёт в своём доме. На сайте через пару минут.", reply_markup=kb)
+        ow = await db.by_nick(other)
+        if ow and ow[0].get("tg_id"):
+            try:
+                await bot.send_message(ow[0]["tg_id"], f"🏠 @{guest} выехал из общего дома." if t == "leave" else f"🏠 @{host} попросил тебя выехать из общего дома — ты снова в своём доме.")
+            except Exception:
+                pass
+    elif t == "esz":  # размер дома в усадьбе: 1 обычный, 2 большой, 3 огромный (бесплатно)
+        sz = int(data.get("s", 1)) if str(data.get("s", "1")).isdigit() else 1
+        if sz not in (1, 2, 3):
+            return
+        if await db.kv_get(f"estate:{me['nick']}") is None:
+            await m.answer("Размер можно выбрать только для дома в усадьбе 🏡", reply_markup=kb)
             return
         fx = await fx_get(me["nick"])
-        fx["rf"] = px if px.strip("0") else ""
+        fx["es"] = sz
+        await fx_set(me["nick"], fx)
+        await m.answer(f"🏡 Размер дома в усадьбе: {['', 'обычный', 'большой', 'огромный'][sz]}. На сайте через пару минут.", reply_markup=kb)
+    elif t == "roof":
+        if data.get("p64"):
+            px = re.sub(r"[^0-9a-v]", "", str(data.get("p64")))[:FLAG64 * FLAG64]
+            if len(px) != FLAG64 * FLAG64:
+                return
+        else:
+            px = re.sub(r"[^0-8]", "", str(data.get("p") or ""))[:225]
+            if len(px) not in (64, 225):
+                return
+        fx = await fx_get(me["nick"])
+        flag_store(fx, px)
         await fx_set(me["nick"], fx)
         await m.answer("🎨 Флаг-рисунок над домом готов! На сайте через пару минут.", reply_markup=kb)
         if px.strip("0"):
-            pic = BufferedInputFile(flag_png(px), "flag.png")
-            mk = InlineKeyboardMarkup(inline_keyboard=[[IB(text="✅ Оставить", callback_data=f"rfk:{me['nick']}"),
-                                                        IB(text="🗑 Убрать", callback_data=f"rfd:{me['nick']}:{fnv(px) % 99991}")]])
-            for a in ADMIN_IDS:
-                try:
-                    await bot.send_photo(a, pic, caption=f"🎨 @{me['nick']} нарисовал флаг над домом.", reply_markup=mk)
-                except Exception as e:
-                    log.warning("flag preview: %s", e)
+            asyncio.create_task(task_hit(bot, uid, me["nick"], "roof"))
+            await flag_to_admins(bot, me["nick"], px)
     elif t == "borrow":
         target = norm_nick(str(data.get("n") or ""))
         now = int(time.time())
@@ -647,6 +772,7 @@ async def social_action(m, bot, me, data):
         await fx_set(target, fx)
         await fx_set(me["nick"], mine)
         await db.kv_set(f"borrow:{uid}", now)
+        asyncio.create_task(task_hit(bot, uid, me["nick"], "borrow"))
         await m.answer(f"🦝 Ты одолжил у @{target}: {FX_ITEMS[item][0]} — на 1 час, потом вернётся само!", reply_markup=kb)
         await notify(target, f"🦝 @{me['nick']} одолжил твоё украшение «{FX_ITEMS[item][0]}» на 1 час. Не волнуйся — вернётся само! (Можешь одолжить у него в ответ 😉)")
 
@@ -671,30 +797,225 @@ async def friend_ok(c: CallbackQuery):
             pass
 
 
+COHAB_MAX = 3  # жильцов у хозяина, кроме него самого
+
+
+async def cohab_check(host, guest):
+    """Можно ли guest переехать к host. Возвращает текст ошибки или ''."""
+    if not guest or guest == host:
+        return "Позвать можно только друга 🙂"
+    if guest not in (await fx_get(host)).get("f", []):
+        return f"Сначала подружитесь с @{guest} — кнопка «👫 ДРУЖИТЬ» в его карточке."
+    if await db.kv_get(f"home:{host}"):
+        return "Ты сам живёшь в общем доме у друга — сначала выедь (👤 Мой дом)."
+    if await db.kv_get(f"home:{guest}"):
+        return f"@{guest} уже живёт в общем доме."
+    if await db.kv_get(f"estate:{guest}") is not None:
+        return f"У @{guest} усадьба — переехать к тебе он не может."
+    if [k for k, v in await db.kv_prefix("home:") if v == guest]:
+        return f"У @{guest} уже свои жильцы."
+    if len([1 for k, v in await db.kv_prefix("home:") if v == host]) >= COHAB_MAX:
+        return f"В доме уже {COHAB_MAX} жильца — больше не поместится 🏘"
+    return ""
+
+
+@r.callback_query(F.data.startswith("chy:"))
+async def cohab_yes(c: CallbackQuery):
+    await c.answer()
+    me = await db.linked(c.from_user.id)
+    host = c.data[4:]
+    if not me:
+        return
+    err = await cohab_check(host, me["nick"])
+    if err:
+        return await c.message.edit_text("Не получилось: " + err)
+    await db.kv_set(f"home:{me['nick']}", host)
+    _fx_dirty.set()
+    await c.message.edit_text(f"🏘 Ты живёшь вместе с @{host}! Твой ник уже на его доме (на сайте через пару минут). Выехать — «👤 Мой дом» на сайте.")
+    ow = await db.by_nick(host)
+    if ow and ow[0].get("tg_id"):
+        try:
+            await c.bot.send_message(ow[0]["tg_id"], f"🏘 @{me['nick']} переехал к тебе! Теперь вы живёте в одном доме.")
+        except Exception:
+            pass
+
+
+@r.callback_query(F.data == "chn")
+async def cohab_no(c: CallbackQuery):
+    await c.answer()
+    await c.message.edit_text("Ок, остаёшься в своём доме 🙂")
+
+
 @r.callback_query(F.data == "frno")
 async def friend_no(c: CallbackQuery):
     await c.answer()
     await c.message.edit_text("Ок, без дружбы 🙂")
 
 
-FLAG_PAL = ["#1a1238", "#ffffff", "#1a1238", "#ff3d7f", "#ffd23f", "#5ef2ff", "#a6ff8f", "#c084fc", "#ff7a1a"]
+FLAG_PAL = ["#1a1238", "#ffffff", "#1a1238", "#ff3d7f", "#ffd23f", "#5ef2ff", "#a6ff8f", "#c084fc", "#ff7a1a",
+            "#000000", "#4a4f5c", "#9aa1ad", "#d9dde3", "#e02a2a", "#8b1a2e", "#ff9ec4", "#ffb27a", "#fff3a6", "#b8862e", "#7a4a22",
+            "#f1c6a0", "#c88a5f", "#2e9d4f", "#135c34", "#2bb5d8", "#2b6fb5", "#17307a", "#7a4fd0", "#45207a", "#2fc0a0", "#ff6b6b", "#ffd9e8"]
+FLAG_ABC = "0123456789abcdefghijklmnopqrstuv"  # 0 — пусто, дальше индексы FLAG_PAL
+FLAG64 = 64
+
+
+def flag_down15(px64):
+    """Флаг 64×64 → 15×15 в старой палитре (1–8) — для старой версии сайта."""
+    pal = [(int(c[1:3], 16), int(c[3:5], 16), int(c[5:7], 16)) for c in FLAG_PAL]
+    out = []
+    for y in range(15):
+        for x in range(15):
+            cells = [px64[yy * 64 + xx] for yy in range(y * 64 // 15, (y + 1) * 64 // 15) for xx in range(x * 64 // 15, (x + 1) * 64 // 15)]
+            full = [ch for ch in cells if ch != "0"]
+            if len(full) * 2 < len(cells):
+                out.append("0")
+                continue
+            r_ = sum(pal[FLAG_ABC.index(ch)][0] for ch in full) / len(full)
+            g_ = sum(pal[FLAG_ABC.index(ch)][1] for ch in full) / len(full)
+            b_ = sum(pal[FLAG_ABC.index(ch)][2] for ch in full) / len(full)
+            out.append(str(min(range(1, 9), key=lambda i: 2 * (r_ - pal[i][0]) ** 2 + 4 * (g_ - pal[i][1]) ** 2 + 3 * (b_ - pal[i][2]) ** 2)))
+    return "".join(out)
+
+
+def flag_store(fx, px):
+    """Записать флаг любого размера: 64×64 → rf64 (+ rf 15×15 для старого сайта); 8×8/15×15 → rf, rf64 снимаем."""
+    if len(px) == FLAG64 * FLAG64:
+        fx["rf64"] = px if px.strip("0") else ""
+        fx["rf"] = flag_down15(px) if px.strip("0") else ""
+    else:
+        fx["rf"] = px if px.strip("0") else ""
+        fx.pop("rf64", None)
 
 
 def flag_png(px):
     """Превью флага для админа: сетка N×N, пустые клетки — шахматка."""
     from io import BytesIO
     from PIL import Image, ImageDraw
-    n = 15 if len(px) == 225 else 8
-    c = 360 // n
+    n = int(round(len(px) ** .5))
+    c = max(5, 360 // n)
     im = Image.new("RGB", (c * n + 20, c * n + 20), "#0d0a1f")
     d = ImageDraw.Draw(im)
     for i, ch in enumerate(px):
         x, y = 10 + (i % n) * c, 10 + (i // n) * c
-        col = FLAG_PAL[int(ch)] if ch != "0" else ("#2a2448" if (i % n + i // n) % 2 else "#221d3d")
+        col = FLAG_PAL[FLAG_ABC.index(ch)] if ch != "0" else ("#2a2448" if (i % n + i // n) % 2 else "#221d3d")
         d.rectangle([x, y, x + c - 1, y + c - 1], fill=col)
     buf = BytesIO()
     im.save(buf, "PNG")
     return buf.getvalue()
+
+
+def img_to_flag(raw: bytes, n: int = FLAG64) -> str:
+    """Картинка → флаг n×n (по умолчанию 64×64) в палитре сайта (идея из думы). Фон (прозрачный или цвет углов) → пустые клетки."""
+    from io import BytesIO
+    from PIL import Image, ImageEnhance, ImageOps
+    im = ImageOps.exif_transpose(Image.open(BytesIO(raw))).convert("RGBA")
+    im.thumbnail((600, 600))
+    rgb = im.convert("RGB")
+    w, h = im.size
+    k = max(2, min(w, h) // 25)
+    corners = [rgb.crop(b).resize((1, 1), Image.BOX).getpixel((0, 0)) for b in ((0, 0, k, k), (w - k, 0, w, k), (0, h - k, k, h), (w - k, h - k, w, h))]
+    bg = None
+    if max(max(abs(a[i] - corners[0][i]) for i in range(3)) for a in corners) < 40:
+        bg = tuple(sum(c[i] for c in corners) // 4 for i in range(3))
+    # вписываем в квадрат с полями, усиливаем цвет
+    side = max(w, h)
+    sq = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+    sq.paste(im, ((side - w) // 2, (side - h) // 2))
+    a = sq.split()[3]
+    rgb = ImageEnhance.Contrast(ImageEnhance.Color(sq.convert("RGB")).enhance(1.5)).enhance(1.15)
+    small = rgb.resize((n, n), Image.LANCZOS)
+    alpha = a.resize((n, n), Image.BOX)
+    raw_small = sq.convert("RGB").resize((n, n), Image.BOX)
+    pal = [(int(c[1:3], 16), int(c[3:5], 16), int(c[5:7], 16)) for c in FLAG_PAL]
+    out = []
+    for y in range(n):
+        for x in range(n):
+            if alpha.getpixel((x, y)) < 110:
+                out.append("0")
+                continue
+            if bg and max(abs(raw_small.getpixel((x, y))[i] - bg[i]) for i in range(3)) < 34:
+                out.append("0")
+                continue
+            r_, g_, b_ = small.getpixel((x, y))
+            best = min(range(1, len(pal)), key=lambda i: 2 * (r_ - pal[i][0]) ** 2 + 4 * (g_ - pal[i][1]) ** 2 + 3 * (b_ - pal[i][2]) ** 2)
+            out.append(FLAG_ABC[best])
+    return "".join(out)
+
+
+async def flag_to_admins(bot, nick, px, what="нарисовал флаг над домом"):
+    pic = BufferedInputFile(flag_png(px), "flag.png")
+    mk = InlineKeyboardMarkup(inline_keyboard=[[IB(text="✅ Оставить", callback_data=f"rfk:{nick}"),
+                                                IB(text="🗑 Убрать", callback_data=f"rfd:{nick}:{fnv(px) % 99991}")]])
+    for a in ADMIN_IDS:
+        try:
+            await bot.send_photo(a, pic, caption=f"🎨 @{nick} {what}.", reply_markup=mk)
+        except Exception as e:
+            log.warning("flag preview: %s", e)
+
+
+class FlagPic(StatesGroup):
+    photo = State()
+
+
+async def flagpic_start(m: Message, uid: int, state: FSMContext):
+    me = await db.linked(uid)
+    if not me:
+        await m.answer("Сначала привяжи ник TikTok — «🏠 Мой дом» 👇", reply_markup=main_menu())
+        return
+    await state.set_state(FlagPic.photo)
+    await m.answer("🖼 <b>Картинка на флаг</b>\n\nПришли картинку одним сообщением — я переведу её во флаг 64×64 над твоим домом. "
+                   "Лучше всего получаются простые яркие рисунки: логотип, смайлик, сердце, эмблема. Фон по краям станет прозрачным.\n\n"
+                   "Флаг проверяет мэрия. Отмена — /start")
+
+
+@r.message(Command("flagpic"))
+async def flagpic_cmd(m: Message, state: FSMContext):
+    await flagpic_start(m, m.from_user.id, state)
+
+
+@r.message(FlagPic.photo)
+async def flagpic_photo(m: Message, state: FSMContext):
+    me = await db.linked(m.from_user.id)
+    fid = m.photo[-1].file_id if m.photo else (m.document.file_id if m.document and (m.document.mime_type or "").startswith("image/") else None)
+    if not me or not fid:
+        await m.answer("Нужна картинка 🖼 — пришли фото или файл-картинку. Отмена — /start")
+        return
+    try:
+        f = await m.bot.download(fid)
+        px = img_to_flag(f.read())
+    except Exception as e:
+        log.warning("flagpic: %s", e)
+        await m.answer("Не получилось прочитать картинку 😕 Попробуй другую.")
+        return
+    if not px.strip("0"):
+        await m.answer("Картинка получилась пустой — попробуй более яркую, без однотонного фона.")
+        return
+    await state.update_data(px=px)
+    mk = InlineKeyboardMarkup(inline_keyboard=[[IB(text="✅ Поставить на дом", callback_data="fpok")], [IB(text="🖼 Другая картинка", callback_data="fpre"), IB(text="✖ Отмена", callback_data="fpno")]])
+    await m.answer_photo(BufferedInputFile(flag_png(px), "flag.png"), caption="Вот так флаг будет выглядеть над домом. Поставить?\n"
+                         "Подправить по пикселям можно потом на сайте: «👤 Мой дом» → «🎨 Флаг».", reply_markup=mk)
+
+
+@r.callback_query(F.data.in_({"fpok", "fpre", "fpno"}))
+async def flagpic_cb(c: CallbackQuery, state: FSMContext):
+    await c.answer()
+    try:
+        await c.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    if c.data == "fpre":
+        return await flagpic_start(c.message, c.from_user.id, state)
+    px = (await state.get_data()).get("px") if await state.get_state() == FlagPic.photo.state else None
+    await state.clear()
+    me = await db.linked(c.from_user.id)
+    if c.data == "fpno" or not px or not me:
+        return await c.message.answer("Ок, флаг не меняю 👌", reply_markup=main_menu())
+    fx = await fx_get(me["nick"])
+    flag_store(fx, px)
+    await fx_set(me["nick"], fx)
+    asyncio.create_task(task_hit(c.bot, c.from_user.id, me["nick"], "roof"))
+    await c.message.answer("🎨 Флаг из картинки поднят над домом! На сайте через пару минут.", reply_markup=main_menu())
+    await flag_to_admins(c.bot, me["nick"], px, "поставил флаг из картинки")
 
 
 @r.callback_query(F.data.startswith("rfk:") | F.data.startswith("rfd:"))
@@ -708,10 +1029,12 @@ async def roof_moderate(c: CallbackQuery, bot: Bot):
         await c.answer("Оставлен ✅")
         return await c.message.edit_caption(caption=cap + "✅ Оставлен", reply_markup=None)
     fx = await fx_get(nick)
-    if not fx.get("rf") or (len(parts) > 2 and str(fnv(fx["rf"]) % 99991) != parts[2]):
+    cur = fx.get("rf64") or fx.get("rf")
+    if not cur or (len(parts) > 2 and str(fnv(cur) % 99991) != parts[2]):
         await c.answer("Флаг уже другой или снят", show_alert=True)
         return await c.message.edit_caption(caption=cap + "⚠️ Уже не актуально", reply_markup=None)
     fx["rf"] = ""
+    fx.pop("rf64", None)
     await fx_set(nick, fx)
     await c.answer("Убран 🗑")
     await c.message.edit_caption(caption=cap + "🗑 Убран", reply_markup=None)
@@ -763,6 +1086,7 @@ async def roof_clear(m: Message):
     nick = norm_nick(parts[1])
     fx = await fx_get(nick)
     fx["rf"] = ""
+    fx.pop("rf64", None)
     await fx_set(nick, fx)
     await m.answer(f"✅ Флаг-рисунок @{nick} снят.")
 
@@ -815,6 +1139,7 @@ async def claim_mini(m, uid, i, code):
     fx["co"] = int(fx.get("co", 0)) + 15
     await fx_set(me["nick"], fx)
     asyncio.create_task(klad_publish(day))
+    asyncio.create_task(task_hit(m.bot, uid, me["nick"], "mini"))
     await m.answer(f"🎁 Сундук открыт! Внутри — <b>{FX_ITEMS[item][0]}</b>. Уже у твоего дома (на сайте через пару минут). Разместить его можно в «⭐ Украсить» → «⚙️ Разместить».",
                    reply_markup=city_keyboard(me["nick"]))
 FX_COLORS = {"", "#ff3d7f", "#ffd23f", "#5ef2ff", "#a6ff8f", "#c084fc", "#ff7a1a"}
@@ -877,6 +1202,11 @@ async def fx_publish():
     old, sha = await gh_get("wishes.json")
     if old != body:
         await gh_put("wishes.json", body, f"Фонтан желаний: {len(wl)}", sha)
+    homes = {k[5:]: v for k, v in await db.kv_prefix("home:")}  # общие дома: жилец → хозяин
+    body = json.dumps(homes, ensure_ascii=False, separators=(",", ":"))
+    old, sha = await gh_get("homes.json")
+    if old != body:
+        await gh_put("homes.json", body, f"Общие дома: {len(homes)}", sha)
     est = {k[7:]: int(v) for k, v in await db.kv_prefix("estate:")}
     body = json.dumps(est, ensure_ascii=False, separators=(",", ":"))
     old, sha = await gh_get("estates.json")
@@ -1032,7 +1362,7 @@ async def menu_backfill(bot):
 
 def main_menu():
     rows = [[IB(text="🏠 Мой дом", callback_data="home")], [IB(text="👥 Пригласить друга · бонус", callback_data="ref")],
-            [IB(text="🗳 Выборы мэра", callback_data="elect")], [IB(text="🪙 Бонус дня", callback_data="daily"), IB(text="🏛 Дума", callback_data="duma")],
+            [IB(text="🗳 Выборы мэра", callback_data="elect"), IB(text="🏛 Дума", callback_data="duma")], [IB(text="🪙 Бонус дня", callback_data="daily"), IB(text="📋 Задания дня", callback_data="tasks")],
             [IB(text="🐞 Нашёл баг", callback_data="bug"), IB(text="💡 Идея для города", callback_data="idea")]]
     if CHAT_URL:
         rows.append([IB(text="💬 Чат жителей", url=CHAT_URL)])
@@ -1080,6 +1410,9 @@ async def start(m: Message, state: FSMContext):
         gift = bool(await db.ai_gift(m.from_user.id))
         await m.answer(f"Вот твой город, @{_me['nick']} 🏙 Открывай кнопкой «🏙 Открыть город» внизу — через неё работают студия, табличка, «постучать» и украшения"
                        + (" (а ещё тебя ждёт 🎁 бесплатный дом по описанию)." if gift else "."), reply_markup=city_keyboard(_me["nick"], gift=gift))
+        return
+    if arg[0] == "flagpic":
+        await flagpic_start(m, m.from_user.id, state)
         return
     if arg[0] == "cand":
         await apply_start(m, m.from_user.id, state, m.bot)
@@ -2009,6 +2342,7 @@ async def api_handler(req):
     if not uid:
         return web.json_response({"ok": False, "err": "auth"}, headers=cors)
     m = ApiMsg(uid, json.dumps(body.get("data") or {}, ensure_ascii=False))
+    m.bot = req.app["bot"]
     try:
         await web_app(m, req.app["bot"])
     except Exception as e:
@@ -2177,6 +2511,7 @@ async def web_app(m: Message, bot: Bot):
         fx["k"] = int(fx.get("k", 0)) + 1
         await fx_set(target, fx)
         await coins_add(me["nick"], 2)
+        asyncio.create_task(task_hit(bot, m.from_user.id, me["nick"], "knock"))
         await m.answer(f"🚪 Тук-тук! Ты постучал к @{target}. У дома уже ❤ {fx['k']}. Тебе 🪙 +2.", reply_markup=city_keyboard(me["nick"]))
         owners = await db.by_nick(target)
         owner = owners[0] if owners else None
@@ -2204,7 +2539,7 @@ async def web_app(m: Message, bot: Bot):
         await fx_set(me["nick"], fx)
         await m.answer(f"🪙 Куплено: {FX_ITEMS[item][0]} за {price} неонок. Осталось 🪙 {fx['co']}.", reply_markup=city_keyboard(me["nick"]))
         return
-    if data.get("t") in ("cvote", "ivote", "friend", "gift", "roof", "borrow", "hide"):
+    if data.get("t") in ("cvote", "ivote", "friend", "gift", "roof", "borrow", "hide", "esz", "cohab", "leave", "kick"):
         await social_action(m, bot, me, data)
         return
     if data.get("t") == "spin":
@@ -2466,7 +2801,8 @@ async def build_ai(bot, oid):
                     pass
 
         try:
-            rec = await ai.generate(o["text"], OLLAMA_URL, OLLAMA_MODEL, progress=prog)
+            big = await db.kv_get(f"estate:{o['nick']}") is not None  # дом в усадьбе — собираем богаче
+            rec = await ai.generate(o["text"], OLLAMA_URL, OLLAMA_MODEL, progress=prog, big=big)
             log.info("ИИ: дом #%s собран, деталей: %s — рисую превью", oid, len(rec["parts"]))
             last_edit[0] = 0
             await prog(f"собран ({len(rec['parts'])} деталей), рисую превью…")
@@ -2531,7 +2867,7 @@ async def ai_cmd(m: Message, bot: Bot):
     """/ai — показать заказы «дом по описанию» с кнопками (если кнопки потерялись)."""
     if not is_admin(m.from_user.id):
         return
-    rows = [o for st in ("paid", "review") for o in await db.ai_list(st)]
+    rows = [o for st in ("paid", "review", "offer") for o in await db.ai_list(st)]
     if not rows:
         await m.answer("Активных заказов «дом по описанию» нет.")
         return
@@ -2583,16 +2919,73 @@ async def ai_decide(c: CallbackQuery, bot: Bot):
         if not me:
             await c.answer("Ник больше не привязан", show_alert=True)
             return
+        # идея из думы: житель сам смотрит превью и решает — ставить или перегенерировать
+        await db.ai_patch(o["id"], {"status": "offer"})
+        await c.answer("Отправил жителю на выбор")
+        await note("👀 Отправлен жителю: поставить / другой вариант")
+        try:
+            await ai_offer(bot, o, me["nick"])
+        except Exception as e:
+            log.warning("ai offer: %s", e)
+
+
+AI_REROLL_CO = 25
+
+
+async def ai_offer(bot, o, nick):
+    png = await ai.preview(o["recipe"], SITE_BASE)
+    kb = InlineKeyboardMarkup(inline_keyboard=[[IB(text="✅ Поставить в город", callback_data=f"uai_ok:{o['id']}")],
+                                               [IB(text=f"🔄 Другой вариант · 🪙 {AI_REROLL_CO}", callback_data=f"uai_re:{o['id']}")],
+                                               [IB(text="🏠 Пока оставить старый дом", callback_data=f"uai_keep:{o['id']}")]])
+    await bot.send_photo(o["tg_id"], photo(png, "house.png"), reply_markup=kb, caption=(
+        f"✨ Твой дом по описанию готов: «{o['recipe'].get('name', 'по описанию')}»\n«{o['text'][:200]}»\n\n"
+        f"Ставим в город? Не нравится — нейросеть соберёт другой вариант за 🪙 {AI_REROLL_CO} неонок."))
+
+
+@r.callback_query(F.data.startswith("uai_"))
+async def ai_user(c: CallbackQuery, bot: Bot):
+    act, oid = c.data.split(":")
+    o = await db.ai_get(int(oid))
+    if not o or o["tg_id"] != c.from_user.id:
+        return await c.answer()
+    if o["status"] != "offer" or not o.get("recipe"):
+        await c.answer("Этот вариант уже не актуален", show_alert=True)
+        return
+    me = await db.linked(c.from_user.id)
+    if not me:
+        return await c.answer("Ник больше не привязан", show_alert=True)
+
+    async def done_caption(t):
+        try:
+            await c.message.edit_caption(caption=(c.message.caption or "") + "\n\n" + t, reply_markup=None)
+        except Exception:
+            pass
+    if act == "uai_ok":
         await db.patch(me["id"], {"recipe": o["recipe"]})
         await db.ai_patch(o["id"], {"status": "done"})
         await c.answer("Поставлен!")
-        await note("✅ Стоит в городе")
-        try:
-            png = await ai.preview(o["recipe"], SITE_BASE)
-            await bot.send_photo(o["tg_id"], photo(png, "house.png"), reply_markup=city_keyboard(me["nick"]), caption=(
-                f"✨ Твой дом «{o['recipe'].get('name', 'по описанию')}» готов и уже стоит в городе! Открой город и найди @{me['nick']} 🏙"))
-        except Exception as e:
-            log.warning("ai send: %s", e)
+        await done_caption("✅ Стоит в городе")
+        await c.message.answer(f"🏙 Дом «{o['recipe'].get('name', 'по описанию')}» уже в городе! Открой и найди @{me['nick']}.", reply_markup=city_keyboard(me["nick"]))
+        for a in ADMIN_IDS:
+            try:
+                await bot.send_message(a, f"✅ @{me['nick']} поставил дом #{o['id']} в город.")
+            except Exception:
+                pass
+    elif act == "uai_re":
+        fx = await fx_get(me["nick"])
+        if int(fx.get("co", 0)) < AI_REROLL_CO:
+            await c.answer(f"Нужно 🪙 {AI_REROLL_CO}, у тебя {fx.get('co', 0)}. Неонки — бонус дня и задания дня в боте.", show_alert=True)
+            return
+        fx["co"] = int(fx.get("co", 0)) - AI_REROLL_CO
+        await fx_set(me["nick"], fx)
+        await db.ai_patch(o["id"], {"status": "paid"})
+        await c.answer("Собираю другой вариант…")
+        await done_caption(f"🔄 Пересобираю за 🪙 {AI_REROLL_CO}…")
+        await c.message.answer("🔄 Нейросеть собирает другой вариант — пришлю, как будет готов (обычно несколько минут).")
+        asyncio.create_task(build_ai(bot, o["id"]))
+    elif act == "uai_keep":
+        await c.answer("Ок!")
+        await c.message.answer("🏠 Оставил старый дом. Этот вариант не пропадёт — кнопки выше работают, решить можно позже.")
 
 
 async def handmade_loop(bot):
