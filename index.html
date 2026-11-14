@@ -32,7 +32,7 @@ button,.btn{border:0;border-radius:999px;padding:12px 18px;font:800 13px Unbound
 button:active,.btn:active{transform:scale(.96)}
 button.ghost{background:rgba(255,255,255,.12)}
 .msg{font:600 13px Inter,sans-serif;color:var(--gold);min-height:1em}
-.card{position:fixed;left:50%;bottom:18px;transform:translate(-50%,160%);transition:transform .35s cubic-bezier(.2,1.4,.4,1);background:var(--panel);backdrop-filter:blur(8px);border:1px solid rgba(160,150,255,.35);border-radius:22px;padding:16px 18px;width:min(92vw,420px);z-index:3;display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;max-height:62vh;overflow-y:auto}
+.card{position:fixed;left:50%;bottom:18px;transform:translate(-50%,160%);transition:transform .35s cubic-bezier(.2,1.4,.4,1);background:var(--panel);border:1px solid rgba(160,150,255,.35);border-radius:22px;padding:16px 18px;width:min(92vw,420px);z-index:3;display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;max-height:62vh;overflow-y:auto}
 .card .grow{flex:1 1 100%;min-width:0;order:0}
 .card>button{order:1}.card #cclose{position:absolute;top:10px;right:10px;width:34px;height:34px;padding:0;border-radius:50%}
 .card .nick{padding-right:40px;word-break:break-word}
@@ -55,6 +55,8 @@ body.orbiting .top,body.orbiting #card,body.orbiting #cta{display:none!important
 .klad.hot{background:var(--gold);color:#1a1238;animation:pulse 1s infinite}
 .chip{border:0;border-radius:999px;padding:7px 12px;font:800 11px Unbounded,sans-serif;cursor:pointer;background:var(--gold);color:#1a1238;animation:pulse 2s infinite;text-decoration:none;display:inline-block}
 @keyframes pulse{50%{box-shadow:0 0 0 6px rgba(255,210,63,.25)}}
+/* в меню кнопки не пульсируют: 15 анимаций тени поверх 3D на телефоне — лаги */
+.chips .chip{animation:none}
 .share{background:var(--gold);color:#1a1238;padding:9px 12px;font-size:11px}
 .cand{display:flex;gap:10px;align-items:flex-start;background:rgba(255,255,255,.06);border-radius:14px;padding:10px 12px}
 .cand b{font:800 18px Unbounded,sans-serif;color:var(--gold);min-width:26px}
@@ -74,7 +76,7 @@ body.orbiting .top,body.orbiting #card,body.orbiting #cta{display:none!important
 .pre{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
 .hint{position:fixed;left:16px;bottom:24px;font:500 12px Inter,sans-serif;color:var(--muted);z-index:2;opacity:.8}
 @media (max-width:520px){.hint{display:none}}
-.modal{position:fixed;inset:0;background:rgba(5,3,20,.6);backdrop-filter:blur(4px);z-index:5;display:none;align-items:flex-end;justify-content:center}
+.modal{position:fixed;inset:0;background:rgba(5,3,20,.74);z-index:5;display:none;align-items:flex-end;justify-content:center}
 .modal.show{display:flex}
 .sheet{background:#140c3a;border:1px solid rgba(160,150,255,.35);border-radius:26px 26px 0 0;padding:22px 18px 26px;width:min(100vw,480px);display:flex;flex-direction:column;gap:12px;max-height:92vh;overflow:auto}
 @media (min-width:600px){.modal{align-items:center}.sheet{border-radius:26px}}
@@ -125,7 +127,25 @@ body.orbiting .top,body.orbiting #card,body.orbiting #cta{display:none!important
 <div class="modal" id="modal"><div class="sheet" id="sheet"></div></div>
 
 <script src="houses.js"></script>
-<script type="importmap">{"imports":{"three":"./vendor/three.module.min.js","three/addons/":"./vendor/addons/"}}</script>
+<script>
+/* 3D-движок: со сжатого CDN (≈170 КБ вместо 690, кэшируется на телефоне). Если CDN недоступен — своя копия из vendor/. */
+(function () {
+  var loc = /[?&]local3d=1/.test(location.search); try { loc = loc || sessionStorage.getItem('local3d') === '1'; } catch (e) {}
+  var cdn = 'https://cdn.jsdelivr.net/npm/three@0.170.0/', core = loc ? './vendor/three.module.min.js' : cdn + 'build/three.module.min.js';
+  var s = document.createElement('script'); s.type = 'importmap';
+  s.textContent = JSON.stringify({ imports: { three: core, 'three/addons/': loc ? './vendor/addons/' : cdn + 'examples/jsm/' } });
+  document.currentScript.after(s);
+  if (!loc && window.fetch) fetch(core, { mode: 'cors' }).catch(function () { try { sessionStorage.setItem('local3d', '1'); } catch (e) {} location.reload(); });
+  // все модули 3D — сразу, а не цепочкой «скачал → увидел import → скачал следующий»
+  var add = loc ? './vendor/addons/' : cdn + 'examples/jsm/';
+  ['postprocessing/EffectComposer.js', 'postprocessing/RenderPass.js', 'postprocessing/UnrealBloomPass.js', 'postprocessing/OutputPass.js', 'postprocessing/Pass.js', 'postprocessing/ShaderPass.js', 'postprocessing/MaskPass.js', 'shaders/CopyShader.js', 'shaders/OutputShader.js', 'shaders/LuminosityHighPassShader.js']
+    .forEach(function (f) { var l = document.createElement('link'); l.rel = 'modulepreload'; l.href = add + f; document.head.appendChild(l); });
+  // данные города — тоже сразу, пока качается 3D (getJSON заберёт готовый ответ)
+  window.PRE = {};
+  if (window.fetch) ['subscribers.json', 'milestones.json', 'election.json', 'estates.json', 'recipes.json', 'special.json', 'fx.json', 'meta.json', 'duma.json', 'titles.json', 'klad.json', 'wishes.json']
+    .forEach(function (f) { PRE[f] = fetch(f + '?v=' + Date.now()).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; }); });
+})();
+</script>
 <script type="module">
 import { City3D, HousePreview, BIZ } from './city3d.js';
 /* ===================== НАСТРОЙКИ ===================== */
@@ -151,7 +171,7 @@ const norm = s => String(s || '').trim().replace(/^@+/, '').toLowerCase();
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const withTimeout = (ms) => { const c = new AbortController(); setTimeout(() => c.abort(), ms); return c.signal; };
 const api = (path) => fetch(SUPABASE_URL + '/rest/v1/' + path, { signal: withTimeout(6000), headers: SUPABASE_ANON_KEY.startsWith('sb_') ? { apikey: SUPABASE_ANON_KEY } : { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } });
-const getJSON = async (f) => { try { const r = await fetch(f + '?v=' + Date.now(), { signal: withTimeout(15000) }); return r.ok ? await r.json() : null; } catch (e) { return null; } };
+const getJSON = async (f) => { if (window.PRE && PRE[f]) { const p = PRE[f]; delete PRE[f]; const v = await p; if (v != null) return v; } try { const r = await fetch(f + '?v=' + Date.now(), { signal: withTimeout(15000) }); return r.ok ? await r.json() : null; } catch (e) { return null; } };
 
 // ---------- ошибки с телефонов жителей → бот (site_errors.jsonl) ----------
 let errSent = 0;
@@ -202,13 +222,15 @@ function buildCity() {
 async function loadSpecial(byKey) {
   // 1) recipes.json рядом с сайтом — его выкладывает бот, открывается без VPN; 2) Supabase, если указан
   const apply = rows => { let n = 0; for (const r of rows || []) { const ex = byKey.get(norm(r.nick)), nr = r.recipe && CityHouse.normRecipe(r.recipe); if (ex && nr && !ex.gone) { ex.recipe = { ...r.recipe, ...nr }; n++; } } return n; };
-  const rec = await getJSON('recipes.json'); specialRows = (rec || []).filter(r => r.recipe && r.recipe.name && byKey.has(norm(r.nick)));
-  let n = apply(await getJSON('special.json')) + apply(rec); // special.json — дома по пожеланиям из комментов
-  if (SUPABASE_URL) { try { n += apply(await (await api('residents?select=nick,recipe&status=eq.approved&recipe=not.is.null')).json()); } catch (e) {} }
+  // всё качаем одновременно (раньше по очереди — через VPN каждый шаг ждал предыдущий)
+  const supa = SUPABASE_URL ? api('residents?select=nick,recipe&status=eq.approved&recipe=not.is.null').then(r => r.json()).catch(() => null) : null;
+  const [rec, spec, fx, mt, dm, tt, sb] = await Promise.all([getJSON('recipes.json'), getJSON('special.json'), getJSON('fx.json'), getJSON('meta.json'), getJSON('duma.json'), getJSON('titles.json'), supa]);
+  specialRows = (rec || []).filter(r => r.recipe && r.recipe.name && byKey.has(norm(r.nick)));
+  const n = apply(spec) + apply(rec) + apply(sb); // special.json — дома по пожеланиям из комментов
   if (n) buildCity();
-  fxMap = (await getJSON('fx.json')) || {}; city.setFx(fxMap); loadWishes();
-  meta = (await getJSON('meta.json')) || {}; duma = (await getJSON('duma.json')) || []; renderSocialChips();
-  titles = (await getJSON('titles.json')) || {}; city.setTitles(titles);
+  fxMap = fx || {}; city.setFx(fxMap); loadWishes();
+  meta = mt || {}; duma = dm || []; renderSocialChips();
+  titles = tt || {}; city.setTitles(titles);
   updateHonor();
 }
 function renderProgress() {
@@ -237,7 +259,11 @@ cv.addEventListener('wheel', e => { e.preventDefault(); city.zoom(Math.exp(e.del
 
 let last = performance.now(), frameErrs = 0;
 // цикл не должен умирать от одной ошибки: раньше исключение в city.frame останавливало карту навсегда («не двигается»)
-function loop(now) { requestAnimationFrame(loop); const dt = Math.min(.05, (now - last) / 1000); last = now;
+let skip = 0;
+function loop(now) { requestAnimationFrame(loop);
+  // пока открыто окно (не настройка украшения) — город рисуем в 4 раза реже: телефон отдаёт силы интерфейсу
+  const md = document.getElementById('modal'); if (md && md.classList.contains('show') && !md.classList.contains('placing') && (skip++ % 4)) return;
+  const dt = Math.min(.05, (now - last) / 1000); last = now;
   try { city.frame(dt); } catch (e) { if (frameErrs++ < 3) reportErr('frame', e); } }
 requestAnimationFrame(loop);
 // потеря WebGL (слабый телефон, мало памяти) — перезагружаем город один раз, потом переходим на 2D
@@ -302,7 +328,15 @@ function optimistic(d) { const me = fxMap[ME] = fxMap[ME] || {};
   city.setFx(fxMap); if (city.hi) focus(city.hi, false); }
 async function sendTG(data, errEl) {
   if (TG && tg.initData && (API || await loadAPI())) {
-    try { let j; try { j = await apiPost(data); } catch (e) { const was = API; if (await loadAPI() === was) throw e; j = await apiPost(data); }
+    try { let j = null;
+      // туннель к боту иногда переподключается и меняет адрес: не молчим, а ждём новый адрес и повторяем (до ~40 с)
+      for (let k = 0; k < 8 && !j; k++) {
+        try { j = await apiPost(data); } catch (e) {
+          if (k === 0) toastMsg('🔌 Переподключаемся к городу… Подожди немного, нажатие не пропадёт.');
+          if (k === 7) { reportErr('api', e, { api: API }); throw e; }
+          await new Promise(r => setTimeout(r, k < 2 ? 1500 : 5000)); await loadAPI(); } }
+      if (!j.ok && j.err === 'auth') { toastMsg('Не получилось узнать тебя 🤔 Закрой город и открой снова из бота.'); return; }
+      if (!j.ok) { toastMsg('Что-то пошло не так на стороне бота 😕 Попробуй ещё раз через минуту.'); reportErr('api', new Error(j.err || 'not ok')); return; }
       if (j.ok) { modal.classList.remove('show');
         if (j.invoice) { tg.openInvoice(j.invoice, st => { if (st === 'paid') toastMsg('Спасибо! ⭐ Уже ставим — в городе через пару минут.'); }); return; }
         const t = (j.msgs || []).filter(Boolean).join('\n\n'); if (t) toastMsg(t); optimistic(data);
@@ -612,9 +646,10 @@ function openKlad() {
 // ---------- окно ----------
 const modal = $('modal'), sheet = $('sheet');
 // режим «placing» снимаем, как только окно закрылось или в нём открыли что-то другое
-new MutationObserver(() => { if (!modal.classList.contains('show') || !sheet.querySelector('#pgo')) modal.classList.remove('placing'); })
-  .observe(modal, { attributes: true, attributeFilter: ['class'] });
-new MutationObserver(() => { if (!sheet.querySelector('#pgo')) modal.classList.remove('placing'); }).observe(sheet, { childList: true });
+// (снимаем класс только если он есть — иначе remove() снова меняет class и наблюдатель зацикливается → вкладка виснет)
+const unplace = () => { if (modal.classList.contains('placing') && (!modal.classList.contains('show') || !sheet.querySelector('#pgo'))) modal.classList.remove('placing'); };
+new MutationObserver(unplace).observe(modal, { attributes: true, attributeFilter: ['class'] });
+new MutationObserver(unplace).observe(sheet, { childList: true });
 
 modal.addEventListener('pointerdown', e => { if (e.target === modal) modal.classList.remove('show'); });
 $('menuBtn').onclick = () => { const o = $('chips').classList.toggle('open'); $('menuBtn').classList.toggle('open', o); $('menuBtn').textContent = o ? '✕ ЗАКРЫТЬ' : '☰ МЕНЮ'; };

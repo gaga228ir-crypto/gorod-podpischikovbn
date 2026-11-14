@@ -2089,8 +2089,25 @@ async def api_serve(bot):
                                 stdin=subprocess.DEVNULL, stdout=lf, stderr=lf, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         API_STATE["proc"] = proc
         url = None
+        tick = fails = 0
         while proc.poll() is None:
             await asyncio.sleep(3)
+            tick += 1
+            # туннель может «зависнуть»: ssh жив, а снаружи до бота не достучаться — кнопки на сайте молчат.
+            # Раз в минуту стучимся к себе через публичный адрес; 3 неудачи подряд — перезапуск туннеля.
+            if url and tick % 20 == 0:
+                try:
+                    async with httpx.AsyncClient(timeout=12, trust_env=False) as cl:
+                        rr = await cl.get(url + "/err")
+                    fails = 0 if rr.status_code == 200 else fails + 1
+                except Exception:
+                    fails += 1
+                if fails:
+                    log.warning("туннель не отвечает снаружи (%s/3)", fails)
+                if fails >= 3:
+                    log.warning("туннель завис — перезапускаю")
+                    proc.kill()
+                    break
             try:
                 found = re.findall(r'"address"\s*:\s*"([a-z0-9.-]+)"', open(logf, encoding="utf-8", errors="ignore").read())
             except Exception:
