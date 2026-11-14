@@ -669,6 +669,7 @@ export class City3D {
   setMini(seed, n, taken) { this.mini = { seed, n, taken: new Set(taken || []) }; this._extrasDirty = true; }
   setTitles(map) { this.titles = map || {}; this._extrasDirty = true; }
   houseTop(h) {
+    if (h.isEstate && h.top) return h.top; // усадьба увеличена (fx.es) — титул/табличка/флаг над крышей, а не внутри
     const r = h.recipe; if (r && Array.isArray(r.parts) && r.parts.length) return Math.max(...r.parts.map(q => (q.p?.[1] || 0) + (q.s?.[1] || 0)));
     return (r && r.shape === 'skyscraper' ? 2 : 1) * (h.top || (h.floors || 2) * FH + .35);
   }
