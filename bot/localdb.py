@@ -89,6 +89,16 @@ class LocalDB:
         """Сколько ⭐ всего заплатил каждый ник."""
         return {n: int(v) for n, v in self.c.execute("select nick, sum(stars) from payments group by nick")}
 
+    async def paid_house(self, tg_id):
+        """Платил ли житель за «Особый дом» из конструктора — тогда правки бесплатно."""
+        for (r,) in self.c.execute("select recipe from payments where tg_id=?", (tg_id,)):
+            try:
+                if "shape" in (json.loads(r) or {}):
+                    return True
+            except (TypeError, ValueError, AttributeError):
+                pass
+        return False
+
     async def add_payment(self, tg_id, nick, stars, charge_id, recipe):
         try:
             self.c.execute("insert into payments (tg_id, nick, stars, charge_id, recipe) values (?,?,?,?,?)", (tg_id, nick, stars, charge_id, json.dumps(recipe)))

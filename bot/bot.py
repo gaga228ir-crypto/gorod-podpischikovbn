@@ -287,6 +287,10 @@ class DB:
     async def special(self):
         return await self.q("GET", "residents?status=eq.approved&recipe=not.is.null&select=nick,recipe&order=nick.asc") or []
 
+    async def paid_house(self, tg_id):
+        rows = await self.q("GET", f"payments?tg_id=eq.{int(tg_id)}&select=recipe") or []
+        return any(isinstance(r.get("recipe"), dict) and "shape" in r["recipe"] for r in rows)
+
     async def add_payment(self, tg_id, nick, stars, charge_id, recipe):
         await self.q("POST", "payments", {"tg_id": tg_id, "nick": nick, "stars": stars, "charge_id": charge_id, "recipe": recipe}, "return=minimal")
 
@@ -2674,11 +2678,13 @@ async def web_app(m: Message, bot: Bot):
             rec.pop("decor")
             code = encode_recipe(rec)
             note = "\n\n🎁 Декор (гирлянда, ёлка, машина, питомец) — бонус для подписчиков канала. Подпишись и сохрани дом ещё раз — декор появится."
-        if PRICE == 0:
+        paid_before = PRICE > 0 and await db.paid_house(m.from_user.id)
+        if PRICE == 0 or paid_before:
             await db.patch(me["id"], {"recipe": rec})
             kb = [[IB(text="📢 Канал города", url=CHANNEL_URL)]] if note and CHANNEL_URL else None
+            head = "Готово! ✏️ Правка оплаченного дома — бесплатно." if paid_before else "Готово! 🏠"
             await m.answer_photo(photo(cards.built_card(me["nick"], await house_no(me["nick"]), True)),
-                                 caption="Готово! 🏠 Твой дом уже в городе — обнови страницу, чтобы увидеть." + note,
+                                 caption=head + " Твой дом уже в городе — обнови страницу, чтобы увидеть." + note,
                                  reply_markup=InlineKeyboardMarkup(inline_keyboard=kb) if kb else city_keyboard(me["nick"]))
             return
         await bot.send_invoice(m.chat.id, title="Особый дом", description=f"Твой дом @{me['nick']} в городе станет таким, как ты собрал в конструкторе.",
@@ -3049,6 +3055,31 @@ async def ai_user(c: CallbackQuery, bot: Bot):
         await c.message.answer("🏠 Оставил старый дом. Этот вариант не пропадёт — кнопки выше работают, решить можно позже.")
 
 
+async def one_off_fixes(bot):
+    """Разовые правки для жителей: каждая выполняется один раз (флаг в kv)."""
+    await asyncio.sleep(15)
+    # 15.11: @Mi_ikun3 оплатила особый дом и сразу поправила цвета — бот снова попросил оплату. Ставим её правку.
+    if not await db.kv_get("fix:mi_ikun_pink"):
+        try:
+            uid = 6780166819
+            me = await db.linked(uid)
+            if me:
+                r = {"shape": "skyscraper", "floors": 6, "wall": "#f7a8d0", "roof": "#3d5a99", "emblem": "sun", "lights": "pink",
+                     "decor": ["tree", "car", "garland"]}
+                if not await in_channel(bot, uid):
+                    r.pop("decor")
+                rec = decode_recipe(encode_recipe(r))
+                if rec:
+                    await db.patch(me["id"], {"recipe": rec})
+                    await bot.send_photo(uid, photo(cards.built_card(me["nick"], await house_no(me["nick"]), True)),
+                                         caption="Прости за путаницу! 💗 Твоя розовая версия дома с солнцем уже стоит в городе — бесплатно.\n"
+                                                 "Теперь правки оплаченного дома ничего не стоят: меняй сколько хочешь ✏️",
+                                         reply_markup=city_keyboard(me["nick"]))
+            await db.kv_set("fix:mi_ikun_pink", "1")
+        except Exception as e:
+            log.warning("one_off mi_ikun: %s", e)
+
+
 async def handmade_loop(bot):
     """Дома, собранные вручную (handmade.json на сайте, пометка "publish") — ставим в город сами и пишем жителю.
     Каждый ручной вариант ставится один раз (помним в kv: hand_<номер> = название)."""
@@ -3333,6 +3364,7 @@ async def main():
     asyncio.create_task(export_loop())
     asyncio.create_task(mayor_loop(bot))
     asyncio.create_task(handmade_loop(bot))
+    asyncio.create_task(one_off_fixes(bot))
     asyncio.create_task(menu_backfill(bot))
     asyncio.create_task(program_notice(bot))
     API_STATE["task"] = asyncio.create_task(api_serve(bot))
