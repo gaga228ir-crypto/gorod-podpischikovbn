@@ -760,7 +760,7 @@ function openSoda() {
     <div class="shop"><span>⛲ Залить фонтан газявой на час (весь город увидит)</span><button type="button" id="sodaF">🪙 ${SODA_CO}</button></div>
     <div class="btns"><button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button></div>`;
   sheet.querySelectorAll('[data-buyc]').forEach(b => b.onclick = () => sendTG({ t: 'buyc', i: b.dataset.buyc }));
-  $('sodaF').onclick = () => sendTG({ t: 'soda' });
+  $('sodaF').onclick = async () => { const ok = TG && (my.co || 0) >= SODA_CO; await sendTG({ t: 'soda' }); if (ok) { const u = Math.max(Date.now() / 1000, sodaOn() ? kladState.soda.u : 0) + 3600; kladState = { ...(kladState || {}), soda: { u, n: ME } }; applySoda(); } };
   modal.classList.add('show'); closeBtn();
 }
 // 🗑 уборка города: мусорки на тротуарах меняются каждый день, за каждую — неонки (до 5 в день)
