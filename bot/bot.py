@@ -495,7 +495,7 @@ async def task_hit(bot, uid, nick, ev):
             st["done"].append(ev)
             total = await coins_add(nick, rew)
             msg = f"✅ Задание дня выполнено: {name} — 🪙 +{rew}"
-            if len(st["done"]) >= TASKS_N and not st.get("all"):
+            if len(set(st["done"]) & set(tasks_for(uid, day))) >= TASKS_N and not st.get("all"):
                 st["all"] = 1
                 total = await coins_add(nick, TASKS_ALL_BONUS)
                 msg += f"\n🏆 Все задания на сегодня сделаны — бонус 🪙 +{TASKS_ALL_BONUS}! Завтра будут новые."
@@ -685,10 +685,11 @@ async def social_action(m, bot, me, data):
         idea = next((x for x in ideas if x["id"] == iid), None)
         if not idea:
             return
-        if await db.kv_get(f"iv:{iid}:{uid}"):
+        vk = f"iv:{iid}:{fnv(idea.get('text', '')) % 1000000}:{uid}"  # номер идеи мог повториться после чистки думы
+        if await db.kv_get(vk):
             await m.answer("Ты уже голосовал за эту идею 🏛", reply_markup=kb)
             return
-        await db.kv_set(f"iv:{iid}:{uid}", v)
+        await db.kv_set(vk, v)
         idea["up" if v > 0 else "down"] = int(idea.get("up" if v > 0 else "down", 0)) + 1
         await db.kv_set("duma", json.dumps(ideas, ensure_ascii=False))
         _fx_dirty.set()
