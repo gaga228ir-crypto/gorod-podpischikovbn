@@ -255,6 +255,18 @@ export function buildRoadMeshes(T, roads) {
   // асфальт всегда поверх тротуаров: на перекрёстках улицы стыкуются на чуть разной высоте, и полоса тротуара
   // одной улицы ложилась поперёк другой. Тротуар не пишет глубину и рисуется после земли, асфальт — после тротуара.
   walk.material.depthWrite = false; walk.renderOrder = 1; out[1].renderOrder = out[2].renderOrder = 2;
+  // тупики: на конце улицы, который не упирается в другую, — круглая площадка для разворота, а не обрыв
+  const segD = (x, z, a, b) => { const dx = b[0] - a[0], dz = b[1] - a[1], L = dx * dx + dz * dz || 1, t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / L)); return Math.hypot(a[0] + dx * t - x, a[1] + dz * t - z); };
+  const touches = (x, z, ri) => roads.some((rd, j) => { if (j === ri) return false; const P = rd.pts; for (let i = 0; i < P.length - 1; i++) if (segD(x, z, P[i], P[i + 1]) < .6) return true; return false; });
+  const cul = [];
+  roads.forEach((rd, ri) => { const P = rd.pts, n = P.length - 1; if (rd.est || Math.hypot(P[0][0] - P[n][0], P[0][1] - P[n][1]) < .01) return; const ys = roadY(T, rd);
+    for (const i of [0, n]) if (!touches(P[i][0], P[i][1], ri)) cul.push([P[i][0], ys[i], P[i][1], rd.w]); });
+  if (cul.length) { const disc = (lift, pad) => { const gs = cul.map(([x, y, z, w]) => new THREE.CircleGeometry(w * .95 + pad, 24).rotateX(-Math.PI / 2).translate(x, y + lift, z));
+      const g = new THREE.BufferGeometry(), v = [], uv = [], ix = []; let o = 0;
+      for (const q of gs) { const P = q.attributes.position, U = q.attributes.uv, I = q.index; for (let i = 0; i < P.count; i++) { v.push(P.getX(i), P.getY(i), P.getZ(i)); uv.push(U.getX(i), U.getY(i)); } for (let i = 0; i < I.count; i++) ix.push(I.getX(i) + o); o += P.count; q.dispose(); }
+      g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(ix); g.computeVertexNormals(); return g; };
+    const cw = new THREE.Mesh(disc(.045, .17), walk.material), ca = new THREE.Mesh(disc(.06, 0), out[2].material);
+    cw.renderOrder = 1; ca.renderOrder = 2; for (const m of [cw, ca]) { m.receiveShadow = true; m.userData.flat = true; out.push(m); } }
   return out;
 }
 // фонари вдоль больших улиц; tops — точки плафонов (ночью светятся)

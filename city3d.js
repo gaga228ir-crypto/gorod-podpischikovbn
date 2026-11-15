@@ -395,12 +395,21 @@ function trimRoads(roads, lots, houses) {
   const need = roads.map(rd => rd.est || Math.hypot(rd.pts[0][0] - rd.pts[rd.pts.length - 1][0], rd.pts[0][1] - rd.pts[rd.pts.length - 1][1]) < .01 ? Infinity : -1); // кольцо и посёлок — как есть
   for (const h of houses) { const l = lots[h.lot]; if (l && l.ri != null && need[l.ri] !== Infinity) need[l.ri] = Math.max(need[l.ri], l.t + .9); }
   const ends = roads.map((rd, ri) => [onOther(ri, ...rd.pts[0]), onOther(ri, ...rd.pts[rd.pts.length - 1])]);
-  for (let pass = 0; pass < 6; pass++) { let ch = false;
+  // перекрёстки вдоль каждой улицы: [s на этой улице, другая улица, s на другой] — обрезанная улица тянется до ближайшего
+  const junc = roads.map((rd, ri) => { const J = [], P = rd.pts, C = cum[ri]; let last = -1, lastR = -1;
+    for (let i = 0; i < P.length - 1; i++) { const L = C[i + 1] - C[i] || 1; for (let t = 0; t < L; t += .25) { const k = t / L, v = onOther(ri, P[i][0] + (P[i + 1][0] - P[i][0]) * k, P[i][1] + (P[i + 1][1] - P[i][1]) * k);
+      if (v && (v[0] !== lastR || C[i] + t - last > 1)) J.push([C[i] + t, v[0], v[1]]); if (v) { last = C[i] + t; lastR = v[0]; } } }
+    return J; });
+  for (let pass = 0; pass < 40; pass++) { let ch = false;
     roads.forEach((rd, ri) => { if (need[ri] < 0) return; const full = need[ri] >= cum[ri][cum[ri].length - 1] - .01;
       // нужная улица держит ту, от которой отходит; если доходит до конца — и ту, в которую упирается
       for (const [e, use] of [[ends[ri][0], true], [ends[ri][1], full]]) if (e && use && need[e[0]] !== Infinity && need[e[0]] < e[1]) { need[e[0]] = e[1]; ch = true; } });
-    // хвост короче 2.5 до перекрёстка — дотягиваем, чтобы улица не обрывалась у самого перекрёстка
-    roads.forEach((rd, ri) => { const L = cum[ri][cum[ri].length - 1]; if (need[ri] >= 0 && need[ri] < L && ends[ri][1] && L - need[ri] < 2.5) { need[ri] = L; ch = true; } });
+    // улица не обрывается тупиком: дотягиваем до ближайшего перекрёстка, а поперечная улица держится до этого места
+    roads.forEach((rd, ri) => { const L = cum[ri][cum[ri].length - 1]; if (need[ri] < 0 || need[ri] >= L - .01) return;
+      const j = junc[ri].find(q => q[0] >= need[ri] - .01);
+      if (!j) { need[ri] = L; ch = true; return; }
+      if (j[0] > need[ri]) { need[ri] = j[0]; ch = true; }
+      if (need[j[1]] !== Infinity && need[j[1]] < j[2]) { need[j[1]] = j[2]; ch = true; } });
     if (!ch) break; }
   return roads.map((rd, ri) => { const C = cum[ri], n = need[ri]; if (n === Infinity) return rd; if (n < 0) return null; if (n >= C[C.length - 1]) return rd;
     const pts = [rd.pts[0]]; for (let i = 1; i < rd.pts.length; i++) { if (C[i] < n) { pts.push(rd.pts[i]); continue; } const k = (n - C[i - 1]) / (C[i] - C[i - 1] || 1);
