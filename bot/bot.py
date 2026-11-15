@@ -328,7 +328,15 @@ FX_ITEMS = {
     "lanterns": ("🏮 Фонарики", 10), "pool": ("🏊 Бассейн во дворе", 15), "crystal": ("💎 Парящий кристалл", 15),
     "rocket": ("🚀 Ракета у дома", 15), "halo": ("✨ Сияющий нимб", 15), "ghost": ("👻 Призрак-сосед", 10), "flowers": ("🌷 Клумба", 10),
     "wish": ("🪙 Монетка в фонтан желаний", 5),
+    # только для усадеб (идея Night_eclipse, 15.11)
+    "shed": ("🛖 Сарай", 10), "swing": ("🪢 Качели", 10), "gazebo": ("⛺ Беседка", 15), "garden": ("🥕 Огород", 10), "grill": ("🔥 Мангал", 10),
 }
+ESTATE_ITEMS = {"shed", "swing", "gazebo", "garden", "grill"}
+
+
+async def estate_ok(nick, item):
+    """Украшения для усадьбы можно ставить только владельцу усадьбы."""
+    return item not in ESTATE_ITEMS or bool(await db.kv_get("estate:" + nick))
 PARK_AT = int(E("PARK_AT", "2500"))
 SPIN_COLORS = ["#ff3d7f", "#ffd23f", "#5ef2ff", "#a6ff8f", "#c084fc", "#ff7a1a"]
 
@@ -444,6 +452,8 @@ TASKS = {
     "roof": ("🎨 Нарисуй или обнови флаг над домом", 1, 10),
     "mini": ("🧰 Найди и открой малый сундук", 1, 15),
     "fish": ("🎣 Поймай 2 рыбы на пристани", 2, 10),
+    "trash": ("🗑 Убери 3 мусорки на улицах", 3, 10),
+    "guest": ("🏠 Позови кого-нибудь в гости", 1, 15),
 }
 TASKS_N, TASKS_ALL_BONUS = 3, 25
 
@@ -711,6 +721,9 @@ async def social_action(m, bot, me, data):
         if int(mine.get("co", 0)) < price:
             await m.answer(f"Не хватает неонок: нужно 🪙 {price}, у тебя {mine.get('co', 0)}.", reply_markup=kb)
             return
+        if not await estate_ok(target, item):
+            await m.answer(f"У @{target} нет усадьбы — это украшение только для усадеб 🏡", reply_markup=kb)
+            return
         fx = await fx_get(target)
         if item in fx.get("d", []):
             await m.answer(f"У @{target} это украшение уже есть 🙂", reply_markup=kb)
@@ -737,6 +750,9 @@ async def social_action(m, bot, me, data):
         if not ow or not ow[0].get("tg_id"):
             await m.answer(f"@{target} ещё не привязал дом в боте — передать пока нельзя.", reply_markup=kb)
             return
+        if not await estate_ok(target, item):
+            await m.answer(f"У @{target} нет усадьбы — это украшение только для усадеб 🏡", reply_markup=kb)
+            return
         fx = await fx_get(target)
         if item in fx.get("d", []):
             await m.answer(f"У @{target} это украшение уже есть 🙂", reply_markup=kb)
@@ -751,6 +767,33 @@ async def social_action(m, bot, me, data):
         log.info("передача украшения %s: @%s → @%s", item, me["nick"], target)
         await m.answer(f"🎁 Ты передал @{target}: {FX_ITEMS[item][0]}. Оно уже у его дома!", reply_markup=kb)
         await notify(target, f"🎁 @{me['nick']} передал тебе украшение {FX_ITEMS[item][0]}! Уже у твоего дома — разместить можно в «⭐ Украсить» → «⚙️ Разместить».")
+    elif t in ("invite", "visit"):  # 🏠 позвать в гости / попроситься в гости (идея @I_love_Zoro)
+        target = norm_nick(str(data.get("n") or ""))
+        day = msk_day()
+        if not target or target == me["nick"]:
+            return
+        ow = await db.by_nick(target)
+        if not ow or not ow[0].get("tg_id"):
+            await m.answer(f"@{target} ещё не привязал дом в боте — позови его сюда 🙂", reply_markup=kb)
+            return
+        n = int(await db.kv_get(f"gqd:{day}:{uid}") or 0)
+        if n >= GUEST_REQ_MAX:
+            await m.answer(f"Сегодня ты уже отправил {GUEST_REQ_MAX} приглашений — завтра можно ещё 🙂", reply_markup=kb)
+            return
+        host, guest = (me["nick"], target) if t == "invite" else (target, me["nick"])
+        await db.kv_set(f"gqd:{day}:{uid}", n + 1)
+        await db.kv_set(f"gq:{host}:{guest}", json.dumps({"to": target, "u": int(time.time()) + 24 * 3600}))
+        btn = InlineKeyboardMarkup(inline_keyboard=[[IB(text="✅ Да!", callback_data=f"gyes:{host}:{guest}"[:64]), IB(text="❌ Не сейчас", callback_data=f"gno:{host}:{guest}"[:64])]])
+        if t == "invite":
+            await m.answer(f"🏠 Приглашение отправлено @{target}! Когда он согласится, у твоего дома появится гость.", reply_markup=kb)
+            txt = f"🏠 @{me['nick']} зовёт тебя в гости! Твой человечек сутки будет гостить у его дома, а вам обоим — 🪙 +{GUEST_CO}."
+        else:
+            await m.answer(f"🚪 Ты попросился в гости к @{target}. Как только он ответит — бот напишет.", reply_markup=kb)
+            txt = f"🚪 @{me['nick']} хочет зайти к тебе в гости! Его человечек сутки погостит у твоего дома, а вам обоим — 🪙 +{GUEST_CO}."
+        try:
+            await bot.send_message(ow[0]["tg_id"], txt, reply_markup=btn)
+        except Exception:
+            pass
     elif t == "hide":  # снять / вернуть своё украшение (остаётся купленным)
         item = str(data.get("i") or "")
         fx = await fx_get(me["nick"])
@@ -884,6 +927,52 @@ async def friend_ok(c: CallbackQuery):
     if ow and ow[0].get("tg_id"):
         try:
             await c.bot.send_message(ow[0]["tg_id"], f"👫 @{me['nick']} принял дружбу! Между вашими домами загорелась неоновая нить.")
+        except Exception:
+            pass
+
+
+GUEST_REQ_MAX, GUEST_CO = 5, 5  # приглашений в гости в день; неонок обоим за встречу (раз в день на пару)
+
+
+@r.callback_query(F.data.startswith("gyes:") | F.data.startswith("gno:"))
+async def guest_answer(c: CallbackQuery):
+    await c.answer()
+    me = await db.linked(c.from_user.id)
+    yes = c.data.startswith("gyes:")
+    host, _, guest = c.data.split(":", 1)[1].partition(":")
+    raw = await db.kv_get(f"gq:{host}:{guest}")
+    q = json.loads(raw) if raw else None
+    if not me or not q or q.get("to") != me["nick"] or q.get("u", 0) < time.time():
+        await c.message.edit_text("Это приглашение уже не действует 🙂")
+        return
+    await db.kv_set(f"gq:{host}:{guest}", "")
+    other = guest if me["nick"] == host else host
+    ow = await db.by_nick(other)
+    if not yes:
+        await c.message.edit_text("Ок, в другой раз 🙂")
+        if ow and ow[0].get("tg_id"):
+            try:
+                await c.bot.send_message(ow[0]["tg_id"], f"@{me['nick']} пока не может — попробуй позже 🙂")
+            except Exception:
+                pass
+        return
+    fx = await fx_get(host)
+    fx["gu"] = {"n": guest, "u": int(time.time()) + 24 * 3600}
+    await fx_set(host, fx)
+    day, pair = msk_day(), "|".join(sorted((host, guest)))
+    bonus = not await db.kv_get(f"gr:{day}:{pair}")
+    if bonus:
+        await db.kv_set(f"gr:{day}:{pair}", 1)
+        await coins_add(host, GUEST_CO)
+        await coins_add(guest, GUEST_CO)
+    tail = f" Вам обоим 🪙 +{GUEST_CO}." if bonus else ""
+    await c.message.edit_text(f"🏠 @{guest} в гостях у @{host}! Человечек гостя стоит у дома сутки.{tail}")
+    for u, n in ((c.from_user.id, me["nick"]), ((ow[0].get("tg_id") if ow else None), other)):
+        if u:
+            asyncio.create_task(task_hit(c.bot, u, n, "guest"))
+    if ow and ow[0].get("tg_id"):
+        try:
+            await c.bot.send_message(ow[0]["tg_id"], f"🏠 @{me['nick']} согласился! @{guest} в гостях у @{host} — загляни в город.{tail}", reply_markup=city_keyboard(other))
         except Exception:
             pass
 
@@ -1189,6 +1278,38 @@ async def wishes_get():
         return []
 ESTATE_SLOTS = 36
 MINI_N = 8
+TRASH_N, TRASH_MAX, TRASH_CO = 14, 5, 3  # мусорок в городе за день, можно убрать одному, неонок за штуку
+
+
+def trash_code(day: str, i: int) -> str:
+    return str(1000 + fnv(f"{KLAD_SALT}:trash:{day}:{i}") % 9000)
+
+
+async def claim_trash(m, uid, i, code):
+    """🗑 Уборка города (идея Night_eclipse): мусорки на улицах меняются каждый день, за каждую — неонки."""
+    day = msk_day()
+    me = await db.linked(uid)
+    kb = city_keyboard(me["nick"]) if me else main_menu()
+    if not (0 <= i < TRASH_N) or code != trash_code(day, i):
+        await m.answer("Этот мусор уже вывезли 🚛 Новый появится завтра в 00:00 МСК.", reply_markup=kb)
+        return
+    if not me:
+        await m.answer("Сначала привяжи ник — «🏠 Мой дом», потом наводи порядок 🗑", reply_markup=main_menu())
+        return
+    if await db.kv_get(f"trash:{day}:{i}"):
+        await m.answer("Тут уже кто-то убрал 🧹 Ищи другие мусорки на улицах!", reply_markup=kb)
+        return
+    n = int(await db.kv_get(f"trd:{day}:{uid}") or 0)
+    if n >= TRASH_MAX:
+        await m.answer(f"Ты сегодня уже убрал {TRASH_MAX} мусорок — спасибо, город сияет ✨ Завтра будет новый мусор.", reply_markup=kb)
+        return
+    await db.kv_set(f"trash:{day}:{i}", me["nick"])
+    await db.kv_set(f"trd:{day}:{uid}", n + 1)
+    await coins_add(me["nick"], TRASH_CO)
+    asyncio.create_task(klad_publish(day))
+    asyncio.create_task(task_hit(m.bot, uid, me["nick"], "trash"))
+    left = TRASH_MAX - n - 1
+    await m.answer(f"🗑 Убрано! Город стал чище. 🪙 +{TRASH_CO}" + (f" · Сегодня можно убрать ещё {left}." if left else " · На сегодня всё — спасибо! 🧹"), reply_markup=kb)
 DECOR_ITEMS = ["fireworks", "snowman", "xmas", "ufo", "rainbow", "balloons", "cat", "flag", "lanterns", "pool", "crystal", "rocket", "halo", "ghost", "flowers"]
 MINI_POOL = DECOR_ITEMS
 
@@ -1493,6 +1614,11 @@ async def start(m: Message, state: FSMContext):
         i, _, code = arg[0][4:].partition("c")
         if i.isdigit():
             await claim_mini(m, m.from_user.id, int(i), code)
+            return
+    if arg[0].startswith("trash") and "c" in arg[0][5:]:
+        i, _, code = arg[0][5:].partition("c")
+        if i.isdigit():
+            await claim_trash(m, m.from_user.id, int(i), code)
             return
     if arg[0] == "city":
         if not _me:
@@ -2187,7 +2313,8 @@ async def klad_publish(day: str):
         taken = await db.klad_today(day)
         winners = await db.klad_winners(day)
         mini = sorted(int(k.rsplit(":", 1)[1]) for k, _ in await db.kv_prefix(f"mini:{day}:")) if hasattr(db, "kv_prefix") else []
-        body = json.dumps({"day": day, "taken": taken, "limit": KLAD_LIMIT, "winners": winners, "mini": mini}, ensure_ascii=False)
+        trash = sorted(int(k.rsplit(":", 1)[1]) for k, _ in await db.kv_prefix(f"trash:{day}:")) if hasattr(db, "kv_prefix") else []
+        body = json.dumps({"day": day, "taken": taken, "limit": KLAD_LIMIT, "winners": winners, "mini": mini, "trash": trash}, ensure_ascii=False)
         old, sha = await gh_get("klad.json")
         if old != body:
             await gh_put("klad.json", body, f"Клад {day}: {taken}/{KLAD_LIMIT}", sha)
@@ -2619,6 +2746,9 @@ async def web_app(m: Message, bot: Bot):
         item = str(data.get("i") or "")
         if item not in FX_ITEMS or item in COIN_NO:
             return
+        if not await estate_ok(me["nick"], item):
+            await m.answer("🏡 Это украшение только для усадьбы. Купить усадьбу — «⭐ Украсить» → «🏡 Усадьба».", reply_markup=city_keyboard(me["nick"]))
+            return
         fx = await fx_get(me["nick"])
         price = coin_price(item)
         if int(fx.get("co", 0)) < price:
@@ -2632,7 +2762,7 @@ async def web_app(m: Message, bot: Bot):
         await fx_set(me["nick"], fx)
         await m.answer(f"🪙 Куплено: {FX_ITEMS[item][0]} за {price} неонок. Осталось 🪙 {fx['co']}.", reply_markup=city_keyboard(me["nick"]))
         return
-    if data.get("t") in ("cvote", "ivote", "friend", "gift", "give", "roof", "borrow", "hide", "esz", "cohab", "leave", "kick", "fish"):
+    if data.get("t") in ("cvote", "ivote", "friend", "gift", "give", "invite", "visit", "roof", "borrow", "hide", "esz", "cohab", "leave", "kick", "fish"):
         await social_action(m, bot, me, data)
         return
     if data.get("t") == "spin":
@@ -2660,6 +2790,12 @@ async def web_app(m: Message, bot: Bot):
         except (TypeError, ValueError):
             pass
         return
+    if data.get("t") == "trash":
+        try:
+            await claim_trash(m, m.from_user.id, int(data.get("i", -1)), str(data.get("c", "")))
+        except (TypeError, ValueError):
+            pass
+        return
     if data.get("t") == "place":
         item = str(data.get("i") or "")
         fx = await fx_get(me["nick"])
@@ -2679,6 +2815,9 @@ async def web_app(m: Message, bot: Bot):
     if data.get("t") == "buy":
         item = str(data.get("i") or "")
         if item not in FX_ITEMS:
+            return
+        if not await estate_ok(me["nick"], item):
+            await m.answer("🏡 Это украшение только для усадьбы. Купить усадьбу — «⭐ Украсить» → «🏡 Усадьба».", reply_markup=city_keyboard(me["nick"]))
             return
         name, price = FX_ITEMS[item]
         if getattr(m, "api", False):
@@ -3116,6 +3255,21 @@ async def one_off_fixes(bot):
             await db.kv_set("fix:duma_done_1_5", "1")
         except Exception as e:
             log.warning("one_off duma: %s", e)
+    # 15.11: идеи жителей из чата — в думу на голосование
+    if not await db.kv_get("fix:duma_chat_1511"):
+        try:
+            ideas = await duma_get()
+            nid = max([x["id"] for x in ideas] + [0]) + 1
+            for t in ("🔨 Аукцион украшений между жителями", "🌊 Аквапарк в городе",
+                      "👀 Примерить украшение перед покупкой", "🍔 Свои заведения в киосках на площади"):
+                if not any(x.get("text") == t for x in ideas):
+                    ideas.append({"id": nid, "text": t, "nick": "чат жителей", "up": 0, "down": 0})
+                    nid += 1
+            await db.kv_set("duma", json.dumps(ideas, ensure_ascii=False))
+            _fx_dirty.set()
+            await db.kv_set("fix:duma_chat_1511", "1")
+        except Exception as e:
+            log.warning("one_off duma chat: %s", e)
 
 
 async def handmade_loop(bot):
