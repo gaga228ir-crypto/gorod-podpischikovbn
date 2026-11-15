@@ -242,7 +242,7 @@ function makeCarMesh(col) {
 // ---------- клад дня ----------
 // 🍔 заведения на площади (идея из программы кандидата @leomokroidk): киоски с неоновыми вывесками на газонах
 const KIOSKS = [['🍔 БУРГЕРНАЯ', '#ff3d7f', '#ffd23f'], ['☕ КОФЕЙНЯ', '#8a5a3c', '#ffe0b0'], ['🎮 АРКАДЫ', '#7b2cbf', '#5ef2ff'], ['🎬 КИНО', '#d81f2a', '#ffd23f'], ['🥤 ГАЗЯВА & ХРУМКИ', '#d6202f', '#ffd23f'], ['🍕 ПИЦЦА', '#ff7a1a', '#fff3b0']];
-function buildKiosks(y0, roads, R) {
+export function buildKiosks(y0, roads, R) {
   const G = new THREE.Group();
   const aves = roads.filter(r => r.kind === 'ave' && r.pts.length > 2 && Math.hypot(...r.pts[0]) < R + .1).map(r => Math.atan2(r.pts[0][1], r.pts[0][0])).sort((a, b) => a - b);
   aves.forEach((a, i) => { if (i >= KIOSKS.length) return; const b = i + 1 < aves.length ? aves[i + 1] : aves[0] + 6.2832, am = (a + b) / 2 + (b - a) * .22, rr = R - 1.15;
