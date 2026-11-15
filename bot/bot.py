@@ -3078,6 +3078,15 @@ async def one_off_fixes(bot):
             await db.kv_set("fix:mi_ikun_pink", "1")
         except Exception as e:
             log.warning("one_off mi_ikun: %s", e)
+    # 15.11: убрать из думы сделанные идеи (#1 надписи, #2 картинки на флагах, #3 задания, #4 общий дом, #5 перегенерация ИИ-дома)
+    if not await db.kv_get("fix:duma_done_1_5"):
+        try:
+            ideas = await duma_get()
+            await db.kv_set("duma", json.dumps([x for x in ideas if x.get("id") not in (1, 2, 3, 4, 5)], ensure_ascii=False))
+            _fx_dirty.set()
+            await db.kv_set("fix:duma_done_1_5", "1")
+        except Exception as e:
+            log.warning("one_off duma: %s", e)
 
 
 async def handmade_loop(bot):
