@@ -352,11 +352,12 @@ function focus(h, fly = true) {
     + (contestOn() && fx.cv ? `<span class="k" style="color:var(--goldt)">🏆 ${fx.cv}</span>` : '')
     + (mine ? `<span class="k" style="color:#ffd23f">🪙 ${fx.co || 0}</span><button type="button" id="bfx">✏️ ТАБЛИЧКА</button><button type="button" id="bshop">⭐ УКРАСИТЬ</button><button type="button" id="broof">🎨 ФЛАГ</button>`
       : TG && ME ? '<button type="button" id="bknock">🚪 ПОСТУЧАТЬ</button><button type="button" id="bborrow">🦝 ОДОЛЖИТЬ</button>'
+        + (giveList(h).length ? '<button type="button" id="bgive">🎁 ПЕРЕДАТЬ</button>' : '')
         + (((fxMap[ME] || {}).f || []).includes(h.key) ? '<button type="button" id="bgift">🎁 ПОДАРИТЬ</button>' + (!h.guest && !h.residents && !homes[ME] ? '<button type="button" id="bcohab">🏘 ПОЗВАТЬ ЖИТЬ КО МНЕ</button>' : '') : '<button type="button" id="bfriend">👫 ДРУЖИТЬ</button>')
         + (contestOn() ? '<button type="button" id="bcvote" style="background:var(--gold);color:#1a1238">🏆 ГОЛОС</button>' : '') : '');
   const on = (id, fn) => { if ($(id)) $(id).onclick = fn; };
   on('broof', () => openRoof(h)); on('bborrow', () => sendTG({ t: 'borrow', n: h.key })); on('bfriend', () => sendTG({ t: 'friend', n: h.key }));
-  on('bgift', () => openGift(h)); on('bcohab', () => sendTG({ t: 'cohab', n: h.key })); on('bcvote', () => sendTG({ t: 'cvote', n: h.key }));
+  on('bgift', () => openGift(h)); on('bgive', () => openGive(h)); on('bcohab', () => sendTG({ t: 'cohab', n: h.key })); on('bcvote', () => sendTG({ t: 'cvote', n: h.key }));
   if ($('bfx')) $('bfx').onclick = () => openFx(h); if ($('bshop')) $('bshop').onclick = () => openShop(h); if ($('bknock')) $('bknock').onclick = () => sendTG({ t: 'knock', n: h.key });
   card.classList.add('show'); history.replaceState(null, '', location.search + '#' + encodeURIComponent(h.key));
 }
@@ -515,6 +516,21 @@ function openGift(h) {
     ${list.map(([k, t, p]) => `<div class="shop"><span>${t}</span><button type="button" data-gift="${k}">${p * 5} 🪙</button></div>`).join('') || '<p>У друга уже есть всё 😄</p>'}
     <button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button>`;
   sheet.querySelectorAll('[data-gift]').forEach(b => b.onclick = () => sendTG({ t: 'gift', n: h.key, i: b.dataset.gift }));
+  modal.classList.add('show'); closeBtn();
+}
+// передать своё украшение другому жителю бесплатно (у себя пропадёт)
+const giveList = h => { const my = (fxMap[ME] || {}).d || [], has = new Set((fxMap[h.key] || {}).d || []), ln = (fxMap[ME] || {}).lent;
+  const lentI = ln && ln.u * 1000 > Date.now() ? ln.i : null;
+  return SHOP.filter(([k]) => my.includes(k) && !['top', 'estate'].includes(k) && !has.has(k) && k !== lentI); };
+function openGive(h) {
+  const list = giveList(h);
+  sheet.innerHTML = `<h2>🎁 Передать украшение @${esc(h.key)}</h2><p>Бесплатно. Украшение перейдёт к его дому, а у тебя пропадёт.</p>
+    ${list.map(([k, t]) => `<div class="shop"><span>${t}</span><button type="button" data-give="${k}">ОТДАТЬ</button></div>`).join('') || '<p>Нечего передать 🙂</p>'}
+    <button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button>`;
+  sheet.querySelectorAll('[data-give]').forEach(b => b.onclick = () => {
+    if (!b.dataset.ok) { b.dataset.ok = 1; b.textContent = 'ТОЧНО?'; return; }
+    const k = b.dataset.give, f = fxMap[ME] = fxMap[ME] || {}; f.d = (f.d || []).filter(x => x !== k);
+    sendTG({ t: 'give', n: h.key, i: k }); });
   modal.classList.add('show'); closeBtn();
 }
 function openRoof(h) {

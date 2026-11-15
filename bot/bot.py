@@ -722,6 +722,35 @@ async def social_action(m, bot, me, data):
         asyncio.create_task(task_hit(bot, uid, me["nick"], "gift"))
         await m.answer(f"🎁 Подарил @{target}: {FX_ITEMS[item][0]}! Осталось 🪙 {mine['co']}.", reply_markup=kb)
         await notify(target, f"🎁 Твой друг @{me['nick']} подарил тебе {FX_ITEMS[item][0]}! Уже у твоего дома.")
+    elif t == "give":  # передать своё украшение другому жителю бесплатно (у себя пропадает)
+        target, item = norm_nick(str(data.get("n") or "")), str(data.get("i") or "")
+        now = int(time.time())
+        mine = await fx_get(me["nick"])
+        if item not in mine.get("d", []) or item not in FX_ITEMS or item in ("top", "estate", "wish") or target == me["nick"]:
+            await m.answer("Это украшение передать нельзя 🤔", reply_markup=kb)
+            return
+        lent = mine.get("lent") if isinstance(mine.get("lent"), dict) and mine["lent"].get("u", 0) > now else None
+        if lent and lent.get("i") == item:
+            await m.answer(f"Это украшение сейчас одолжил @{lent.get('to')} 🦝 Передать можно, когда вернётся.", reply_markup=kb)
+            return
+        ow = await db.by_nick(target)
+        if not ow or not ow[0].get("tg_id"):
+            await m.answer(f"@{target} ещё не привязал дом в боте — передать пока нельзя.", reply_markup=kb)
+            return
+        fx = await fx_get(target)
+        if item in fx.get("d", []):
+            await m.answer(f"У @{target} это украшение уже есть 🙂", reply_markup=kb)
+            return
+        mine["d"] = [x for x in mine.get("d", []) if x != item]
+        mine["off"] = [x for x in mine.get("off", []) if x != item]
+        if isinstance(mine.get("p"), dict):
+            mine["p"].pop(item, None)
+        await fx_set(me["nick"], mine)
+        fx["d"] = sorted(set(fx.get("d", [])) | {item})
+        await fx_set(target, fx)
+        log.info("передача украшения %s: @%s → @%s", item, me["nick"], target)
+        await m.answer(f"🎁 Ты передал @{target}: {FX_ITEMS[item][0]}. Оно уже у его дома!", reply_markup=kb)
+        await notify(target, f"🎁 @{me['nick']} передал тебе украшение {FX_ITEMS[item][0]}! Уже у твоего дома — разместить можно в «⭐ Украсить» → «⚙️ Разместить».")
     elif t == "hide":  # снять / вернуть своё украшение (остаётся купленным)
         item = str(data.get("i") or "")
         fx = await fx_get(me["nick"])
@@ -2603,7 +2632,7 @@ async def web_app(m: Message, bot: Bot):
         await fx_set(me["nick"], fx)
         await m.answer(f"🪙 Куплено: {FX_ITEMS[item][0]} за {price} неонок. Осталось 🪙 {fx['co']}.", reply_markup=city_keyboard(me["nick"]))
         return
-    if data.get("t") in ("cvote", "ivote", "friend", "gift", "roof", "borrow", "hide", "esz", "cohab", "leave", "kick", "fish"):
+    if data.get("t") in ("cvote", "ivote", "friend", "gift", "give", "roof", "borrow", "hide", "esz", "cohab", "leave", "kick", "fish"):
         await social_action(m, bot, me, data)
         return
     if data.get("t") == "spin":
