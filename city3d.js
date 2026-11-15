@@ -241,7 +241,7 @@ function makeCarMesh(col) {
 
 // ---------- клад дня ----------
 // 🍔 заведения на площади (идея из программы кандидата @leomokroidk): киоски с неоновыми вывесками на газонах
-const KIOSKS = [['🍔 БУРГЕРНАЯ', '#ff3d7f', '#ffd23f'], ['☕ КОФЕЙНЯ', '#8a5a3c', '#ffe0b0'], ['🎮 АРКАДЫ', '#7b2cbf', '#5ef2ff'], ['🎬 КИНО', '#d81f2a', '#ffd23f'], ['🍦 МОРОЖЕНОЕ', '#5ec8ff', '#ffffff'], ['🍕 ПИЦЦА', '#ff7a1a', '#fff3b0']];
+const KIOSKS = [['🍔 БУРГЕРНАЯ', '#ff3d7f', '#ffd23f'], ['☕ КОФЕЙНЯ', '#8a5a3c', '#ffe0b0'], ['🎮 АРКАДЫ', '#7b2cbf', '#5ef2ff'], ['🎬 КИНО', '#d81f2a', '#ffd23f'], ['🥤 ГАЗЯВА & ХРУМКИ', '#d6202f', '#ffd23f'], ['🍕 ПИЦЦА', '#ff7a1a', '#fff3b0']];
 function buildKiosks(y0, roads, R) {
   const G = new THREE.Group();
   const aves = roads.filter(r => r.kind === 'ave' && r.pts.length > 2 && Math.hypot(...r.pts[0]) < R + .1).map(r => Math.atan2(r.pts[0][1], r.pts[0][0])).sort((a, b) => a - b);
@@ -254,8 +254,17 @@ function buildKiosks(y0, roads, R) {
     const counter = new THREE.Mesh(new THREE.BoxGeometry(.7, .05, .12), flat(trim)); counter.position.set(0, .2, .35); K.add(counter);
     for (const x of [-.55, .55]) { const st = new THREE.Mesh(new THREE.CylinderGeometry(.05, .05, .14, 10), flat('#3b3f4a')); st.position.set(x, .07, .55); K.add(st);
       const seat = new THREE.Mesh(new THREE.CylinderGeometry(.08, .08, .03, 12), flat(trim)); seat.position.set(x, .15, .55); K.add(seat); }
-    const sign = textSprite(name, { color: '#fff', bg: 'rgba(12,8,36,.85)', scale: .0028, size: 56 }); sign.position.y = .95; K.add(sign);
+    const sign = textSprite(name, { color: '#fff', bg: 'rgba(12,8,36,.85)', scale: .0028, size: 56 }); sign.position.y = name.includes('ГАЗЯВА') ? 1.32 : .95; K.add(sign);
     const neon = new THREE.Mesh(new THREE.BoxGeometry(.92, .03, .03), flat(trim, trim, 2)); neon.position.set(0, .66, .36); K.add(neon);
+    if (name.includes('ГАЗЯВА')) { // банки газявы и пачки хрумок на прилавке + большая банка на крыше
+      for (let k = 0; k < 3; k++) { const c = new THREE.Mesh(new THREE.CylinderGeometry(.035, .035, .1, 12), flat('#e8242f', '#e8242f', .3)); c.position.set(-.26 + k * .08, .275, .35); K.add(c); }
+      for (let k = 0; k < 2; k++) { const b = new THREE.Mesh(new THREE.BoxGeometry(.08, .11, .03), flat('#ffb21a', '#ffb21a', .25)); b.position.set(.14 + k * .11, .28, .35); K.add(b); }
+      const can = new THREE.Mesh(new THREE.CylinderGeometry(.13, .13, .36, 18), flat('#e8242f', '#e8242f', .35)); can.position.set(-.25, .84, 0); K.add(can);
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(.132, .132, .08, 18), flat('#ffffff', '#ffffff', .4)); band.position.set(-.25, .84, 0); K.add(band);
+      const lid = new THREE.Mesh(new THREE.CylinderGeometry(.11, .13, .03, 18), flat('#c9ccd4')); lid.position.set(-.25, 1.035, 0); K.add(lid);
+      const straw = new THREE.Mesh(new THREE.CylinderGeometry(.012, .012, .2, 6), flat('#ffffff')); straw.position.set(-.22, 1.12, 0); straw.rotation.z = -.25; K.add(straw);
+      const pack = new THREE.Mesh(new THREE.BoxGeometry(.22, .28, .07), flat('#ffb21a', '#ffb21a', .3)); pack.position.set(.25, .8, 0); pack.rotation.y = .3; K.add(pack);
+      for (let k = 0; k < 3; k++) { const cr = new THREE.Mesh(new THREE.BoxGeometry(.05, .05, .05), flat('#e0a050')); cr.position.set(.2 + k * .05, .97, (k - 1) * .015); cr.rotation.set(k, k * .7, 0); K.add(cr); } }
     K.position.set(Math.cos(am) * rr, y0 + .12, Math.sin(am) * rr); K.rotation.y = Math.atan2(-Math.cos(am), -Math.sin(am)); K.userData.kiosk = name; K.traverse(m => m.userData.kiosk = name); G.add(K); });
   return G;
 }
@@ -616,7 +625,7 @@ export class City3D {
     // деревья (не на участках, дорогах и местах), площадь
     const keep = [...this.map.places, ...lms, { x: est.x, z: est.z, r: est.r }].map(o => ({ x: o.x, z: o.z, r: (o.r || 1.3) + .2 }));
     const trees = buildTrees(T, roads, town.map(h => h.fp), extraTrees, Rm, 23, keep); for (const m of trees) add(m);
-    add(buildPlaza(T.H(0, 0), roads));
+    { const P = buildPlaza(T.H(0, 0), roads); add(P); this.plaza = P; }
     { const K = buildKiosks(T.H(0, 0), roads, PLAZA_R); add(K); this.kiosks = K; }
     // скамейки
     { const bg = new THREE.BoxGeometry(.24, .03, .08).translate(0, .07, 0), bb = new THREE.BoxGeometry(.24, .07, .015).translate(0, .11, -.035), bl = new THREE.BoxGeometry(.2, .055, .06).translate(0, .03, 0);
@@ -775,6 +784,7 @@ export class City3D {
   }
   rideStop() { if (!this.ride) return; const r = this.ride; this.ride = null; this.camOverride = null; this.cam.fov = 42; this.cam.updateProjectionMatrix(); if (r.target) { this.ctl.tx = this.ctl.x = r.target.x; this.ctl.tz = this.ctl.z = r.target.z; this.ctl.td = this.ctl.d = 7; } r.onEnd && r.onEnd(); }
   setMini(seed, n, taken) { this.mini = { seed, n, taken: new Set(taken || []) }; this._extrasDirty = true; }
+  setSoda(on) { if (this.plaza && this.plaza.userData.soda) this.plaza.userData.soda(on); }
   setTrash(seed, n, taken) { this.trash = { seed, n, taken: new Set(taken || []) }; this._extrasDirty = true; }
   setTitles(map) { this.titles = map || {}; this._extrasDirty = true; }
   houseTop(h) {
@@ -879,6 +889,17 @@ export class City3D {
       if (d.has('flowers')) { const Fl = new THREE.Group(); const bed = new THREE.Mesh(new THREE.BoxGeometry(.5, .04, .1), flat('#5a3a22')); bed.position.y = .02; Fl.add(bed);
         for (let i = 0; i < 9; i++) { const f = new THREE.Mesh(new THREE.SphereGeometry(.025, 8, 6), flat(['#ff3d7f', '#ffd23f', '#c084fc', '#ffffff'][i % 4], ['#ff3d7f', '#ffd23f', '#c084fc', '#ffffff'][i % 4], .4)); f.position.set(-.22 + i * .055, .07, (i % 2 ? .02 : -.02)); Fl.add(f); }
         Fl.position.set(0, .03, fz * .58); G.add(place(Fl, 'flowers')); }
+      if (d.has('soda')) { const S = new THREE.Group(); // 🥤 большая банка газявы с трубочкой
+        const can = new THREE.Mesh(new THREE.CylinderGeometry(.07, .07, .2, 16), flat('#e8242f', '#e8242f', .35)); can.position.y = .1; S.add(can);
+        const band = new THREE.Mesh(new THREE.CylinderGeometry(.072, .072, .05, 16), flat('#ffffff', '#ffffff', .4)); band.position.y = .1; S.add(band);
+        const lid = new THREE.Mesh(new THREE.CylinderGeometry(.06, .07, .015, 16), flat('#c9ccd4')); lid.position.y = .207; S.add(lid);
+        const st = new THREE.Mesh(new THREE.CylinderGeometry(.008, .008, .12, 6), flat('#ffffff')); st.position.set(.015, .26, 0); st.rotation.z = -.25; S.add(st);
+        S.position.set(-.3, .02, (h.dp || .7) / 2 + .14); G.add(place(S, 'soda')); }
+      if (d.has('chips')) { const S = new THREE.Group(); // 🥨 пачка хрумок, сверху высыпаются сухарики
+        const pk = new THREE.Mesh(new THREE.BoxGeometry(.13, .17, .05), flat('#ffb21a', '#ffb21a', .3)); pk.position.y = .085; S.add(pk);
+        const lb = new THREE.Mesh(new THREE.BoxGeometry(.09, .05, .052), flat('#d6202f')); lb.position.y = .1; S.add(lb);
+        for (let k = 0; k < 4; k++) { const c = new THREE.Mesh(new THREE.BoxGeometry(.03, .03, .03), flat('#e0a050')); c.position.set(-.04 + k * .027, .18 + (k % 2) * .02, 0); c.rotation.set(k, k * .6, 0); S.add(c); }
+        S.position.set(.3, .02, (h.dp || .7) / 2 + .14); S.rotation.y = -.3; G.add(place(S, 'chips')); }
       if (h.isEstate) { // украшения только для усадеб: ставятся на участке вокруг большого дома
         if (d.has('shed')) { const S = new THREE.Group(); const b = new THREE.Mesh(new THREE.BoxGeometry(.45, .32, .36), flat('#9a6a3e')); b.position.y = .16; S.add(b);
           const rf = new THREE.Mesh(new THREE.ConeGeometry(.36, .2, 4), flat('#6e3328')); rf.rotation.y = Math.PI / 4; rf.scale.set(1.05, 1, .85); rf.position.y = .42; S.add(rf);
@@ -1016,6 +1037,7 @@ export class City3D {
   }
   // ---- кадр ----
   frame(dt) {
+    if (this.plaza && this.plaza.userData.sodaTick) this.plaza.userData.sodaTick(performance.now() / 1000);
     if (this._extrasDirty) { this.buildExtras(); this.setupShadows(); }
     if (this.ride) { const r = this.ride; r.t += dt / r.dur; if (r.t >= 1) this.rideStop(); else { const u = r.t * r.t * (3 - 2 * r.t), a = r.curve.getPointAt(u), b = r.curve.getPointAt(Math.min(1, u + .02)); this.camOverride = { p: [a.x, a.y, a.z], t: [b.x, b.y - .3, b.z], fov: 55 }; } } if (this._dayDirty) this.applyDay(); this.tickWeather(dt);
     if (this.shadows) { this.moon.target.position.set(this.ctl.x, this.ctl.y, this.ctl.z); this.moon.position.copy(this.moon.target.position).addScaledVector(this.sunDir, 90);

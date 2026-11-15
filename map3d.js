@@ -443,5 +443,18 @@ export function buildPlaza(y0, roads) {
   const col = new THREE.Mesh(new THREE.CylinderGeometry(.14, .2, .7, 12), stone); col.position.y = y0 + .75; g.add(col);
   const top = new THREE.Mesh(new THREE.CylinderGeometry(.5, .32, .14, 20), stone); top.position.y = y0 + 1.1; g.add(top);
   const jet = new THREE.Mesh(new THREE.ConeGeometry(.42, .6, 16, 1, true), new THREE.MeshStandardMaterial({ color: '#bfe8ff', transparent: true, opacity: .55, side: THREE.DoubleSide })); jet.position.y = y0 + 1.35; jet.rotation.x = Math.PI; g.add(jet);
+  // 🥤 режим «газява»: коричневая вода, пена, пузыри (включает city.setSoda)
+  const S = new THREE.Group(); S.visible = false;
+  const foamM = new THREE.MeshStandardMaterial({ color: '#fff4e0', roughness: .9, emissive: '#fff4e0', emissiveIntensity: .15 });
+  const foam = new THREE.Mesh(new THREE.TorusGeometry(1.12, .1, 8, 40), foamM); foam.rotation.x = Math.PI / 2; foam.position.y = y0 + .44; S.add(foam);
+  for (let k = 0; k < 16; k++) { const a = k / 16 * 6.283, f = new THREE.Mesh(new THREE.SphereGeometry(.09 + (k % 3) * .03, 8, 6), foamM); f.position.set(Math.cos(a) * (1.02 + (k % 2) * .1), y0 + .47, Math.sin(a) * (1.02 + (k % 2) * .1)); S.add(f); }
+  const capF = new THREE.Mesh(new THREE.SphereGeometry(.22, 14, 8, 0, 6.283, 0, Math.PI / 2), foamM); capF.position.y = y0 + 1.62; S.add(capF);
+  const bubM = new THREE.MeshStandardMaterial({ color: '#ffe2b0', transparent: true, opacity: .75, emissive: '#ffb347', emissiveIntensity: .3 }), bubbles = [];
+  for (let k = 0; k < 28; k++) { const b = new THREE.Mesh(new THREE.SphereGeometry(.035 + (k % 4) * .012, 8, 6), bubM), a = k * 2.39, r = .2 + (k * .37) % 1;
+    b.userData.b = { x: Math.cos(a) * r, z: Math.sin(a) * r, ph: (k * .173) % 1 }; S.add(b); bubbles.push(b); }
+  g.add(S);
+  const W0 = { c: water.color.clone(), e: water.emissive.clone() }, J0 = jet.material.color.clone();
+  g.userData.soda = on => { S.visible = !!on; water.color.set(on ? '#5a2410' : W0.c); water.emissive.set(on ? '#3a1205' : W0.e); jet.material.color.set(on ? '#c9772e' : J0); jet.material.opacity = on ? .7 : .55; };
+  g.userData.sodaTick = t => { if (!S.visible) return; for (const b of bubbles) { const u = (t * .35 + b.userData.b.ph) % 1; b.position.set(b.userData.b.x, y0 + .45 + u * 1.6, b.userData.b.z); b.scale.setScalar(1 - u * .5); } };
   return g;
 }

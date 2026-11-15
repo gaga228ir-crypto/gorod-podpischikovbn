@@ -332,7 +332,7 @@ cv.addEventListener('webglcontextlost', e => { e.preventDefault(); reportErr('gl
 
 // ---------- карточка, поиск, поделиться ----------
 const card = $('card'), msg = $('msg');
-function pick(x, y) { const h = city.pick(x, y); if (h && h.park) return openPark(h.park); if (h && h.honor) return openHonor(); if (h && h.mini != null) return openMini(h.mini); if (h && h.trash != null) return openTrash(h.trash); if (h && h.kiosk) return toastMsg(h.kiosk + ' — скоро откроется! Первое заведение откроет новый мэр 🗳'); if (h && h.chest) return kladOver() ? kladChip.onclick() : openKlad(); if (h) focus(h, false); }
+function pick(x, y) { const h = city.pick(x, y); if (h && h.park) return openPark(h.park); if (h && h.honor) return openHonor(); if (h && h.mini != null) return openMini(h.mini); if (h && h.trash != null) return openTrash(h.trash); if (h && h.kiosk && h.kiosk.includes('ГАЗЯВА')) return openSoda(); if (h && h.kiosk) return toastMsg(h.kiosk + ' — скоро откроется! Первое заведение откроет новый мэр 🗳'); if (h && h.chest) return kladOver() ? kladChip.onclick() : openKlad(); if (h) focus(h, false); }
 function focus(h, fly = true) {
   city.focus(h, fly);
   if (fly && h.isEstate) toastMsg('🏡 Этот дом переехал в Посёлок Усадеб у озера. Вернуться в город — кнопка «🏙 В ГОРОД».');
@@ -431,6 +431,7 @@ function openFx(h) {
 const SHOP = [['fireworks', '🎆 Салют над домом', 15], ['ufo', '🛸 НЛО над домом', 20], ['rainbow', '🌈 Радужная подсветка', 15], ['xmas', '🎄 Новогодняя ёлка', 10], ['snowman', '⛄ Снеговик во дворе', 10], ['top', '🔦 Дом дня: прожектор и доска почёта на 24 ч', 25], ['estate', '🏡 Усадьба: большой участок (как 4 дома) с забором и садом в Посёлке Усадеб', 100],
   ['balloons', '🎈 Воздушные шары', 10], ['cat', '🐱 Кот на крыше', 10], ['flag', '🚩 Флаг на крыше', 10], ['lanterns', '🏮 Фонарики', 10], ['flowers', '🌷 Клумба', 10], ['ghost', '👻 Призрак-сосед', 10],
   ['pool', '🏊 Бассейн во дворе', 15], ['crystal', '💎 Парящий кристалл', 15], ['rocket', '🚀 Ракета у дома', 15], ['halo', '✨ Сияющий нимб', 15],
+  ['soda', '🥤 Банка газявы', 3], ['chips', '🥨 Пачка хрумок', 3],
   ['shed', '🛖 Сарай (для усадьбы)', 10], ['swing', '🪢 Качели (для усадьбы)', 10], ['gazebo', '⛺ Беседка (для усадьбы)', 15], ['garden', '🥕 Огород (для усадьбы)', 10], ['grill', '🔥 Мангал (для усадьбы)', 10]];
 const ESTATE_ONLY = new Set(['shed', 'swing', 'gazebo', 'garden', 'grill']);
 const shopFor = h => SHOP.filter(([k]) => !ESTATE_ONLY.has(k) || h.isEstate);
@@ -456,7 +457,7 @@ function openShop(h) {
   modal.classList.add('show'); closeBtn();
 }
 
-const PLACE_NAME = { fireworks: '🎆 Салют', ufo: '🛸 НЛО', rainbow: '🌈 Радуга', xmas: '🎄 Ёлка', snowman: '⛄ Снеговик', sign: '💬 Табличка', balloons: '🎈 Шары', cat: '🐱 Кот', flag: '🚩 Флаг', lanterns: '🏮 Фонарики', pool: '🏊 Бассейн', crystal: '💎 Кристалл', rocket: '🚀 Ракета', halo: '✨ Нимб', ghost: '👻 Призрак', flowers: '🌷 Клумба', roof: '🎨 Флаг', title: '🏅 Титул' };
+const PLACE_NAME = { soda: '🥤 Газява', chips: '🥨 Хрумки', fireworks: '🎆 Салют', ufo: '🛸 НЛО', rainbow: '🌈 Радуга', xmas: '🎄 Ёлка', snowman: '⛄ Снеговик', sign: '💬 Табличка', balloons: '🎈 Шары', cat: '🐱 Кот', flag: '🚩 Флаг', lanterns: '🏮 Фонарики', pool: '🏊 Бассейн', crystal: '💎 Кристалл', rocket: '🚀 Ракета', halo: '✨ Нимб', ghost: '👻 Призрак', flowers: '🌷 Клумба', roof: '🎨 Флаг', title: '🏅 Титул' };
 function openPlace(h, k) {
   const fx = fxMap[h.key] = fxMap[h.key] || {}, old = JSON.stringify(fx.p || {}); fx.p = fx.p || {};
   const p0 = fx.p[k] || [], v = [+p0[0] || 0, +p0[1] || 0, p0[2] == null ? 1 : +p0[2], +p0[3] || 0];
@@ -745,7 +746,23 @@ const kladOver = () => !!(kladState && kladState.day === KLAD.day && kladState.t
 const kladLeft = () => kladState && kladState.day === KLAD.day ? Math.max(0, kladState.limit - kladState.taken) : null;
 const MINI_N = 8, miniSeed = () => fnv(KLAD_SALT + ':mini:' + KLAD.day), miniCode = i => String(1000 + fnv(KLAD_SALT + ':mini:' + KLAD.day + ':' + i) % 9000);
 const miniTaken = () => kladState && kladState.day === KLAD.day ? (kladState.mini || []) : [];
-async function loadKladState() { const j = await getJSON('klad.json'); if (j && j.day) kladState = j; if (city.chest) city.chest.visible = !kladOver(); city.setMini(miniSeed(), MINI_N, miniTaken()); city.setTrash(trashSeed(), TRASH_N, trashTaken()); updateHonor(); }
+async function loadKladState() { const j = await getJSON('klad.json'); if (j && j.day) kladState = j; if (city.chest) city.chest.visible = !kladOver(); city.setMini(miniSeed(), MINI_N, miniTaken()); city.setTrash(trashSeed(), TRASH_N, trashTaken()); applySoda(); updateHonor(); }
+// 🥤 ларёк «Газява & Хрумки» на площади: украшения за неонки + «залить фонтан газявой» на час для всего города
+const SODA_CO = 40, sodaOn = () => !!(kladState && kladState.soda && kladState.soda.u * 1000 > Date.now());
+function applySoda() { city.setSoda(sodaOn()); clearTimeout(applySoda.t); if (sodaOn()) applySoda.t = setTimeout(applySoda, kladState.soda.u * 1000 - Date.now() + 500); }
+function openSoda() {
+  const my = ME && fxMap[ME] || {}, have = new Set(my.d || []), left = sodaOn() ? Math.ceil((kladState.soda.u * 1000 - Date.now()) / 60000) : 0;
+  const row = (k, t, p) => `<div class="shop"><span>${t}</span>${have.has(k) ? '<b style="color:var(--goldt)">✓ есть</b>' : `<button type="button" data-buyc="${k}">🪙 ${p}</button>`}</div>`;
+  sheet.innerHTML = `<h2>🥤 Газява & Хрумки</h2><p>Ларёк на главной площади. Возьми банку газявы или пачку хрумок — они встанут у твоего дома.</p>
+    ${sodaOn() ? `<p style="color:#ff9f43"><b>⛲ Фонтан сейчас из газявы!</b> Угощает @${esc(kladState.soda.n || '')} — ещё ${left} мин.</p>` : ''}
+    <p>У тебя: <b style="color:var(--goldt)">🪙 ${my.co || 0} неонок</b></p>
+    ${row('soda', '🥤 Банка газявы у дома', 15)}${row('chips', '🥨 Пачка хрумок у дома', 15)}
+    <div class="shop"><span>⛲ Залить фонтан газявой на час (весь город увидит)</span><button type="button" id="sodaF">🪙 ${SODA_CO}</button></div>
+    <div class="btns"><button class="ghost" id="mclose" type="button">ЗАКРЫТЬ</button></div>`;
+  sheet.querySelectorAll('[data-buyc]').forEach(b => b.onclick = () => sendTG({ t: 'buyc', i: b.dataset.buyc }));
+  $('sodaF').onclick = () => sendTG({ t: 'soda' });
+  modal.classList.add('show'); closeBtn();
+}
 // 🗑 уборка города: мусорки на тротуарах меняются каждый день, за каждую — неонки (до 5 в день)
 const TRASH_N = 14, trashSeed = () => fnv(KLAD_SALT + ':trash:' + KLAD.day), trashCode = i => String(1000 + fnv(KLAD_SALT + ':trash:' + KLAD.day + ':' + i) % 9000);
 const trashMine = new Set(), trashTaken = () => [...(kladState && kladState.day === KLAD.day ? (kladState.trash || []) : []), ...trashMine];

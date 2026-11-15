@@ -328,6 +328,8 @@ FX_ITEMS = {
     "lanterns": ("🏮 Фонарики", 10), "pool": ("🏊 Бассейн во дворе", 15), "crystal": ("💎 Парящий кристалл", 15),
     "rocket": ("🚀 Ракета у дома", 15), "halo": ("✨ Сияющий нимб", 15), "ghost": ("👻 Призрак-сосед", 10), "flowers": ("🌷 Клумба", 10),
     "wish": ("🪙 Монетка в фонтан желаний", 5),
+    # ларёк «Газява & Хрумки» на площади (15.11)
+    "soda": ("🥤 Банка газявы", 3), "chips": ("🥨 Пачка хрумок", 3),
     # только для усадеб (идея Night_eclipse, 15.11)
     "shed": ("🛖 Сарай", 10), "swing": ("🪢 Качели", 10), "gazebo": ("⛺ Беседка", 15), "garden": ("🥕 Огород", 10), "grill": ("🔥 Мангал", 10),
 }
@@ -385,6 +387,7 @@ async def do_spin(m, uid):
 # ======== 🪙 Неонки (городская валюта) ========
 COIN_RATE = 5  # 1 ⭐ = 5 неонок по цене украшений
 COIN_NO = {"estate", "wish"}  # только за звёзды
+SODA_CO, SODA_SEC = 40, 3600  # ⛲ залить фонтан на площади газявой: 🪙 40 за час для всего города
 
 
 def coin_price(item):
@@ -2314,7 +2317,8 @@ async def klad_publish(day: str):
         winners = await db.klad_winners(day)
         mini = sorted(int(k.rsplit(":", 1)[1]) for k, _ in await db.kv_prefix(f"mini:{day}:")) if hasattr(db, "kv_prefix") else []
         trash = sorted(int(k.rsplit(":", 1)[1]) for k, _ in await db.kv_prefix(f"trash:{day}:")) if hasattr(db, "kv_prefix") else []
-        body = json.dumps({"day": day, "taken": taken, "limit": KLAD_LIMIT, "winners": winners, "mini": mini, "trash": trash}, ensure_ascii=False)
+        soda = json.loads(await db.kv_get("soda") or "{}")
+        body = json.dumps({"day": day, "taken": taken, "limit": KLAD_LIMIT, "winners": winners, "mini": mini, "trash": trash, "soda": soda}, ensure_ascii=False)
         old, sha = await gh_get("klad.json")
         if old != body:
             await gh_put("klad.json", body, f"Клад {day}: {taken}/{KLAD_LIMIT}", sha)
@@ -2789,6 +2793,20 @@ async def web_app(m: Message, bot: Bot):
             await claim_mini(m, m.from_user.id, int(data.get("i", -1)), str(data.get("c", "")))
         except (TypeError, ValueError):
             pass
+        return
+    if data.get("t") == "soda":
+        fx = await fx_get(me["nick"])
+        if int(fx.get("co", 0)) < SODA_CO:
+            await m.answer(f"Не хватает неонок: залить фонтан газявой стоит 🪙 {SODA_CO}, у тебя {fx.get('co', 0)}.", reply_markup=city_keyboard(me["nick"]))
+            return
+        cur = json.loads(await db.kv_get("soda") or "{}")
+        now = int(time.time())
+        fx["co"] = int(fx["co"]) - SODA_CO
+        await fx_set(me["nick"], fx)
+        await db.kv_set("soda", json.dumps({"u": max(now, int(cur.get("u", 0))) + SODA_SEC, "n": me["nick"]}, ensure_ascii=False))
+        asyncio.create_task(klad_publish(msk_day()))
+        await m.answer(f"🥤 Фонтан на площади залит газявой на час! Весь город видит: «угощает @{me['nick']}». Осталось 🪙 {fx['co']}.",
+                       reply_markup=city_keyboard(me["nick"]))
         return
     if data.get("t") == "trash":
         try:
