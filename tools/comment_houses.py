@@ -190,9 +190,278 @@ def laser_citadel():
     return h.r
 
 
+def minaret_palace():
+    """@errafoster (Anhell, 15.11, по двум картинкам): мечеть Каира (минареты ярусами, рёбристые купола, аркада)
+    + Махабат Макбара (минареты с винтовыми лестницами снаружи, тёмный главный купол со шпилем)."""
+    h = H("Дворец пустынных минаретов", "warm")
+    sand, stone, stone2, dark, dome2, gold, door = "#e9c48a", "#d9b27a", "#c49a62", "#5a4632", "#8a6f52", "#ffcf5a", "#2e2218"
+    h.p("box", 0, 0, 0, .99, .04, .99, "#d8a866")  # песок
+    # аркада по фронту: стена с тёмными арками
+    h.p("box", 0, .04, .4, .96, .14, .06, stone, win=False)
+    for i in range(7):
+        x = -.39 + i * .13
+        h.p("box", x, .05, .432, .07, .085, .01, door)
+        h.p("sphere", x, .125, .432, .07, .05, .012, door)
+    for i in range(12):
+        h.p("box", -.44 + i * .08, .18, .4, .035, .025, .06, stone2)  # зубчики-парапет
+    # главный корпус
+    y = h.p("box", 0, .04, -.02, .5, .42, .42, sand, win=True)
+    h.p("box", 0, .04, .19, .2, .34, .03, stone2)  # портал
+    h.p("box", 0, .05, .205, .1, .2, .02, door)
+    h.p("sphere", 0, .24, .205, .1, .1, .02, door)
+    for x in (-.26, .26):
+        for z in (-.2, .17):
+            h.p("box", x, y, z, .04, .04, .04, stone2)
+    # большой рёбристый купол на барабане + шпиль с полумесяцем
+    h.p("cyl", 0, y, -.03, .36, .12, .36, stone, win=True)
+    h.p("torus", 0, y + .12, -.03, .4, .03, .4, stone2)
+    h.p("sphere", 0, y + .04, -.03, .36, .44, .36, "#d4a86c", .05)
+    for yy, ww in ((.2, .365), (.33, .345), (.42, .25)):  # узорные пояса купола
+        h.p("torus", 0, y + yy, -.03, ww, .012, ww, stone2)
+    h.p("cone", 0, y + .46, -.03, .05, .1, .05, gold, .5)
+    h.p("cyl", 0, y + .56, -.03, .012, .1, .012, gold, .5)
+    h.p("torus", 0, y + .66, -.03, .06, .015, .06, gold, .7)
+    # четыре малых купола по углам корпуса
+    for x, z in ((-.2, .12), (.2, .12), (-.2, -.2), (.2, -.2)):
+        h.p("cyl", x, y, z, .14, .05, .14, stone)
+        h.p("dome", x, y + .05, z, .14, .1, .14, dome2, .05)
+        h.p("cone", x, y + .15, z, .02, .05, .02, gold, .5)
+    # два каирских минарета ярусами (сзади)
+    for x in (-.17, .17):
+        yy = .04
+        for wdt, hh in ((.11, .34), (.09, .26), (.07, .2)):
+            h.p("cyl", x, yy, -.3, wdt, hh, wdt, stone, win=True)
+            h.p("torus", x, yy + hh, -.3, wdt * 1.45, .03, wdt * 1.45, stone2)
+            yy += hh + .015
+        h.p("dome", x, yy, -.3, .07, .07, .07, stone2)
+        h.p("cyl", x, yy + .07, -.3, .01, .08, .01, gold, .5)
+    # два минарета с винтовой лестницей (спереди по краям, как у Махабат Макбары)
+    import math
+    for x in (-.4, .4):
+        h.p("cyl", x, .04, .14, .1, .82, .1, stone, win=True)
+        for k in range(13):
+            a = k * math.pi / 4
+            h.p("box", x + .07 * math.cos(a), .08 + k * .055, .14 + .07 * math.sin(a), .06, .02, .06, stone2, r=-math.degrees(a))
+        h.p("torus", x, .86, .14, .16, .03, .16, stone2)
+        h.p("dome", x, .88, .14, .1, .1, .1, dark)
+        h.p("cone", x, .98, .14, .025, .07, .025, gold, .5)
+    # пальмы
+    for x, z in ((-.44, -.42), (.44, -.42)):
+        h.p("cyl", x, .04, z, .025, .26, .025, "#8a6a42")
+        h.p("sphere", x, .3, z, .16, .06, .16, "#2f9a55", .1)
+    return h.r
+
+
+def grand_palace():
+    """@errafoster (Anhell, 15.11) — подробная версия (~600 деталей) по двум картинкам:
+    Каир (ярусные минареты с балкончиками, купола с узором, айван с мукарнами, аркада) +
+    Махабат Макбара (винтовые лестницы вокруг минаретов, тёмные купола с золотыми шпилями, беседки-чхатри на крыше)."""
+    import math
+    h = H("Дворец тысячи минаретов", "warm")
+    SAND, ST, ST2, ST3, DK, DOOR = "#e9c48a", "#e0b77e", "#c99e66", "#a97f4f", "#6b4e33", "#2a1d12"
+    DOME, DOME2, GOLD, TILE, WATER = "#d9ae72", "#5b4636", "#ffcf5a", "#2bb3a3", "#3fb6e8"
+    P = h.p
+
+    def ring(n, r, cx, cz, a0=0.0):
+        for k in range(n):
+            a = a0 + 2 * math.pi * k / n
+            yield k, a, cx + r * math.cos(a), cz + r * math.sin(a)
+
+    def finial(x, y, z, s=1.0):  # золотой шпиль: шарики + полумесяц
+        P("sphere", x, y, z, .04 * s, .04 * s, .04 * s, GOLD, .6)
+        P("cyl", x, y + .035 * s, z, .012 * s, .09 * s, .012 * s, GOLD, .6)
+        P("sphere", x, y + .12 * s, z, .03 * s, .03 * s, .03 * s, GOLD, .7)
+        P("torus", x, y + .16 * s, z, .05 * s, .012, .05 * s, GOLD, .8)
+
+    def arch_win(x, y, z, w, hh, face="z", d=.012):  # окно/арка: прямоугольник + полукруг
+        if face == "z":
+            P("box", x, y, z, w, hh, d, DOOR)
+            P("sphere", x, y + hh - w * .3, z, w, w * .75, d, DOOR)
+        else:
+            P("box", x, y, z, d, hh, w, DOOR)
+            P("sphere", x, y + hh - w * .3, z, d, w * .75, w, DOOR)
+
+    # ---------- земля, двор, бассейн ----------
+    P("box", 0, 0, 0, .99, .03, .99, "#d8a866")
+    P("box", 0, .03, .25, .86, .012, .3, "#efd9b0")  # мощёный двор
+    for i in range(6):
+        P("box", -.36 + i * .144, .043, .25, .004, .003, .3, ST2)
+    P("cyl", 0, .042, .26, .2, .03, .2, ST2)
+    P("cyl", 0, .05, .26, .17, .02, .17, WATER, .25)
+    P("cyl", 0, .05, .26, .04, .1, .04, ST)
+    P("sphere", 0, .14, .26, .07, .05, .07, ST)
+    P("cone", 0, .18, .26, .03, .08, .03, "#bfe8ff", .4)
+
+    # ---------- передняя аркада ----------
+    P("box", 0, .03, .45, .96, .02, .07, ST2)
+    for i in range(9):
+        x = -.4 + i * .1
+        P("box", x - .05, .05, .45, .022, .13, .06, ST)  # колонна
+        P("box", x - .05, .18, .45, .03, .012, .065, ST2)  # капитель
+        arch_win(x, .05, .484, .07, .1)
+    P("box", .45, .05, .45, .022, .13, .06, ST)
+    P("box", 0, .19, .45, .96, .05, .07, ST)
+    P("box", 0, .24, .452, .96, .012, .075, TILE, .15)  # бирюзовый пояс
+    for i in range(16):
+        P("box", -.45 + i * .06, .252, .45, .03, .03, .06, ST2)  # зубцы
+
+    # ---------- боковые аркады ----------
+    for sx in (-1, 1):
+        x0 = sx * .455
+        P("box", x0, .03, .14, .07, .02, .56, ST2)
+        for i in range(6):
+            z = .38 - i * .095
+            P("box", x0, .05, z + .047, .06, .13, .022, ST)
+            arch_win(x0 + sx * .034, .05, z, .065, .1, face="x")
+        P("box", x0, .19, .14, .07, .05, .56, ST)
+        P("box", x0 + sx * .002, .24, .14, .075, .012, .56, TILE, .15)
+        for i in range(9):
+            P("box", x0, .252, -.12 + i * .065, .06, .03, .03, ST2)
+
+    # ---------- главный корпус ----------
+    bz, bd, bw = -.12, .4, .58
+    y1 = P("box", 0, .03, bz, bw, .3, bd, SAND, win=True)
+    P("box", 0, y1, bz, bw + .02, .02, bd + .02, ST2)
+    y2 = P("box", 0, y1 + .02, bz, bw - .06, .14, bd - .06, SAND, win=True)
+    P("box", 0, y2, bz, bw - .04, .025, bd - .04, ST2)
+    P("box", 0, y2 - .045, bz + bd / 2 - .028, bw - .06, .015, .01, TILE, .2)
+    for i in range(18):  # зубцы по верху корпуса
+        a = i / 18
+        P("box", -.27 + a * .54 + .015, y2 + .025, bz + bd / 2 - .02, .022, .03, .022, ST2)
+        P("box", -.27 + a * .54 + .015, y2 + .025, bz - bd / 2 + .02, .022, .03, .022, ST2)
+    # окна фасада и боков (с арками и подоконниками)
+    for x in (-.22, -.15, .15, .22):
+        arch_win(x, .08, bz + bd / 2 + .002, .045, .1)
+        P("box", x, .075, bz + bd / 2 + .008, .06, .008, .015, ST2)
+        arch_win(x, .25, bz + bd / 2 + .002, .035, .07)
+    for z in (-.25, -.17, -.07, .02):
+        for sx in (-1, 1):
+            arch_win(sx * (bw / 2 + .002), .08, z, .045, .1, face="x")
+            arch_win(sx * (bw / 2 - .028), .36, z, .035, .065, face="x")
+    for x in (-.2, -.1, 0, .1, .2):
+        arch_win(x, .1, bz - bd / 2 - .002, .045, .12)
+    # айван (портал) с мукарнами и дверью
+    fz = bz + bd / 2
+    P("box", 0, .03, fz + .02, .24, .44, .04, ST2)
+    P("box", 0, .03, fz + .035, .16, .36, .02, ST3)
+    for k in range(6):  # мукарны: ступенчатый свод
+        w = .15 - k * .022
+        P("box", 0, .28 + k * .022, fz + .045, w, .022, .02, [ST, ST2][k % 2])
+    P("sphere", 0, .38, fz + .047, .05, .05, .02, ST)
+    P("box", 0, .04, fz + .05, .09, .2, .012, DOOR)
+    P("sphere", 0, .2, fz + .05, .09, .09, .012, DOOR)
+    for i in range(3):
+        for j in range(4):
+            P("sphere", -.025 + i * .025, .07 + j * .04, fz + .058, .01, .01, .01, GOLD, .5)
+    P("box", 0, .47, fz + .02, .26, .02, .045, TILE, .2)
+    for x in (-.12, .12):  # колонны айвана
+        P("cyl", x, .03, fz + .045, .025, .44, .025, ST)
+        P("sphere", x, .47, fz + .045, .035, .035, .035, GOLD, .4)
+    for x in (-.06, .06):  # фонари у входа
+        P("cyl", x, .2, fz + .07, .008, .05, .008, DK)
+        P("sphere", x, .17, fz + .07, .025, .035, .025, "#ffb347", 1)
+
+    # ---------- главный купол ----------
+    dz = bz - .01
+    yb = y2 + .025
+    P("cyl", 0, yb, dz, .38, .03, .38, ST2)
+    P("cyl", 0, yb + .03, dz, .33, .12, .33, ST, win=True)
+    for k, a, x, z in ring(16, .166, 0, dz):
+        P("box", x, yb + .05, z, .022, .07, .022, DOOR if k % 2 else ST2, r=-math.degrees(a))
+    P("torus", 0, yb + .15, dz, .37, .025, .37, ST2)
+    yd = yb + .13
+    P("sphere", 0, yd, dz, .36, .46, .36, DOME, .06)
+    for hh, rr in ((.08, .182), (.16, .17), (.24, .14), (.32, .09)):
+        P("torus", 0, yd + hh, dz, rr * 2.02, .01, rr * 2.02, ST3)
+    for row, (hh, rr, n) in enumerate(((.12, .178, 16), (.2, .158, 14), (.28, .118, 10), (.36, .062, 6))):
+        for k, a, x, z in ring(n, rr, 0, dz, a0=row * .2):
+            P("sphere", x, yd + hh, z, .022, .022, .022, ST3 if row % 2 else "#c4935c")
+    finial(0, yd + .45, dz, 1.4)
+
+    # ---------- четыре малых купола ----------
+    for cx, cz in ((-.2, bz + .12), (.2, bz + .12), (-.2, bz - .13), (.2, bz - .13)):
+        P("cyl", cx, yb, cz, .14, .06, .14, ST, win=True)
+        for k, a, x, z in ring(6, .068, cx, cz):
+            P("box", x, yb + .012, z, .015, .035, .015, DOOR, r=-math.degrees(a))
+        P("torus", cx, yb + .06, cz, .16, .012, .16, ST2)
+        P("sphere", cx, yb + .045, cz, .14, .18, .14, DOME, .06)
+        for hh, rr in ((.08, .066), (.13, .045)):
+            P("torus", cx, yb + .045 + hh, cz, rr * 2.05, .008, rr * 2.05, ST3)
+        finial(cx, yb + .22, cz, .7)
+
+    # ---------- чхатри (беседки) на углах крыши ----------
+    for cx, cz in ((-.27, bz + .18), (.27, bz + .18), (-.27, bz - .18), (.27, bz - .18)):
+        P("box", cx, y1 + .02, cz, .06, .015, .06, ST2)
+        for dx, dz2 in ((-.022, -.022), (.022, -.022), (-.022, .022), (.022, .022)):
+            P("cyl", cx + dx, y1 + .035, cz + dz2, .008, .07, .008, ST)
+        P("box", cx, y1 + .105, cz, .065, .012, .065, ST2)
+        P("sphere", cx, y1 + .1, cz, .06, .07, .06, DOME2)
+        P("cone", cx, y1 + .16, cz, .012, .04, .012, GOLD, .6)
+
+    # ---------- два каирских минарета сзади ----------
+    for cx in (-.36, .36):
+        cz = -.39
+        yy = .03
+        P("box", cx, yy, cz, .12, .14, .12, ST, win=True)
+        P("box", cx, yy + .14, cz, .13, .015, .13, ST2)
+        yy += .155
+        for tier, (w, hh) in enumerate(((.1, .3), (.085, .24), (.07, .18))):
+            P("cyl", cx, yy, cz, w, hh, w, ST if tier != 1 else SAND, win=True)
+            for k, a, x, z in ring(4, w / 2 + .001, cx, cz, a0=.4 + tier * .3):
+                arch_win(x, yy + hh * .45, z, .02, .045, face="z" if abs(math.sin(a)) > .7 else "x", d=.008)
+            P("torus", cx, yy + hh - .01, cz, w * 1.25, .015, w * 1.25, ST2)  # консоли
+            P("cyl", cx, yy + hh, cz, w * 1.55, .012, w * 1.55, ST2)  # пол балкона
+            for k, a, x, z in ring(10, w * .75, cx, cz):
+                P("box", x, yy + hh + .012, z, .008, .03, .008, ST3)  # перила
+            P("torus", cx, yy + hh + .04, cz, w * 1.55, .008, w * 1.55, ST3)
+            yy += hh + .045
+        for k, a, x, z in ring(6, .025, cx, cz):  # беседка на верхушке
+            P("cyl", x, yy, z, .008, .07, .008, ST)
+        P("sphere", cx, yy + .06, cz, .07, .08, .07, ST2)
+        finial(cx, yy + .13, cz, .8)
+
+    # ---------- два минарета с винтовой лестницей спереди ----------
+    for cx in (-.405, .405):
+        cz = .38
+        P("cyl", cx, .03, cz, .1, .05, .1, ST2)
+        P("cyl", cx, .08, cz, .085, .7, .085, ST, win=True)
+        for k in range(26):  # спираль: 26 ступеней, 2,3 оборота
+            a = k * math.pi / 5.5
+            x, z = cx + .062 * math.cos(a), cz + .062 * math.sin(a)
+            P("box", x, .1 + k * .024, z, .05, .012, .03, ST2, r=-math.degrees(a))
+            if k % 2 == 0:
+                P("box", cx + .085 * math.cos(a), .112 + k * .024, cz + .085 * math.sin(a), .006, .035, .006, ST3)
+        P("torus", cx, .78, cz, .17, .03, .17, ST2)
+        P("cyl", cx, .78, cz, .17, .012, .17, ST2)
+        for k, a, x, z in ring(8, .036, cx, cz):
+            P("cyl", x, .79, z, .008, .07, .008, ST)
+        P("cyl", cx, .86, cz, .1, .012, .1, ST2)
+        P("sphere", cx, .855, cz, .085, .1, .085, DOME2)
+        for k, a, x, z in ring(6, .045, cx, cz):
+            P("cone", x, .86, z, .008, .03, .008, GOLD, .5)
+        finial(cx, .935, cz, .8)
+
+    # ---------- шпили-пинаклы по аркаде ----------
+    for x in (-.45, -.15, .15, .45):
+        P("cyl", x, .28, .45, .02, .04, .02, ST2)
+        P("cone", x, .32, .45, .02, .05, .02, GOLD, .4)
+
+    # ---------- пальмы и фонари ----------
+    for x, z in ((-.3, .2), (.3, .2), (-.42, -.43), (.42, -.43)):
+        for k in range(3):
+            P("cyl", x + k * .006, .03 + k * .09, z, .025 - k * .004, .09, .025 - k * .004, "#8a6a42")
+        for k, a, lx, lz in ring(5, .045, x + .012, z):
+            P("sphere", lx, .3, lz, .09, .025, .04, "#2f9a55", .05, r=-math.degrees(a))
+        P("sphere", x + .012, .3, z, .03, .03, .03, "#6b4a2a")
+    for x in (-.38, -.22, .22, .38):
+        P("cyl", x, .03, .2, .008, .1, .008, DK)
+        P("sphere", x, .13, .2, .025, .03, .025, "#ffd27a", 1)
+    return h.r
+
+
 if __name__ == "__main__":
-    out = {"ceryn": steampunk_house(), "ri_sirix": medieval_castle(), "m.svin": laser_citadel()}
+    out = {"ceryn": steampunk_house(), "ri_sirix": medieval_castle(), "m.svin": laser_citadel(), "errafoster": grand_palace()}
     for k, v in out.items():
         bad = [q for q in v["parts"] if q["p"][1] + q["s"][1] > 2.2 or max(q["s"][0], q["s"][2]) > 1 or q["s"][1] > 1.6 or abs(q["p"][0]) > .5 or abs(q["p"][2]) > .5]
-        print(k, v["name"], len(v["parts"]), "деталей", "ОШИБКИ:" if bad or len(v["parts"]) > 120 else "ок", bad[:2])
+        print(k, v["name"], len(v["parts"]), "деталей", "ОШИБКИ:" if bad or len(v["parts"]) > 800 else "ок", bad[:2])
     Path(sys.argv[1] if len(sys.argv) > 1 else "comment_houses.json").write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
