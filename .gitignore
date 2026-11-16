@@ -6,3 +6,4 @@ bot/chat_log.jsonl
 bot/dm_log.jsonl
 bot/bot_errors.log*
 bot/site_errors.jsonl
+bot/hand_fix/

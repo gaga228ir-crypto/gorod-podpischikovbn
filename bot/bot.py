@@ -1202,6 +1202,133 @@ async def flagpic_cb(c: CallbackQuery, state: FSMContext):
     await flag_to_admins(c.bot, me["nick"], px, "поставил флаг из картинки")
 
 
+# ---- Платное предложение ручного дома (handmade.json, поле offer): превью + «Поставить за N ⭐ / Исправить / Отменить» ----
+class HandFix(StatesGroup):
+    text = State()
+
+
+HAND_FIX_DIR = Path(__file__).parent / "hand_fix"  # фото к правкам — чтобы Claude видел их без окна Telegram (в git не идёт)
+
+
+@r.message(HandFix.text)
+async def hand_fix_text(m: Message, state: FSMContext):
+    oid = (await state.get_data()).get("oid")
+    t = (m.text or m.caption or "").strip()
+    if not t and not m.photo:
+        await m.answer("Напиши текстом, что поменять (можно с картинкой). Отмена — /start")
+        return
+    await state.clear()
+    me = await db.linked(m.from_user.id)
+    nick = me["nick"] if me else str(m.from_user.id)
+    fixes = json.loads(await db.kv_get(f"hfix:{oid}") or "[]")
+    item = {"ts": dt.datetime.now().strftime("%Y-%m-%d %H:%M"), "text": t}
+    if m.photo:
+        try:
+            HAND_FIX_DIR.mkdir(exist_ok=True)
+            fn = HAND_FIX_DIR / f"{oid}_{int(time.time())}.jpg"
+            await m.bot.download(m.photo[-1].file_id, destination=fn)
+            item["photo"] = fn.name
+        except Exception as e:
+            log.warning("hand_fix photo: %s", e)
+    fixes.append(item)
+    await db.kv_set(f"hfix:{oid}", json.dumps(fixes, ensure_ascii=False))
+    await m.answer("Принял. Мэрия переделает дом и пришлёт новое превью сюда.", reply_markup=main_menu())
+    for a in ADMIN_IDS:
+        try:
+            await m.bot.send_message(a, f"✏️ @{nick} просит исправить дом #{oid}:\n{t or '(без текста)'}")
+            if m.photo:
+                await m.bot.send_photo(a, m.photo[-1].file_id, caption=f"к правке дома #{oid}")
+        except Exception:
+            pass
+
+
+async def hand_get(oid: int):
+    """Рецепт ручного дома из handmade.json: с сайта, если там ещё нет — из локальной копии рядом с ботом."""
+    try:
+        async with httpx.AsyncClient(timeout=20) as c:
+            rec = (await c.get(SITE_BASE + "handmade.json", params={"v": int(time.time())})).json().get(str(oid))
+        if rec:
+            return rec
+    except Exception as e:
+        log.warning("hand_get: %s", e)
+    try:
+        return json.loads((Path(__file__).parent.parent / "handmade.json").read_text(encoding="utf-8")).get(str(oid))
+    except Exception:
+        return None
+
+
+async def hand_offer(bot: Bot, oid: int) -> str:
+    """Послать жителю превью ручного дома с кнопками оплаты/правки/отмены. Возвращает итог для админа."""
+    rec, o = await hand_get(oid), await db.ai_get(oid)
+    if not rec or not rec.get("offer"):
+        return f"#{oid}: в handmade.json нет предложения (поле offer)"
+    if not o:
+        return f"#{oid}: нет такого заказа"
+    if o["status"] == "done" and await db.kv_get(f"hand_{oid}"):
+        return f"#{oid}: уже поставлен"
+    off = rec["offer"]
+    price = int(off.get("price", 100))
+    house = {k: v for k, v in rec.items() if k not in ("offer", "publish")}
+    await db.ai_patch(oid, {"status": "hoffer", "recipe": house})
+    await db.kv_set(f"hoff:{oid}", str(price))
+    kb = InlineKeyboardMarkup(inline_keyboard=[[IB(text=f"Поставить за {price} ⭐", callback_data=f"hof_pay:{oid}")],
+                                               [IB(text="Исправить", callback_data=f"hof_fix:{oid}"), IB(text="Отменить", callback_data=f"hof_no:{oid}")]])
+    img = Path(__file__).parent / off.get("img", "-")
+    png = img.read_bytes() if off.get("img") and img.is_file() else await ai.preview(house, SITE_BASE)
+    await bot.send_photo(o["tg_id"], photo(png, "house.png"), reply_markup=kb,
+                         caption=off.get("text") or f"Твой дом «{house.get('name')}» готов. Поставить за {price} ⭐?")
+    return f"#{oid}: предложение отправлено @{o['nick']} ({price} ⭐)"
+
+
+@r.message(Command("hand_offer"))
+async def hand_offer_cmd(m: Message, bot: Bot):
+    if not is_admin(m.from_user.id):
+        return
+    ids = [int(x) for x in (m.text or "").split()[1:] if x.isdigit()]
+    if not ids:
+        return await m.answer("/hand_offer N — послать жителю превью ручного дома N из handmade.json (поле offer) с кнопками «Поставить за ⭐ / Исправить / Отменить»")
+    for oid in ids:
+        try:
+            await m.answer(await hand_offer(bot, oid))
+        except Exception as e:
+            await m.answer(f"#{oid}: ошибка {e}")
+
+
+@r.callback_query(F.data.startswith("hof_"))
+async def hand_offer_cb(c: CallbackQuery, bot: Bot, state: FSMContext):
+    act, oid = c.data.split(":")
+    o = await db.ai_get(int(oid))
+    if not o or o["tg_id"] != c.from_user.id:
+        return await c.answer()
+    if o["status"] != "hoffer":
+        return await c.answer("Это предложение уже не актуально", show_alert=True)
+    name = (o.get("recipe") or {}).get("name", "дом")
+    if act == "hof_pay":
+        price = int(await db.kv_get(f"hoff:{oid}") or 0)
+        await c.answer()
+        await bot.send_invoice(c.from_user.id, title=name[:32], description=f"Особый дом «{name}» для @{o['nick']}. После оплаты сразу встанет в город."[:255],
+                               payload=f"h|{oid}", currency="XTR", prices=[LabeledPrice(label=name[:32], amount=price)])
+    elif act == "hof_fix":
+        await c.answer()
+        await state.set_state(HandFix.text)
+        await state.update_data(oid=int(oid))
+        await c.message.answer("Напиши одним сообщением, что поменять в доме (можно приложить картинку). "
+                               "Мэрия переделает и пришлёт новое превью. Отмена — /start")
+    elif act == "hof_no":
+        await db.ai_patch(int(oid), {"status": "hcancel"})
+        await c.answer("Ок")
+        try:
+            await c.message.edit_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+        await c.message.answer("Хорошо, дом остаётся прежним. Если передумаешь, напиши в мэрию.", reply_markup=main_menu())
+        for a in ADMIN_IDS:
+            try:
+                await bot.send_message(a, f"✖ @{o['nick']} отказался от дома #{oid} «{name}».")
+            except Exception:
+                pass
+
+
 @r.callback_query(F.data.startswith("rfk:") | F.data.startswith("rfd:"))
 async def roof_moderate(c: CallbackQuery, bot: Bot):
     if not is_admin(c.from_user.id):
@@ -2914,6 +3041,10 @@ async def pre_checkout(q: PreCheckoutQuery):
         ok = len(parts) == 2 and parts[1] in FX_ITEMS and q.total_amount == FX_ITEMS[parts[1]][1] and bool(me)
         if ok and parts[1] == "estate":
             ok = not await db.kv_get("estate:" + me["nick"]) and await estate_slot_free() is not None
+    elif parts[0] == "h":
+        o = await db.ai_get(int(parts[1])) if len(parts) == 2 and parts[1].isdigit() else None
+        ok = (bool(o) and o["status"] == "hoffer" and o["tg_id"] == q.from_user.id
+              and q.total_amount == int(await db.kv_get(f"hoff:{parts[1]}") or 0))
     else:
         ok = len(parts) == 3 and parts[0] == "c" and decode_recipe(parts[2]) is not None and q.total_amount == PRICE
     await q.answer(ok=ok, error_message=None if ok else "Счёт устарел, оформи заново.")
@@ -2949,6 +3080,30 @@ async def paid(m: Message, bot: Bot):
             log.warning("payment log: %s", e)
         await m.answer("Спасибо! ⭐ Нейросеть уже строит твой дом ✨\nЭто займёт несколько минут, потом его посмотрит мэрия — и пришлю результат сюда.")
         asyncio.create_task(build_ai(bot, oid))
+        return
+    if p.invoice_payload.startswith("h|"):
+        oid = int(p.invoice_payload.split("|")[1])
+        o = await db.ai_get(oid)
+        me = await db.linked(m.from_user.id)
+        if not o or not o.get("recipe") or not me or o["status"] != "hoffer":
+            await bot.refund_star_payment(m.from_user.id, p.telegram_payment_charge_id)
+            await m.answer("Не получилось поставить дом — звёзды вернули. Напиши в мэрию.")
+            return
+        rec = o["recipe"]
+        await db.patch(me["id"], {"recipe": rec})
+        await db.ai_patch(oid, {"status": "done", "charge_id": p.telegram_payment_charge_id})
+        await db.kv_set(f"hand_{oid}", f"{rec.get('name')}:{len(rec.get('parts', []))}")
+        try:  # без shape — иначе db.paid_house сочтёт это оплаченным домом из конструктора
+            await db.add_payment(m.from_user.id, me["nick"], p.total_amount, p.telegram_payment_charge_id, {"hand": oid, "name": rec.get("name")})
+        except RuntimeError as e:
+            log.warning("payment log: %s", e)
+        await m.answer(f"Спасибо! Дом «{rec.get('name')}» уже стоит в городе. На сайте появится через пару минут.",
+                       reply_markup=city_keyboard(me["nick"]))
+        for a in ADMIN_IDS:
+            try:
+                await bot.send_message(a, f"💰 @{me['nick']} оплатил дом #{oid} «{rec.get('name')}» — {p.total_amount} ⭐. Уже в городе.")
+            except Exception:
+                pass
         return
     if p.invoice_payload.startswith("f|"):
         item = p.invoice_payload.split("|")[1]
@@ -3245,6 +3400,19 @@ async def ai_user(c: CallbackQuery, bot: Bot):
 async def one_off_fixes(bot):
     """Разовые правки для жителей: каждая выполняется один раз (флаг в kv)."""
     await asyncio.sleep(15)
+    # 16.11: Anhell (@errafoster) — «Дворец тысячи минаретов» (#32, 2562 детали): превью + «Поставить за 100 ⭐ / Исправить / Отменить»
+    if not await db.kv_get("fix:offer32"):
+        try:
+            res = await hand_offer(bot, 32)
+            log.info("one_off offer32: %s", res)
+            await db.kv_set("fix:offer32", "1")
+            for a in ADMIN_IDS:
+                try:
+                    await bot.send_message(a, "📨 " + res)
+                except Exception:
+                    pass
+        except Exception as e:
+            log.warning("one_off offer32: %s", e)
     # 15.11: @Mi_ikun3 оплатила особый дом и сразу поправила цвета — бот снова попросил оплату. Ставим её правку.
     if not await db.kv_get("fix:mi_ikun_pink"):
         try:

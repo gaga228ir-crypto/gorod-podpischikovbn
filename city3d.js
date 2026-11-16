@@ -160,16 +160,54 @@ function neonSign(text, color, w = .62) {
 // part: { t: box|cyl|cone|sphere|dome|pyramid|torus, p:[x,y,z] (низ детали по y), s:[ширина,высота,глубина], c:'#hex', g:0..1 свечение, r: поворот°, w: окна }
 const PART_T = ['box', 'cyl', 'cone', 'sphere', 'dome', 'pyramid', 'torus'];
 const clampN = (v, a, b, d) => { v = +v; return Number.isFinite(v) ? Math.max(a, Math.min(b, v)) : d; };
-export function cleanParts(parts) {
+// fine: ручные дома высокой детализации (до 3000 деталей, детали тоньше 0.02)
+export function cleanParts(parts, fine = false) {
   if (!Array.isArray(parts)) return [];
-  return parts.slice(0, 200).filter(q => q && PART_T.includes(q.t)).map(q => ({
+  const mn = fine ? .004 : .02;
+  return parts.slice(0, fine ? 3000 : 200).filter(q => q && PART_T.includes(q.t)).map(q => ({
     t: q.t, p: [clampN(q.p?.[0], -.5, .5, 0), clampN(q.p?.[1], 0, 2.2, 0), clampN(q.p?.[2], -.5, .5, 0)],
-    s: [clampN(q.s?.[0], .02, 1, .3), clampN(q.s?.[1], .02, 1.6, .3), clampN(q.s?.[2], .02, 1, .3)],
+    s: [clampN(q.s?.[0], mn, 1, .3), clampN(q.s?.[1], mn, 1.6, .3), clampN(q.s?.[2], mn, 1, .3)],
     c: /^#[0-9a-f]{6}$/i.test(q.c) ? q.c : '#cccccc', g: clampN(q.g, 0, 1, 0), r: clampN(q.r, -360, 360, 0), w: !!q.w }));
 }
-function makeParts(parts, lights) {
+// Большой дом: детали одного цвета/свечения сливаются в одну сетку (2000 деталей → ~20 вызовов отрисовки),
+// мелким деталям — меньше граней.
+function partGeo(t, m) {
+  const n = m < .03 ? 6 : m < .08 ? 8 : m < .2 ? 12 : 20;
+  switch (t) {
+    case 'cyl': return new THREE.CylinderGeometry(.5, .5, 1, n);
+    case 'cone': return new THREE.ConeGeometry(.5, 1, n);
+    case 'pyramid': { const g = new THREE.ConeGeometry(.5 * Math.SQRT2, 1, 4); g.rotateY(Math.PI / 4); return g; }
+    case 'sphere': return new THREE.SphereGeometry(.5, n, Math.max(4, Math.round(n * .7)));
+    case 'dome': { const g = new THREE.SphereGeometry(.5, n, Math.max(3, n >> 1), 0, Math.PI * 2, 0, Math.PI / 2); g.translate(0, -.5, 0); g.scale(1, 2, 1); return g; }
+    case 'torus': { const g = new THREE.TorusGeometry(.38, .12, Math.max(4, n >> 1), Math.max(8, n + 4)); g.rotateX(Math.PI / 2); return g; }
+    default: return new THREE.BoxGeometry(1, 1, 1);
+  }
+}
+function makePartsMerged(list, lights) {
+  const G = new THREE.Group(), groups = new Map(), M = new THREE.Matrix4(), Q = new THREE.Quaternion(), Y = new THREE.Vector3(0, 1, 0);
+  let top = .3;
+  for (const q of list) {
+    const [w, h, d] = q.s; top = Math.max(top, q.p[1] + h);
+    if (q.w && (q.t === 'box' || q.t === 'cyl')) { G.add(...makeParts([q], lights, true).children); continue; } // стены с окнами — отдельно (своя текстура)
+    let geo = partGeo(q.t, Math.max(w, h, d)); geo.translate(0, .5, 0);
+    if (geo.index) geo = geo.toNonIndexed();
+    Q.setFromAxisAngle(Y, q.r * Math.PI / 180); M.compose(new THREE.Vector3(q.p[0], q.p[1], q.p[2]), Q, new THREE.Vector3(w, h, d)); geo.applyMatrix4(M);
+    const k = q.c + '|' + q.g; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(geo);
+  }
+  for (const [k, geos] of groups) {
+    let n = 0; for (const g of geos) n += g.attributes.position.count;
+    const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3); let o = 0;
+    for (const g of geos) { pos.set(g.attributes.position.array, o * 3); nor.set(g.attributes.normal.array, o * 3); o += g.attributes.position.count; g.dispose(); }
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3)); geo.computeBoundingSphere();
+    const [c, g] = k.split('|'), gl = +g; G.add(new THREE.Mesh(geo, flat(c, gl ? c : null, gl * 1.6)));
+  }
+  G.userData.top = top; return G;
+}
+function makeParts(parts, lights, fine = false) {
+  const list = cleanParts(parts, fine);
+  if (list.length > 200) return makePartsMerged(list, lights);
   const G = new THREE.Group(); let top = .3;
-  for (const q of cleanParts(parts)) {
+  for (const q of list) {
     const [w, h, d] = q.s; let geo;
     switch (q.t) {
       case 'cyl': geo = new THREE.CylinderGeometry(.5, .5, 1, 20); break;
@@ -190,7 +228,7 @@ function makeParts(parts, lights) {
 }
 
 export function makeHouse(rec, nick = '') {
-  if (rec && Array.isArray(rec.parts) && rec.parts.length) { const G = makeParts(rec.parts, rec.lights || 'warm'); return G; }
+  if (rec && Array.isArray(rec.parts) && rec.parts.length) { const G = makeParts(rec.parts, rec.lights || 'warm', !!rec.fine); return G; }
   const G = new THREE.Group(), R = rec, floors = Math.max(1, Math.min(6, R.floors | 0 || 2));
   const wall = R.wall || '#f28b82', roof = R.roof || '#c2414b', L = R.lights || 'warm';
   const add = (geo, mat, y = 0) => { const m = new THREE.Mesh(geo, mat); m.position.y = y; G.add(m); return m; };

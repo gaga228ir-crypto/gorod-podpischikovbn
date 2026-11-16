@@ -910,7 +910,16 @@ if __name__ == "__main__":
            "11": hero_house(), "12": crown_palace(), "13": sand_castle(), "16": arabian_castle(), "17": horror_house(), "19": sakura_estate(), "20": mandarin_house(), "22": gothic_castle(), "24": transylvania_hotel(), "25": soul_fortress(), "27": dragon_castle(), "31": rtx_house(), "8": upside_down_house()}
     for v in out.values():
         v["publish"] = True  # бот сам поставит в город и напишет жителю (handmade_loop)
+    # Платные предложения (без publish): бот шлёт жителю превью с кнопками «Поставить за N ⭐ / Исправить / Отменить»
+    # (/hand_offer N; поле offer: цена, текст, картинка из bot/assets). Ставится только после оплаты.
+    from palace_xl import palace_xl, compact
+    out["32"] = {**compact(palace_xl()), "offer": {"price": 100, "img": "assets/offer_32.png", "text": (
+        "Твой дворец готов: «Дворец тысячи минаретов».\n\n"
+        "Собрали по твоим двум картинкам на мощном ИИ, 2562 детали. Большой узорный купол и четыре малых, два каирских минарета "
+        "с балкончиками, два минарета с винтовыми лестницами, портал с резным сводом, аркады с колоннами, двор с фонтаном, каналами и пальмами.\n\n"
+        "Встанет на твою усадьбу №1 вместо нынешнего дома.\n\n"
+        "Если хочешь что-то поменять, нажми «Исправить» и напиши, что именно.")}}
     for k, v in out.items():
         bad = [q for q in v["parts"] if q["p"][1] + q["s"][1] > 2.2 or max(q["s"][0], q["s"][2]) > 1 or q["s"][1] > 1.6 or abs(q["p"][0]) > .5 or abs(q["p"][2]) > .5]
-        print(k, v["name"], len(v["parts"]), "деталей", "ОШИБКИ:" if bad or len(v["parts"]) > 120 else "ок", bad[:2])
+        print(k, v["name"], len(v["parts"]), "деталей", "ОШИБКИ:" if bad or len(v["parts"]) > (3000 if v.get("fine") else 120) else "ок", bad[:2])
     Path(__file__).resolve().parent.parent.joinpath("handmade.json").write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
