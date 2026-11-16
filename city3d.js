@@ -784,10 +784,10 @@ export class City3D {
   neighbors(h) { if (h.guest) return this.neighbors(h.host); if (h.isEstate || h.lot == null) return []; const L = this.map.lots[h.lot], get = i => { const o = i >= 0 ? this.houses[i] : null; return o && !o.isEstate ? o : null; }, out = [];
     const a = get(L.prev), b = get(L.next), o = get(L.opp);
     if (a) out.push({ h: a, rel: 'слева' }); if (b) out.push({ h: b, rel: 'справа' }); if (o) out.push({ h: o, rel: 'напротив' }); return out; }
-  focus(h, fly = true) { this.hi = h; this.hiT = this.T; if (h && fly) { this.ctl.tx = h.x; this.ctl.tz = h.z; this.ctl.td = 7; } }
-  flyTo(x, z, d = 9) { this.ctl.tx = x; this.ctl.tz = z; this.ctl.td = d; }
+  focus(h, fly = true) { this.hi = h; this.hiT = this.T; if (h && fly) { this.ctl.tx = h.x; this.ctl.tz = h.z; const t = this.houseTop(h); this.ctl.td = t > 2 ? (t + 2) * 2.3 : 7; this.ctl.lift = t > 2 ? t * .85 : 0; } } // высокий дом — отлетаем и смотрим выше, чтобы крыша и подписи были в кадре
+  flyTo(x, z, d = 9) { this.ctl.tx = x; this.ctl.tz = z; this.ctl.td = d; this.ctl.lift = 0; }
   // ---- управление ----
-  pan(dx, dy) { const c = this.ctl, k = c.d * .0022, s = Math.sin(c.az), co = Math.cos(c.az); c.tx -= (dx * co - dy * s * 1.3) * k; c.tz -= (-dx * s - dy * co * 1.3) * k; c.x = c.tx; c.z = c.tz; this.clamp(); }
+  pan(dx, dy) { this.ctl.lift = 0; const c = this.ctl, k = c.d * .0022, s = Math.sin(c.az), co = Math.cos(c.az); c.tx -= (dx * co - dy * s * 1.3) * k; c.tz -= (-dx * s - dy * co * 1.3) * k; c.x = c.tx; c.z = c.tz; this.clamp(); }
   zoom(f) { this.ctl.td = Math.max(3, Math.min(190, this.ctl.td * f)); }
   rotate(da) { this.ctl.taz += da; }
   clamp() { const c = this.ctl, e = this.map.est, R = Math.max((this.Rm || 30) + 12, Math.hypot(e.x, e.z) + e.r + 6), d = Math.hypot(c.tx, c.tz); if (d > R) { c.tx *= R / d; c.tz *= R / d; } }
@@ -825,6 +825,7 @@ export class City3D {
   setSoda(on) { if (this.plaza && this.plaza.userData.soda) this.plaza.userData.soda(on); }
   setTrash(seed, n, taken) { this.trash = { seed, n, taken: new Set(taken || []) }; this._extrasDirty = true; }
   setTitles(map) { this.titles = map || {}; this._extrasDirty = true; }
+  labelK(h) { const t = this.houseTop(h); return t > 2 ? Math.min(1.5, t / 2) : 1; } // подписи над очень высоким домом крупнее
   houseTop(h) {
     if (h.isEstate && h.top) return h.top; // усадьба увеличена (fx.es) — титул/табличка/флаг над крышей, а не внутри
     const r = h.recipe; if (r && Array.isArray(r.parts) && r.parts.length) return Math.max(...r.parts.map(q => (q.p?.[1] || 0) + (q.s?.[1] || 0)));
@@ -860,7 +861,7 @@ export class City3D {
       const place = (o, k) => { const [px, py, ps, pz] = PL(k); o.position.x += px; o.position.y += py; o.position.z += pz; o.scale.multiplyScalar(ps); return o; };
       if (fx.c) { const ring = new THREE.Mesh(new THREE.RingGeometry(.5, .6, 40), new THREE.MeshBasicMaterial({ color: fx.c, transparent: true, opacity: .9, toneMapped: false, side: THREE.DoubleSide }));
         ring.rotation.x = -Math.PI / 2; ring.position.y = .035; G.add(ring); }
-      if (fx.s && !OFF.has('sign')) { const sg = textSprite('💬 ' + fx.s, { color: '#fff', bg: 'rgba(255,61,127,.9)', scale: .0016, size: 48 }); sg.position.y = top + .55; G.add(place(sg, 'sign')); }
+      if (fx.s && !OFF.has('sign')) { const sg = textSprite('💬 ' + fx.s, { color: '#fff', bg: 'rgba(255,61,127,.9)', scale: .0016, size: 48 }); sg.position.y = top + .55; sg.scale.multiplyScalar(this.labelK(h)); G.add(place(sg, 'sign')); }
       const d = new Set(fx.d || []), nowS = Date.now() / 1000; for (const o of fx.off || []) d.delete(o);
       if (fx.lent && fx.lent.u > nowS) d.delete(fx.lent.i);
       if (fx.bor && fx.bor.u > nowS) d.add(fx.bor.i);
@@ -982,7 +983,7 @@ export class City3D {
     for (const [nick, T] of Object.entries(allT)) { const h = this.byKey.get(nick); if (!h || h.gone || !T || !(T.t || T.mc)) continue;
       const sg = T.t ? textSprite((T.mc ? '💎 ' : '🏅 ') + T.t, { color: '#1a1238', bg: T.mc ? 'rgba(126,232,255,.95)' : 'rgba(255,210,63,.95)', scale: .0015, size: 48 })
         : textSprite('💎 Меценат', { color: '#1a1238', bg: 'rgba(126,232,255,.95)', scale: .0015, size: 48 }); { const f = this.fxMap?.[nick] || {}, v = (f.p && f.p.title) || []; if ((f.off || []).includes('title')) continue;
-          sg.position.set(h.x + (+v[0] || 0), (h.y || 0) + this.houseTop(h) + (f.s ? 1.0 : .62) + (+v[1] || 0), h.z + (+v[3] || 0)); sg.scale.multiplyScalar(v[2] == null ? 1 : +v[2]); add(sg); } }
+          sg.position.set(h.x + (+v[0] || 0), (h.y || 0) + this.houseTop(h) + (f.s ? 1.0 : .62) + (+v[1] || 0), h.z + (+v[3] || 0)); sg.scale.multiplyScalar((v[2] == null ? 1 : +v[2]) * this.labelK(h)); add(sg); } }
     if (this.mini) { const { seed, n, taken } = this.mini, base = this.houses.filter(h => !h.recipe && !h.gone && !h.isEstate);
       for (let i = 0; i < n && base.length; i++) { if (taken.has(i)) continue; const r0 = rnd(seed ^ Math.imul(i + 1, 2654435761)), h = base[Math.floor(r0() * base.length)];
         const C = makeChest(); C.scale.setScalar(.75); { const lx = (r0() < .5 ? -1 : 1) * (h.w / 2 + .12), lz = r0() < .5 ? -(h.dp / 2 + .3) : 0, ca = Math.cos(h.rot), sa = Math.sin(h.rot), x = h.x + lx * ca + lz * sa, z = h.z - lx * sa + lz * ca; C.position.set(x, this.gy(x, z) + .02, z); } C.rotation.y = r0() * 6;
@@ -1082,11 +1083,11 @@ export class City3D {
       const sz = Math.min(40, Math.max(10, this.ctl.d * .8)); const sc = this.moon.shadow.camera; if (Math.abs(sc.right - sz) > .5) { Object.assign(sc, { left: -sz, right: sz, top: sz, bottom: -sz }); sc.updateProjectionMatrix(); } }
     if (this.clouds) for (const cl of this.clouds) { cl.position.x += dt * cl.userData.v; if (cl.position.x > 260) cl.position.x = -260; }
     this.T += dt; const T = this.T, c = this.ctl, k = 1 - Math.pow(.002, dt);
-    c.x += (c.tx - c.x) * k; c.z += (c.tz - c.z) * k; c.d += (c.td - c.d) * k; c.az += (c.taz - c.az) * k; c.y += (this.gy(c.x, c.z) - c.y) * Math.min(1, k * 1.5);
+    c.x += (c.tx - c.x) * k; c.z += (c.tz - c.z) * k; c.d += (c.td - c.d) * k; c.az += (c.taz - c.az) * k; c.y += (this.gy(c.x, c.z) - c.y) * Math.min(1, k * 1.5); c.ly = (c.ly || 0) + ((c.lift || 0) - (c.ly || 0)) * k;
     const pol = 1.12 - Math.min(1, c.d / 110) * .45; // угол от вертикали: ближе — ниже камера
     if (this.camOverride) { const o = this.camOverride; this.cam.position.set(...o.p); this.cam.lookAt(...o.t); if (o.fov && this.cam.fov !== o.fov) { this.cam.fov = o.fov; this.cam.updateProjectionMatrix(); } }
-    else { this.cam.position.set(c.x + Math.sin(c.az) * Math.sin(pol) * c.d, c.y + Math.cos(pol) * c.d + .3, c.z + Math.cos(c.az) * Math.sin(pol) * c.d);
-      const cg = this.gy(this.cam.position.x, this.cam.position.z) + .6; if (this.cam.position.y < cg) this.cam.position.y = cg; this.cam.lookAt(c.x, c.y + .4, c.z); }
+    else { this.cam.position.set(c.x + Math.sin(c.az) * Math.sin(pol) * c.d, c.y + c.ly + Math.cos(pol) * c.d + .3, c.z + Math.cos(c.az) * Math.sin(pol) * c.d);
+      const cg = this.gy(this.cam.position.x, this.cam.position.z) + .6; if (this.cam.position.y < cg) this.cam.position.y = cg; this.cam.lookAt(c.x, c.y + c.ly + .4, c.z); }
     { const fk = this.fogK || 1; this.scene.fog.near = (c.d * 1.6 + 40) * fk; this.scene.fog.far = (c.d * 4.5 + 150) * fk; }
     for (const lm of this.landmarks || []) lm.children.forEach(ch => { if (ch.userData.label) ch.visible = c.d > 6 && !this.noLmLabels; });
     if (!this.headG) { this.renderer.render(this.scene, this.cam); return; }
