@@ -12,6 +12,7 @@ import httpx
 from urllib.parse import quote
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
+from aiogram.exceptions import TelegramNetworkError
 from aiogram.client.session.middlewares.base import BaseRequestMiddleware
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
@@ -313,10 +314,19 @@ async def gh_get(path):
 
 
 async def gh_put(path, text, message, sha=None):
-    async with httpx.AsyncClient(timeout=30) as c:
-        r = await c.put(f"https://api.github.com/repos/{GITHUB_REPO}/contents/{path}", headers=GH_H(), json={
-            "message": message, "branch": "main", "content": base64.b64encode(text.encode()).decode(), **({"sha": sha} if sha else {})})
-    r.raise_for_status()
+    """Файл пишется целиком, поэтому при 409/422 (sha устарел — параллельная запись) берём свежий sha и повторяем."""
+    for attempt in range(3):
+        async with httpx.AsyncClient(timeout=30) as c:
+            r = await c.put(f"https://api.github.com/repos/{GITHUB_REPO}/contents/{path}", headers=GH_H(), json={
+                "message": message, "branch": "main", "content": base64.b64encode(text.encode()).decode(), **({"sha": sha} if sha else {})})
+        if r.status_code in (409, 422) and attempt < 2:
+            await asyncio.sleep(1.5 * (attempt + 1))
+            old, sha = await gh_get(path)
+            if old == text:
+                return
+            continue
+        r.raise_for_status()
+        return
 
 
 # ---------- взаимодействие с домом: табличка, подсветка, стуки, украшения за ⭐ ----------
@@ -396,6 +406,7 @@ def coin_price(item):
 
 r = Router()
 GROUPS = {"group", "supergroup"}
+_CMD_SEEN = {}  # (uid, текст команды) → время, защита от повторов
 
 
 @r.message.outer_middleware()
@@ -406,6 +417,15 @@ async def group_silence(handler, m: Message, data):
         dm_log(dir="in", uid=u.id if u else None, user=u.username if u else None, name=(u.full_name if u else "?")[:40],
                text=(m.text or m.caption or "")[:2000], photo=bool(m.photo), sticker=bool(m.sticker),
                app=(m.web_app_data.data[:2000] if m.web_app_data else None))
+        # одна и та же команда от одного жителя чаще раза в 3 с — повтор (жмут /start по 10 раз, копятся нажатия, пока бот выключен)
+        txt = m.text or ""
+        if u and txt.startswith("/"):
+            key, now = (u.id, txt), time.monotonic()
+            if now - _CMD_SEEN.get(key, -99) < 3:
+                return None
+            _CMD_SEEN[key] = now
+            if len(_CMD_SEEN) > 5000:
+                _CMD_SEEN.clear()
         try:
             return await handler(m, data)
         except Exception as e:
@@ -1803,7 +1823,8 @@ async def show_home(m: Message, uid: int, state: FSMContext):
         await m.answer("👇", reply_markup=city_keyboard(me["nick"]))
         return
     await state.set_state(Link.nick)
-    await m.answer("Напиши свой ник в TikTok — например <code>@kotik_99</code>.\n\nДом можно получить, только если ты подписан на " + TIKTOK_URL.split("/")[-1])
+    await m.answer("Напиши свой ник в TikTok — например <code>@kotik_99</code>.\n\nДом можно получить, только если ты подписан на " +
+                   f'<a href="{TIKTOK_URL}">{TIKTOK_URL.rstrip("/").split("/")[-1]}</a> в TikTok')
 
 
 @r.message(Link.nick)
@@ -3731,15 +3752,24 @@ async def main():
             return True
         log.error("ошибка: %r", event.exception, exc_info=event.exception)
         return True
-    # меню команд — только в личке; в группах и по умолчанию списка нет, чтобы в чате жителей не тыкали
-    await bot.delete_my_commands()
-    await bot.delete_my_commands(scope=BotCommandScopeAllGroupChats())
-    await bot.set_my_commands([BotCommand(command="start", description="Главное меню"), BotCommand(command="home", description="Мой дом")],
-                              scope=BotCommandScopeAllPrivateChats())
-    await bot.set_chat_menu_button(menu_button=MenuButtonWebApp(text="Город", web_app=WebAppInfo(url=SITE_URL)))
-    log.info("Бот запущен · база: %s", "Supabase" if isinstance(db, DB) else "локальный файл gorod.db")
+    # Telegram недоступен при старте (сеть/блокировки) → раньше main падал без записи в лог и лаунчер
+    # перезапускал бота по кругу раз в ~50 с. Теперь ждём сеть здесь же.
     global _bot_username
-    _bot_username = (await bot.get_me()).username
+    for attempt in range(1, 10**6):
+        try:
+            # меню команд — только в личке; в группах и по умолчанию списка нет, чтобы в чате жителей не тыкали
+            await bot.delete_my_commands()
+            await bot.delete_my_commands(scope=BotCommandScopeAllGroupChats())
+            await bot.set_my_commands([BotCommand(command="start", description="Главное меню"), BotCommand(command="home", description="Мой дом")],
+                                      scope=BotCommandScopeAllPrivateChats())
+            await bot.set_chat_menu_button(menu_button=MenuButtonWebApp(text="Город", web_app=WebAppInfo(url=SITE_URL)))
+            _bot_username = (await bot.get_me()).username
+            break
+        except TelegramNetworkError as e:
+            if attempt in (1, 10) or attempt % 60 == 0:
+                log.warning("старт: Telegram недоступен (попытка %s): %s", attempt, e)
+            await asyncio.sleep(min(30, 3 * attempt))
+    log.info("Бот запущен · база: %s", "Supabase" if isinstance(db, DB) else "локальный файл gorod.db")
     asyncio.create_task(export_loop())
     asyncio.create_task(mayor_loop(bot))
     asyncio.create_task(handmade_loop(bot))
@@ -3755,4 +3785,10 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        raise
+    except BaseException:
+        log.exception("бот упал при запуске/работе")  # в bot_errors.log, а не только в окно консоли
+        raise
