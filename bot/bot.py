@@ -404,6 +404,66 @@ def coin_price(item):
     return FX_ITEMS[item][1] * COIN_RATE
 
 
+# ---------- @ник в сообщениях бота — это ник TikTok ----------
+# Telegram сам делает из «@ник» ссылку на телеграм-аккаунт: «нет такого пользователя» или чужой человек.
+# Поэтому все голые @ники в исходящих HTML-сообщениях превращаются в ссылки на профиль TikTok.
+# Настоящий телеграм-ник писать уже ссылкой (<a href="https://t.me/...">) — внутри <a>/<code>/<pre> текст не трогается.
+_TT_AT = re.compile(r"(?<![\w.@/:])@([A-Za-z0-9_](?:[A-Za-z0-9_.]{0,22}[A-Za-z0-9_])?)")
+_TT_TAG = re.compile(r"(<[^>]*>)")
+_TT_URL = re.compile(r"""https?://[^\s"'<>]+""")
+
+
+def tt_links(html):
+    """→ (новый текст, сколько ссылок добавлено)."""
+    if not html or "@" not in html:
+        return html, 0
+    out, depth, added = [], 0, 0
+    for part in _TT_TAG.split(html):
+        if part.startswith("<") and part.endswith(">"):
+            low = part.lower()
+            if re.match(r"<(a|code|pre)[\s>]", low):
+                depth += 1
+            elif re.match(r"</(a|code|pre)\s*>", low):
+                depth = max(0, depth - 1)
+        elif depth == 0 and "@" in part:
+            n0 = added
+
+            def rep(mm):
+                nonlocal added
+                added += 1
+                return f'<a href="https://www.tiktok.com/@{mm.group(1)}">@{mm.group(1)}</a>'
+            new = "".join(p if _TT_URL.fullmatch(p) else _TT_AT.sub(rep, p) for p in re.split(r"(" + _TT_URL.pattern + ")", part))  # адреса не трогаем
+            if added != n0:
+                part = new
+        out.append(part)
+    return "".join(out), added
+
+
+def tt_fix_method(method):
+    """Для sendMessage/editMessageText/подписей к фото: только HTML-разметка, без готовых entities."""
+    from aiogram.client.default import Default
+    from aiogram.types import LinkPreviewOptions
+    field = "text" if type(method).__name__ in ("SendMessage", "EditMessageText") else \
+        "caption" if type(method).__name__ in ("SendPhoto", "SendAnimation", "SendVideo", "SendDocument", "EditMessageCaption", "CopyMessage") else None
+    if not field:
+        return
+    txt = getattr(method, field, None)
+    pm = getattr(method, "parse_mode", None)
+    if not isinstance(txt, str) or "@" not in txt or pm is None or (isinstance(pm, str) and pm.upper() != "HTML"):
+        return
+    if getattr(method, "entities", None) or getattr(method, "caption_entities", None):
+        return
+    new, added = tt_links(txt)
+    if not added or added + txt.count("<a ") + txt.count("<b>") + txt.count("<i>") + txt.count("<code>") > 90:  # лимит Telegram — 100 разметок
+        return
+    setattr(method, field, new)
+    if field == "text":  # чтобы не вылезало превью TikTok: превью — как было бы без наших ссылок
+        lpo = getattr(method, "link_preview_options", None)
+        if lpo is None or isinstance(lpo, Default):
+            first = _TT_URL.search(txt)
+            method.link_preview_options = LinkPreviewOptions(url=first.group(0)) if first else LinkPreviewOptions(is_disabled=True)
+
+
 r = Router()
 GROUPS = {"group", "supergroup"}
 _CMD_SEEN = {}  # (uid, текст команды) → время, защита от повторов
@@ -1965,7 +2025,9 @@ async def bug_text(m: Message, state: FSMContext):
     await state.clear()
     me = await db.linked(m.from_user.id)
     who = f"@{me['nick']}" if me else "без привязки"
+    # имя в Telegram — ссылкой на t.me, чтобы tt_links не превратил его в TikTok
     tg = f"@{m.from_user.username}" if m.from_user.username else f"id {m.from_user.id}"
+    tg_html = f'<a href="https://t.me/{m.from_user.username}">{tg}</a>' if m.from_user.username else tg
     try:  # копия в базу — чтобы читать идеи/баги без Telegram
         rep = json.loads(await db.kv_get("reports") or "[]")
         rep.append({"kind": "idea" if idea else "bug", "tg": tg, "nick": me["nick"] if me else "", "text": (m.text or m.caption or "")[:1000],
@@ -1975,7 +2037,7 @@ async def bug_text(m: Message, state: FSMContext):
         log.warning("reports: %s", e)
     for a in ADMIN_IDS:
         try:
-            await m.bot.send_message(a, ("💡 <b>Идея для города</b>" if idea else "🐞 <b>Баг</b>") + f"\nОт: {tg} · дом {who}")
+            await m.bot.send_message(a, ("💡 <b>Идея для города</b>" if idea else "🐞 <b>Баг</b>") + f"\nОт: {tg_html} · дом {who}")
             await m.bot.copy_message(a, m.chat.id, m.message_id)
             if idea:
                 n_rep = len(json.loads(await db.kv_get("reports") or "[]")) - 1
@@ -3737,6 +3799,10 @@ async def main():
 
     class OutLog(BaseRequestMiddleware):  # что бот отвечает в личку — в dm_log.jsonl
         async def __call__(self, make_request, bot_, method):
+            try:
+                tt_fix_method(method)
+            except Exception as e:
+                log.warning("tt_links: %s", e)
             try:
                 cid, txt = getattr(method, "chat_id", None), getattr(method, "text", None) or getattr(method, "caption", None)
                 if isinstance(cid, int) and cid > 0 and type(method).__name__ in ("SendMessage", "SendPhoto", "EditMessageText", "SendInvoice", "CopyMessage"):
