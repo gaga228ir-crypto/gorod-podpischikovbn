@@ -2047,6 +2047,106 @@ async def bug_text(m: Message, state: FSMContext):
     await m.answer("Спасибо за идею! 💡 Передал в мэрию — лучшие сделаем и отметим автора 🏅" if idea else "Спасибо! 🙏 Передал в мэрию. Самым внимательным — титул 🏅", reply_markup=main_menu())
 
 
+# ---------- прямая линия мэра: мэр пишет автору города лично, ответ приходит через бота ----------
+class MayorLine(StatesGroup):
+    text = State()   # мэр пишет
+    reply = State()  # админ отвечает (data: uid мэра)
+
+
+MLINE_KB = InlineKeyboardMarkup(inline_keyboard=[[IB(text="📨 Написать автору города", callback_data="mline")]])
+
+
+async def is_mayor(uid):
+    winner, me = await db.kv_get("mayor_winner"), await db.linked(uid)
+    return bool(winner and me and norm_nick(me["nick"]) == norm_nick(winner)), me
+
+
+async def mline_log(**kw):
+    try:
+        L = json.loads(await db.kv_get("mayor_line") or "[]")
+        L.append({**kw, "ts": time.strftime("%Y-%m-%d %H:%M", time.gmtime(time.time() + 3 * 3600))})
+        await db.kv_set("mayor_line", json.dumps(L[-300:], ensure_ascii=False))
+    except Exception as e:
+        log.warning("mayor_line: %s", e)
+
+
+@r.callback_query(F.data == "mline")
+async def mline_start(c: CallbackQuery, state: FSMContext):
+    await c.answer()
+    ok, _ = await is_mayor(c.from_user.id)
+    if not ok:
+        await c.message.answer("Прямая линия с автором города — привилегия мэра 👑")
+        return
+    await state.set_state(MayorLine.text)
+    await c.message.answer("📨 <b>Прямая линия мэра</b>\n\nНапиши одним сообщением, что хочешь передать автору города: предложения от жителей, "
+                           "проблемы, идеи для Ратуши. Можно с картинкой. Ответ придёт сюда, в бота.\n\nОтмена — /start")
+
+
+@r.message(MayorLine.text)
+async def mline_text(m: Message, state: FSMContext):
+    await state.clear()
+    ok, me = await is_mayor(m.from_user.id)
+    if not ok:
+        return
+    await mline_log(dir="mayor", nick=me["nick"], text=(m.text or m.caption or "")[:2000], photo=bool(m.photo))
+    sent = False
+    for a in ADMIN_IDS:
+        try:
+            await m.bot.send_message(a, f"👑 <b>Мэр @{me['nick']} пишет лично</b>",
+                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=[[IB(text="✍️ Ответить мэру", callback_data=f"mrep:{m.from_user.id}")]]))
+            await m.bot.copy_message(a, m.chat.id, m.message_id)
+            sent = True
+        except Exception as e:
+            log.warning("mayor line fwd: %s", e)
+    await m.answer("Передал автору города лично ✅ Ответ придёт сюда." if sent else "Не получилось передать 😕 Попробуй ещё раз чуть позже.",
+                   reply_markup=MLINE_KB)
+
+
+@r.callback_query(F.data.startswith("mrep:"))
+async def mline_reply_start(c: CallbackQuery, state: FSMContext):
+    if not is_admin(c.from_user.id):
+        await c.answer()
+        return
+    await c.answer()
+    await state.set_state(MayorLine.reply)
+    await state.update_data(mayor_uid=int(c.data.split(":", 1)[1]))
+    await c.message.answer("✍️ Напиши ответ мэру одним сообщением (можно с картинкой). Отмена — /start")
+
+
+@r.message(MayorLine.reply)
+async def mline_reply(m: Message, state: FSMContext):
+    uid = (await state.get_data()).get("mayor_uid")
+    await state.clear()
+    if not is_admin(m.from_user.id) or not uid:
+        return
+    try:
+        await m.bot.send_message(uid, "📨 <b>Ответ автора города</b>")
+        await m.bot.copy_message(uid, m.chat.id, m.message_id, reply_markup=MLINE_KB)
+        await mline_log(dir="admin", uid=uid, text=(m.text or m.caption or "")[:2000], photo=bool(m.photo))
+        await m.answer("✅ Ответ отправлен мэру.")
+    except Exception as e:
+        await m.answer(f"Не отправилось: {html_esc(str(e))[:200]}")
+
+
+@r.message(Command("mline_notify"))
+async def mline_notify(m: Message):
+    """Админ: один раз сообщить мэру, что у него есть прямая линия."""
+    if not is_admin(m.from_user.id):
+        return
+    winner = await db.kv_get("mayor_winner")
+    ow = await db.by_nick(winner) if winner else None
+    if not ow or not ow[0].get("tg_id"):
+        await m.answer("Мэра нет или он не привязал дом в боте.")
+        return
+    try:
+        await m.bot.send_message(ow[0]["tg_id"], "👑 <b>Привилегия мэра: прямая линия</b>\n\nТеперь ты можешь писать автору города лично — "
+                                 "передавать просьбы жителей, предлагать идеи для Ратуши. Кнопка ниже, а ещё она есть в «🗳 Выборы мэра».",
+                                 reply_markup=MLINE_KB)
+        await m.answer(f"✅ Мэру @{winner} отправлено.")
+    except Exception as e:
+        await m.answer(f"Не отправилось: {html_esc(str(e))[:200]}")
+
+
 async def program_notice(bot):
     """Один раз: одобренным кандидатам — что программу теперь можно дополнить (/program)."""
     await asyncio.sleep(30)
@@ -2183,7 +2283,10 @@ def elect_kb(cands, can_apply=True):
 async def show_election(m: Message):
     until, winner = await mayor_until(), await db.kv_get("mayor_winner")
     if winner:
-        await m.answer(f"👑 Мэр города — <b>@{winner}</b>. Следующие выборы объявим в TikTok и канале.", reply_markup=main_menu())
+        mine = m.chat.type == "private" and (await is_mayor(m.chat.id))[0]
+        await m.answer(f"👑 Мэр города — <b>@{winner}</b>. Следующие выборы объявим в TikTok и канале." +
+                       ("\n\nТы мэр — у тебя есть прямая линия с автором города 📨" if mine else ""),
+                       reply_markup=MLINE_KB if mine else main_menu())
         return
     if not until:
         await m.answer("🗳 Выборы мэра скоро начнутся — следи за TikTok и каналом!", reply_markup=main_menu())
